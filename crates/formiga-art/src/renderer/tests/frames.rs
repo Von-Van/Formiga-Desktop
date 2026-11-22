@@ -717,3 +717,93 @@ fn every_companion_is_the_same_echo_fox_in_every_clip() {
         CreatureRenderer::render_body_frame(&foxes[0], ActionKind::Idle, 0, false).canvas,
     );
 }
+
+/// A thrown companion is drawn balled up and tumbling, not as it hangs from a hand. The toss has
+/// two frames of its own in the atlas on every kind of body — an original family, each modular
+/// plan, the Echo Fox and a sculpted form — unlike any frame of being carried and unlike each
+/// other: the second is the first turned, with no colour the first does not have. Reduced motion
+/// holds the ball still, and the face drawn with it has its eyes shut.
+#[test]
+fn a_toss_has_tucked_frames_of_its_own() {
+    let tossed = BodyClip::Action(ActionKind::Tossed);
+    assert_eq!(tossed.body(), tossed, "a toss is baked under its own name");
+    assert_eq!(
+        BodyClip::baked().filter(|clip| *clip == tossed).count(),
+        1,
+        "a toss has one clip in the atlas"
+    );
+    let spec = AnimationSpec::for_clip(tossed);
+    assert_eq!((spec.frames, spec.playback), (2, PlaybackMode::Loop));
+
+    let mut subjects: Vec<(String, AppearanceGenome)> = [
+        BodyFamily::Blob,
+        BodyFamily::Hopper,
+        BodyFamily::SoftQuadruped,
+    ]
+    .into_iter()
+    .map(|family| (format!("{family:?}"), genome(family)))
+    .collect();
+    for plan in formiga_core::BodyPlan::ALL {
+        let mut modular = genome(BodyFamily::Blob);
+        let mut design = formiga_core::CreatureDesign::modular([29; 32], 0, None);
+        design.body = plan;
+        modular.design = Some(design);
+        subjects.push((format!("{plan:?}"), modular));
+    }
+    subjects.push((
+        "Echo Fox".into(),
+        AppearanceGenome {
+            echo_fox: true,
+            ..genome(BodyFamily::Hopper)
+        },
+    ));
+    let mut sculpted = genome(BodyFamily::Blob);
+    sculpted.sculpt = Some(formiga_core::forms::Sculpt::starter(
+        formiga_core::forms::Plan::CompactQuadruped,
+    ));
+    subjects.push(("sculpted".into(), sculpted));
+
+    let colours = |canvas: &Canvas| {
+        canvas
+            .pixels()
+            .iter()
+            .filter(|pixel| pixel.a > 0)
+            .map(|pixel| (pixel.r, pixel.g, pixel.b, pixel.a))
+            .collect::<std::collections::HashSet<_>>()
+    };
+    for (label, genome) in &subjects {
+        let carried: Vec<Canvas> = (0..AnimationSpec::for_action(ActionKind::Dragged).frames)
+            .map(|frame| {
+                CreatureRenderer::render_body_frame(genome, ActionKind::Dragged, frame, false)
+                    .canvas
+            })
+            .collect();
+        let [ball, turned] = [0, 1]
+            .map(|frame| CreatureRenderer::render_body_frame(genome, tossed, frame, false).canvas);
+        assert_ne!(
+            ball, turned,
+            "{label}: the second frame of a toss is turned"
+        );
+        for frame in [&ball, &turned] {
+            assert!(
+                !carried.contains(frame),
+                "{label}: a toss is drawn as being carried"
+            );
+        }
+        assert!(
+            colours(&turned).is_subset(&colours(&ball)),
+            "{label}: turning the ball invents a colour"
+        );
+        assert_eq!(
+            CreatureRenderer::render_body_frame(genome, tossed, 1, true).canvas,
+            CreatureRenderer::render_body_frame(genome, tossed, 0, true).canvas,
+            "{label}: reduced motion holds the ball still"
+        );
+    }
+    for frame in 0..spec.frames {
+        assert_eq!(
+            default_eyelids(ActionKind::Tossed, frame),
+            EyelidPose::Closed
+        );
+    }
+}

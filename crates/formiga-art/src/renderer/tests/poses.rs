@@ -51,7 +51,7 @@ fn ambient_animation_specs_and_shared_handhold_placement_are_exact() {
     assert_eq!(discovery.frame_at(20.0), 3);
     assert_eq!(
         AnimationSpec::body_action(ActionKind::Tossed),
-        ActionKind::Dragged
+        ActionKind::Tossed
     );
     assert_eq!(
         AnimationSpec::body_action(ActionKind::PetReaction),

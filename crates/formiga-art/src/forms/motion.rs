@@ -144,6 +144,16 @@ pub(crate) fn pose(plan: Plan, clip: BodyClip, frame: u8, reduce_motion: bool) -
     let half = (t * TAU * 2.0).sin();
     let locomotion = plan.locomotion();
     let mut pose = Pose::default();
+    // Thrown, it comes down to being held like any other plan does, but is drawn balled up in
+    // the air instead of hanging from the scruff: legs folded under, head tucked, tail and fins
+    // drawn in. The renderer turns the second frame a little, so it tumbles.
+    if clip.body() == BodyClip::Action(ActionKind::Tossed) {
+        pose.crouch = 1.0;
+        pose.nod = 2.0;
+        pose.sway = -1.0;
+        pose.paddle = -0.5;
+        return pose;
+    }
     match intent {
         Intent::Idle => {
             // A slow breath, the tail drifting, and the ears pricked once a loop.

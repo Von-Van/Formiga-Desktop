@@ -224,8 +224,10 @@ pub(super) fn draw(
     if long {
         four_legs(c, p, d, body, pose, clip, limbs, true);
     } else {
+        // Balled up in the air, the feet are drawn in under the body.
+        let tucked = i32::from(clip == BodyClip::Action(ActionKind::Tossed)) * 2;
         for ((side, step), limb) in [(-1, pose.step_a), (1, pose.step_b)].into_iter().zip(limbs) {
-            let fx = x + side * (rx - 4 + pose.splay.clamp(0, 3)) + step.clamp(-2, 2);
+            let fx = x + side * (rx - 4 - tucked + pose.splay.clamp(0, 3)) + step.clamp(-2, 2);
             let lift = step.abs().min(2);
             // Stick legs are drawn in shade, so they read as thin legs rather than coat.
             let leg = if k.limbs == 2 { p.shadow } else { p.coat };

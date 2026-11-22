@@ -2,6 +2,17 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Changed
+
+- A tossed companion balls up in the air instead of hanging as if still carried: two frames of
+  its own, legs folded under, head and tail tucked and its eyes shut, the second turned a little
+  so it tumbles until it lands. Every body draws it — the original families, every modular plan
+  including four-pawed bodies, the Echo Fox and sculpted forms — and it costs no texture: the two
+  frames fill cells the atlas's last row had spare. Every other clip draws exactly as before.
+  `motion-sheet` shows the tumble and the landing after the everyday loops.
+
 ## [0.68.23] - 2026-11-12
 
 The village on the desktop, wonders put out, visitors among the houses and a run of fixes, released

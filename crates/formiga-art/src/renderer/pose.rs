@@ -284,6 +284,17 @@ impl Pose {
                 tail_sway: i32::from(frame >= 2),
                 ..Self::default()
             },
+            // Thrown: balled up in the air, legs folded up under it, head and tail tucked in and
+            // the ears laid back. Both frames are this one ball; the second is drawn turned a
+            // little (see `tumble`), so it rolls over as it flies.
+            ActionKind::Tossed => Self {
+                appendage_lift: -1,
+                tail_sway: -2,
+                lean: -1,
+                crouch: 4,
+                ear_perk: -1,
+                ..Self::default()
+            },
             // Resting keeps a loop of its own rather than the shared bob: see [`Self::resting`].
             ActionKind::Idle => Self::resting(genome, frame),
             _ => Self {

@@ -270,6 +270,9 @@ impl AnimationSpec {
             ActionKind::Dangle => (4, 3, PlaybackMode::Loop),
             ActionKind::InspectScreen => (4, 4, PlaybackMode::Loop),
             ActionKind::PresentDiscovery => (4, 2, PlaybackMode::Hold),
+            // Balled up, and the same ball turned a little: a tumble three times a second for as
+            // long as it is in the air.
+            ActionKind::Tossed => (2, 6, PlaybackMode::Loop),
             _ => (4, 8, PlaybackMode::Loop),
         };
         Self {
@@ -363,7 +366,6 @@ impl AnimationSpec {
 
     pub const fn body_action(action: ActionKind) -> ActionKind {
         match action {
-            ActionKind::Tossed => ActionKind::Dragged,
             ActionKind::PetReaction => ActionKind::Greet,
             ActionKind::SqueezeWindow => ActionKind::Traverse,
             other => other,
@@ -1289,6 +1291,16 @@ impl CreatureRenderer {
         if let Some(dress) = dress {
             accessories::draw_accessory(&mut canvas, dress, figure);
         }
+        // Turned whole, with whatever it wears, and a sculpted form's fine painting with it.
+        if let Some(turn) = tumble(clip, frame).and_then(|angle| Turn::about_middle(&canvas, angle))
+        {
+            turn.canvas(&mut canvas, 1);
+            if let Some((bare, body)) = &mut fine {
+                turn.canvas(bare, 1);
+                turn.canvas(body, detail);
+            }
+            face_anchor = turn.point(face_anchor);
+        }
         let held = activity_held(genome, face_anchor, pose, clip, frame, reduce_motion);
         match clip {
             BodyClip::Action(action) => {
@@ -1659,6 +1671,161 @@ impl CreatureRenderer {
             gaze,
         }
     }
+}
+
+/// How far a thrown body is turned in a frame of its tumble, in radians, nose up: the second of
+/// the toss's two frames is the first turned back a little, so the pair read as a ball rolling
+/// over in the air. Every other frame is drawn as it stands.
+pub(crate) fn tumble(clip: BodyClip, frame: u8) -> Option<f32> {
+    (clip == BodyClip::Action(ActionKind::Tossed) && frame % 2 == 1).then_some(TUMBLE)
+}
+
+/// About a twentieth of a turn: enough to read as rolling over, not so much that the face,
+/// which is drawn upright over the body, looks stuck on.
+const TUMBLE: f32 = 0.32;
+
+/// A turn of everything drawn in a frame `angle` radians nose up (anticlockwise as seen, for a
+/// body facing right) about the middle of what it draws.
+///
+/// Pixel art is turned the way RotSprite turns it: the frame is first scaled up eight times by
+/// Scale2x, which rounds off diagonals without inventing a colour, and each turned pixel takes
+/// the colour found under its middle there. Turned straight from the frame, a one-pixel
+/// outline would break into steps and gaps; this keeps it whole and keeps every colour one the
+/// creature already had. A sculpted form's fine painting is smooth already and is sampled as it
+/// is.
+#[derive(Clone, Copy, Debug)]
+struct Turn {
+    /// The middle of the drawing, in frame pixels.
+    pivot: (f32, f32),
+    sin: f32,
+    cos: f32,
+}
+
+impl Turn {
+    /// About the middle of what `canvas` draws, or `None` when it draws nothing.
+    fn about_middle(canvas: &Canvas, angle: f32) -> Option<Self> {
+        let (min_x, min_y, max_x, max_y) = canvas.alpha_bounds()?;
+        let (sin, cos) = angle.sin_cos();
+        Some(Self {
+            pivot: (
+                (min_x + max_x + 1) as f32 / 2.0,
+                (min_y + max_y + 1) as f32 / 2.0,
+            ),
+            sin,
+            cos,
+        })
+    }
+
+    /// Where a point in frame pixels goes.
+    fn point(self, at: PixelPoint) -> PixelPoint {
+        let (dx, dy) = (at.x as f32 - self.pivot.0, at.y as f32 - self.pivot.1);
+        PixelPoint {
+            x: (self.pivot.0 + dx * self.cos + dy * self.sin).round() as i32,
+            y: (self.pivot.1 - dx * self.sin + dy * self.cos).round() as i32,
+        }
+    }
+
+    /// Turns `canvas`, drawn `detail` pixels to each frame pixel.
+    fn canvas(self, canvas: &mut Canvas, detail: u32) {
+        let levels = if detail == 1 { 3 } else { 0 };
+        let mut big = canvas.clone();
+        for _ in 0..levels {
+            big = scale2x(&big);
+        }
+        let up = (1 << levels) as f32;
+        let step = 1 << levels;
+        let detail = detail as f32;
+        let pivot = (self.pivot.0 * detail, self.pivot.1 * detail);
+        // Whether a pixel of the drawing as it was lies on its edge, beside something clear.
+        let source = canvas.clone();
+        let rim = |x: i32, y: i32| {
+            source.get(x, y).a > 0
+                && [(1, 0), (-1, 0), (0, 1), (0, -1)]
+                    .into_iter()
+                    .any(|(ox, oy)| source.get(x + ox, y + oy).a == 0)
+        };
+        // What is under a point of the turned canvas, before the turn, and whether it is the
+        // colour of the drawing's edge there: of an edge pixel it was scaled up from, or took a
+        // rounded corner from.
+        let under = |x: f32, y: f32| {
+            let (dx, dy) = (x - pivot.0, y - pivot.1);
+            let from_x = ((pivot.0 + dx * self.cos - dy * self.sin) * up).floor() as i32;
+            let from_y = ((pivot.1 + dx * self.sin + dy * self.cos) * up).floor() as i32;
+            let pixel = big.get(from_x, from_y);
+            let (x, y) = (from_x.div_euclid(step), from_y.div_euclid(step));
+            let edge = pixel.a > 0
+                && [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)]
+                    .into_iter()
+                    .any(|(ox, oy)| source.get(x + ox, y + oy) == pixel && rim(x + ox, y + oy));
+            (pixel, edge)
+        };
+        let (width, height) = (canvas.width() as i32, canvas.height() as i32);
+        let mut turned = Canvas::new(canvas.width(), canvas.height());
+        let mut edges = vec![false; (width * height) as usize];
+        for y in 0..height {
+            for x in 0..width {
+                let (pixel, edge) = under(x as f32 + 0.5, y as f32 + 0.5);
+                if pixel.a > 0 {
+                    turned.set(x, y, pixel);
+                    edges[(y * width + x) as usize] = edge;
+                }
+            }
+        }
+        // An outline turned at a slant can be stepped over, leaving the coat inside it on the
+        // edge of the turned drawing. Such a pixel takes the outline's colour from wherever in
+        // it the outline did pass, so the edge stays drawn all the way round.
+        if levels > 0 {
+            let mut outlined = turned.clone();
+            for y in 0..height {
+                for x in 0..width {
+                    let on_edge = turned.get(x, y).a > 0
+                        && [(1, 0), (-1, 0), (0, 1), (0, -1)]
+                            .into_iter()
+                            .any(|(ox, oy)| turned.get(x + ox, y + oy).a == 0);
+                    if !on_edge || edges[(y * width + x) as usize] {
+                        continue;
+                    }
+                    let inside = [-0.375, 0.0, 0.375];
+                    if let Some((pixel, _)) = inside
+                        .iter()
+                        .flat_map(|oy| inside.iter().map(move |ox| (*ox, *oy)))
+                        .map(|(ox, oy)| under(x as f32 + 0.5 + ox, y as f32 + 0.5 + oy))
+                        .find(|(_, edge)| *edge)
+                    {
+                        outlined.set(x, y, pixel);
+                    }
+                }
+            }
+            turned = outlined;
+        }
+        *canvas = turned;
+    }
+}
+
+/// `canvas` at twice the size by Scale2x: each pixel becomes four, and a corner takes the colour
+/// of the two neighbours it lies between when those agree and the other two do not, so a
+/// diagonal stays a line rather than becoming a staircase of squares.
+fn scale2x(canvas: &Canvas) -> Canvas {
+    let mut big = Canvas::new(canvas.width() * 2, canvas.height() * 2);
+    for y in 0..canvas.height() as i32 {
+        for x in 0..canvas.width() as i32 {
+            let p = canvas.get(x, y);
+            let (up, left, right, down) = (
+                canvas.get(x, y - 1),
+                canvas.get(x - 1, y),
+                canvas.get(x + 1, y),
+                canvas.get(x, y + 1),
+            );
+            let corner = |a: Rgba, b: Rgba, c: Rgba, d: Rgba| {
+                if a == b && a != c && b != d { a } else { p }
+            };
+            big.set(x * 2, y * 2, corner(left, up, down, right));
+            big.set(x * 2 + 1, y * 2, corner(up, right, left, down));
+            big.set(x * 2, y * 2 + 1, corner(down, left, right, up));
+            big.set(x * 2 + 1, y * 2 + 1, corner(right, down, up, left));
+        }
+    }
+    big
 }
 
 fn keep_atlas_margin(canvas: &mut Canvas) -> (i32, i32) {

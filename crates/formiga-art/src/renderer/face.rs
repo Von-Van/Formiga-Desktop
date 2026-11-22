@@ -1115,7 +1115,7 @@ pub(super) fn expression_for_action(action: ActionKind) -> ExpressionKind {
 }
 
 pub(super) fn default_eyelids(action: ActionKind, frame: u8) -> EyelidPose {
-    if action == ActionKind::Sleep {
+    if matches!(action, ActionKind::Sleep | ActionKind::Tossed) {
         EyelidPose::Closed
     } else if frame % 8 == 7 {
         EyelidPose::Half
@@ -1268,6 +1268,10 @@ pub(super) fn resolve_expression(creature: &Creature) -> ExpressionKind {
 }
 
 pub(super) fn resolve_eyelids(creature: &Creature, at_cursor: bool) -> EyelidPose {
+    // Screwed shut while it tumbles through the air balled up.
+    if BodyClip::for_creature(creature) == BodyClip::Action(ActionKind::Tossed) {
+        return EyelidPose::Closed;
+    }
     if creature.state.attention.is_none()
         && let Some(eyelids) = creature.state.beat.and_then(super::beats::beat_eyelids)
     {
