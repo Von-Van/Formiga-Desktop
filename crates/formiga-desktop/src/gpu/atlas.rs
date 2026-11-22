@@ -28,6 +28,9 @@ pub(super) struct AtlasPixels {
     /// What each baked frame holds and where, by slot, drawn from the colony's object sheet.
     pub(super) held: Vec<Option<HeldPlacement>>,
     pub(super) silhouette: Vec<(u8, u8)>,
+    /// How far across each baked frame's feet reach — the first and just-past-the-last columns
+    /// of its bottom two drawn rows, in art pixels — which is how wide its shadow is drawn.
+    pub(super) feet: Vec<(u8, u8)>,
 }
 
 impl AtlasPixels {
@@ -136,6 +139,7 @@ pub(super) fn build_atlas_pixels(
     let mut face_anchors = vec![PixelPoint::default(); body_slots as usize];
     let mut held = vec![None; body_slots as usize];
     let mut silhouette = vec![(0_u8, FRAME_SIZE as u8); body_slots as usize];
+    let mut feet = vec![(0_u8, 0_u8); body_slots as usize];
     for clip in BodyClip::baked() {
         let spec = AnimationSpec::for_clip(clip);
         for frame in 0..spec.frames {
@@ -171,6 +175,7 @@ pub(super) fn build_atlas_pixels(
             face_anchors[slot] = rendered.face_anchor;
             held[slot] = rendered.held;
             silhouette[slot] = silhouette_rows(&rendered.canvas);
+            feet[slot] = ContactShadow::feet(&rendered.canvas).unwrap_or((0, 0));
             body_frames[slot] = fine.unwrap_or(rendered.canvas).rgba_bytes();
         }
     }
@@ -212,6 +217,7 @@ pub(super) fn build_atlas_pixels(
         face_anchors,
         held,
         silhouette,
+        feet,
     }
 }
 

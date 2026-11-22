@@ -100,7 +100,7 @@ pub use wonders::{
 };
 pub use world::{
     BubbleGrowth, ColonyEdit, ThoughtBubble, UndoError, VILLAGE_PATH_DEPTH, WonderPose, World,
-    wonder_length, wonder_motion, wonder_poses,
+    ground_below, wonder_length, wonder_motion, wonder_poses,
 };
 
 pub const SAVE_VERSION: u32 = 34;

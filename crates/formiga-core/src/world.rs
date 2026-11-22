@@ -62,6 +62,7 @@ pub(crate) use objects::{scheduled_colony_object_at, scheduled_village_unlock_at
 pub(crate) use rituals::scheduled_ritual_at;
 use rituals::*;
 use surfaces::SurfaceMemory;
+pub use surfaces::ground_below;
 pub use undo::{ColonyEdit, UndoError};
 pub use village_paths::PATH_DEPTH as VILLAGE_PATH_DEPTH;
 pub use wonders::{WonderPose, wonder_length, wonder_motion, wonder_poses};

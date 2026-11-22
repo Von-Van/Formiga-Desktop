@@ -1093,3 +1093,32 @@ minutes — 2.71% CPU, 61 MB resident, and an energy impact of 2.51 on average a
 It is 0.66.1, at the 2× scale the owner uses rather than the 3× the budgets are set at, so it is a
 reference rather than a gate result. Energy with the menu open, and anything at all on Windows, is
 still to be measured ([#6](https://github.com/Von-Van/Formiga-Desktop/issues/6)).
+
+## Contact shadows
+
+### Frames
+
+A shadow under every drawn companion adds, per companion and per presented frame, one quad of six
+vertices (120 bytes more in the frame's one vertex upload), one bind group and one draw call inside
+the existing pass, both before its body. A companion that might be off the ground — thrown, coming
+down from a hop, hanging or climbing — also looks straight down for the ground under it, over at
+most 64 window rectangles, which is a few microseconds on the frames it is in the air and nothing
+on the rest. The overlay's starting vertex buffer holds four companions' shadows, 282 vertices
+where it held 258. The shadow adds no wakeup, no frame and no simulation work. Live process CPU
+per frame, the comparable figure since 0.63.0, was not re-measured for it.
+
+### The simulation
+
+The simulation does not draw shadows, and `World::tick` is unchanged. `formiga-tools tick-bench`,
+the commit before and the shadow's commit built for release and run one after the other in one
+sitting, measured the same within the noise: the eleven scenarios' means moved between 2% faster
+and 1% slower, never by more than a tenth of a microsecond (six creatures on a busy desktop with
+the cursor, the most expensive, 9.05 µs before and 9.08 µs after).
+
+### Textures
+
+Every width of both shadows, the desktop's and the village ground's, is one 48×240 sheet of
+46,080 bytes per overlay, built the first time a companion is drawn and kept, like the tow rope. A
+companion's own atlases are unchanged: the reference companion's are 1,704,960 bytes before and
+after, and its frames 213, because a frame's feet are measured from the frame already rendered
+for the atlas and kept as two bytes per frame beside its silhouette rows.
