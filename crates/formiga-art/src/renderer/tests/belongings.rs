@@ -236,6 +236,10 @@ fn whatever_a_companion_wears_shows_on_it_in_every_pose_and_sits_on_its_body() {
         appearance.design = Some(design);
         bodies.push((format!("{plan:?}"), appearance));
     }
+    // A mini, small enough to wear the speck drawings, checked in the pieces drawn that way.
+    let mut mini = bodies.last().expect("a modular body").1.clone();
+    mini.logical_size = accessories::SPECK_SIZE - 2;
+    bodies.push(("mini".to_owned(), mini));
     let members = [crate::palette_for(&preview.appearance)];
     let dresses: Vec<AccessoryArt> = AccessoryKind::ALL
         .into_iter()
@@ -264,6 +268,18 @@ fn whatever_a_companion_wears_shows_on_it_in_every_pose_and_sits_on_its_body() {
                     .alpha_bounds()
                     .expect("every frame draws something");
                 for dress in &dresses {
+                    if body == "mini"
+                        && !matches!(
+                            dress.accessory,
+                            Accessory::Worn(
+                                AccessoryKind::MoonClip
+                                    | AccessoryKind::ShellNecklace
+                                    | AccessoryKind::SnailPack
+                            )
+                        )
+                    {
+                        continue;
+                    }
                     let dressed = CreatureRenderer::render_dressed_body_frame(
                         genome,
                         Some(*dress),
@@ -296,6 +312,57 @@ fn whatever_a_companion_wears_shows_on_it_in_every_pose_and_sits_on_its_body() {
                     );
                 }
             }
+        }
+    }
+}
+
+/// A companion of [`accessories::SPECK_SIZE`] or smaller draws the moon clip, the shell necklace and
+/// the snail pack in their plainer speck shapes; one pixel of size larger, and every piece, those
+/// three included, is drawn exactly as before.
+#[test]
+fn only_a_speck_sized_companion_wears_the_speck_drawings() {
+    use formiga_core::{Accessory, AccessoryKind};
+    let preview = World::preview_adult(
+        [29; 32],
+        time::OffsetDateTime::UNIX_EPOCH,
+        &DesktopSnapshot::default(),
+    );
+    let members = [crate::palette_for(&preview.appearance)];
+    let figure = Figure {
+        face: PixelPoint { x: 24, y: 26 },
+        crown: PixelPoint { x: 24, y: 18 },
+        head_half: 7,
+        neck: PixelPoint { x: 24, y: 30 },
+        neck_half: 5,
+        chest: PixelPoint { x: 25, y: 33 },
+        hip: PixelPoint { x: 18, y: 34 },
+        back: PixelPoint { x: 18, y: 30 },
+        floor: 42,
+    };
+    let speck_pieces = [
+        AccessoryKind::MoonClip,
+        AccessoryKind::ShellNecklace,
+        AccessoryKind::SnailPack,
+    ];
+    for kind in AccessoryKind::ALL {
+        let art = AccessoryArt::resolve(Accessory::Worn(kind), [29; 32], &members);
+        let worn = |logical_size| {
+            let mut canvas = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+            accessories::draw_accessory(&mut canvas, art, figure, logical_size);
+            canvas
+        };
+        let speck = worn(accessories::SPECK_SIZE);
+        let full = worn(accessories::SPECK_SIZE + 1);
+        assert_eq!(
+            full,
+            worn(u8::MAX),
+            "{kind:?} draws the same at every size above a speck"
+        );
+        assert!(speck.alpha_bounds().is_some(), "{kind:?} shows on a speck");
+        if speck_pieces.contains(&kind) {
+            assert_ne!(speck, full, "{kind:?} has a speck drawing");
+        } else {
+            assert_eq!(speck, full, "{kind:?} has no speck drawing");
         }
     }
 }

@@ -321,7 +321,9 @@ What a companion wears is a colony's finds too. Each of the twenty accessories i
 an acorn's cup, brass — with its dyed parts in that variant's colony colours, and outlined all round
 in one pass; any find can be worn as a pin. `renderer/accessories.rs` draws the piece onto every body frame as the atlas is
 baked, from the `Figure` the frame's body reports — the top of the head, the neck, the chest and the
-hip — so it adds no gene, no texture, and no quad.
+hip — so it adds no gene, no texture, and no quad. A companion of logical size 28 or smaller draws
+the moon clip, the shell necklace and the snail pack in plainer speck shapes, chosen by its size
+and not by anything generated; every larger companion's pieces are drawn exactly as before.
 
 ## Extending safely
 

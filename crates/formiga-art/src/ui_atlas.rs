@@ -631,7 +631,8 @@ fn draw_bubble_tail(canvas: &mut Canvas, x: i32, y: i32) {
     canvas.set(x + 8, y + 14, OUTLINE);
 }
 
-/// A 9x9 icon, drawn with its top-left at `x, y`.
+/// A 9x9 icon, drawn with its top-left at `x, y`. A few are eleven wide and start a column to
+/// the left, so they stay centred on the bubble's mirror axis.
 fn draw_bubble_icon(canvas: &mut Canvas, x: i32, y: i32, icon: BubbleIcon) {
     match icon {
         BubbleIcon::Heart => stamp(
@@ -877,95 +878,104 @@ fn draw_bubble_icon(canvas: &mut Canvas, x: i32, y: i32, icon: BubbleIcon) {
             ],
             &[('#', SEA), ('+', SEA_DEEP), ('o', OUTLINE)],
         ),
-        // A little storm cloud with a spark of lightning under it.
+        // A storm cloud with a bolt under it. Like the four after it, it is one shape with a
+        // 1 px outline and one mark of its own, eleven wide: one column further out each side
+        // than the 9x9 box, still two clear of the frame. Loose strokes and dithered cracks
+        // blur into a smudge at 2x; a closed outline does not.
         BubbleIcon::Grumble => stamp(
             canvas,
-            x,
+            x - 1,
             y,
             &[
-                "...##....",
-                "..####.#.",
-                ".#######.",
-                "#########",
-                ".+++++++.",
-                "....a....",
-                "...a.....",
-                "....a....",
-                "...a.....",
+                "...ooo.....",
+                "..oSSSoooo.",
+                ".oSSSSSSSSo",
+                "oSSSSSSSSSo",
+                "oDDDDDDDDDo",
+                ".oooAAoooo.",
+                "....AA.....",
+                "...AA......",
+                "...A.......",
             ],
-            &[('#', STORM), ('+', STORM_DEEP), ('a', AMBER)],
+            &[
+                ('o', OUTLINE),
+                ('S', STORM),
+                ('D', STORM_DEEP),
+                ('A', AMBER),
+            ],
         ),
-        // A heart gone green, with a crack down it.
+        // A green heart broken clean in two.
         BubbleIcon::Jealous => stamp(
             canvas,
-            x,
+            x - 1,
             y,
             &[
-                ".........",
-                ".##...##.",
-                "####.####",
-                "###.####+",
-                "####.##++",
-                ".##.###+.",
-                "..##.#+..",
-                "...#.+...",
-                "....#....",
+                ".ooo...ooo.",
+                "oGGGo.oGGGo",
+                "oGGGGoGGGDo",
+                "oGGGGoGGGDo",
+                ".oGGoGGGDo.",
+                "..oGGoGDo..",
+                "...oGoDo...",
+                "....ooo....",
+                ".....o.....",
             ],
-            &[('#', ENVY), ('+', ENVY_DEEP)],
+            &[('o', OUTLINE), ('G', ENVY), ('D', ENVY_DEEP)],
         ),
-        // Seeing stars: three little ones going round.
+        // Seeing stars: one big five-pointed one, outlined, where Sparkle's are bare and
+        // four-pointed.
         BubbleIcon::Swoon => stamp(
             canvas,
-            x,
+            x - 1,
             y,
             &[
-                "....#....",
-                "...###...",
-                "....#....",
-                ".#.....+.",
-                "###...+++",
-                ".#.....+.",
-                ".........",
-                ".........",
-                ".........",
+                ".....o.....",
+                "....oGo....",
+                ".ooooGoooo.",
+                "oGGGGGGGGGo",
+                ".oGGGGGGGo.",
+                "..oGGGGGo..",
+                "..oGGoGGo..",
+                ".oGGo.oGGo.",
+                ".ooo...ooo.",
             ],
-            &[('#', GOLD), ('+', PLUM)],
+            &[('o', OUTLINE), ('G', GOLD)],
         ),
-        // Three strokes over a pink cheek: a blush.
+        // A shy little face, eyes squeezed shut over pink cheeks.
         BubbleIcon::Blush => stamp(
             canvas,
-            x,
+            x - 1,
             y,
             &[
-                ".........",
-                "..#..#..#",
-                ".#..#..#.",
-                "#..#..#..",
-                ".........",
-                ".+++++++.",
-                "+++++++++",
-                ".+++++++.",
-                ".........",
+                "..ooooooo..",
+                ".o.......o.",
+                "o..o...o..o",
+                "o.o.o.o.o.o",
+                "o.........o",
+                "oBB.....BBo",
+                "oBB.....BBo",
+                ".o.......o.",
+                "..ooooooo..",
             ],
-            &[('#', ROSE_DEEP), ('+', BLUSH)],
+            &[('o', OUTLINE), ('B', BLUSH)],
         ),
-        // One wide-open eye.
+        // One wide-open eye with a big round iris.
         BubbleIcon::Watching => stamp(
             canvas,
-            x,
+            x - 1,
             y,
             &[
-                ".........",
-                ".........",
-                "..#####..",
-                ".#.....#.",
-                "#..ooo..#",
-                "#..oOo..#",
-                "#..ooo..#",
-                ".#.....#.",
-                "..#####..",
+                "...........",
+                "...ooooo...",
+                ".oo.sss.oo.",
+                "o..sssss..o",
+                "o..ssOss..o",
+                "o..sssss..o",
+                ".oo.sss.oo.",
+                "...ooooo...",
+                "...........",
             ],
-            &[('#', OUTLINE), ('o', SLATE_DEEP), ('O', OUTLINE)],
+            &[('o', OUTLINE), ('s', SLATE_DEEP), ('O', OUTLINE)],
         ),
     }
 }
