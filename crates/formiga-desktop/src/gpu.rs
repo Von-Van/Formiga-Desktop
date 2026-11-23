@@ -3,17 +3,16 @@ use anyhow::{Context, Result};
 use bytemuck::{Pod, Zeroable};
 use formiga_art::{
     AccessoryArt, AnimationSpec, BodyClip, BodyPresentation, COLONY_OBJECT_ATLAS_HEIGHT,
-    COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE, ColonyObjectRenderer, ContactShadow,
-    CreatureRenderer, FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement, HELD_CELL,
-    HELD_SHEET_HEIGHT, HELD_SHEET_WIDTH, HeldPlacement, HeldThing, MenuIcon, MenuLayout,
-    MilestoneBubbleRenderer, PixelPoint, PropAnchor, PropSprite, Rgba, SHADOW_SHEET_HEIGHT,
-    SHADOW_SHEET_WIDTH, SHELTER_SIZE, ShadowGround, ShelterRenderer, SpriteRect, TALK_BUBBLE,
-    TALK_DETAIL, TALK_ICON, TALK_ICON_AT, TALK_SHEET_HEIGHT, TALK_SHEET_WIDTH,
-    TRINKET_ATLAS_HEIGHT, TRINKET_ATLAS_WIDTH, TRINKET_CELL, TRINKET_FRAME_GLINT,
-    TRINKET_FRAME_REST, TalkSheet, TrinketAnchor, TrinketAtlasRenderer, UI_ATLAS_HEIGHT,
-    UI_ATLAS_WIDTH, UiAtlasRenderer, VILLAGE_ATLAS_HEIGHT, VILLAGE_ATLAS_WIDTH, VillageCell,
-    VillageLook, WONDER_CELL_HEIGHT, WONDER_CELL_WIDTH, WONDER_GROUND, WONDER_MIDDLE,
-    WonderRenderer, wonder_frame, wonder_frames,
+    COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE, ClipBridge, ColonyObjectRenderer, ContactShadow,
+    CreatureRenderer, FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement, FrameShape,
+    HELD_CELL, HELD_SHEET_HEIGHT, HELD_SHEET_WIDTH, HeldPlacement, HeldThing, MenuIcon, MenuLayout,
+    MilestoneBubbleRenderer, PixelPoint, PropSprite, Rgba, SHADOW_SHEET_HEIGHT, SHADOW_SHEET_WIDTH,
+    SHELTER_SIZE, ShadowGround, ShelterRenderer, SpriteRect, TALK_BUBBLE, TALK_DETAIL, TALK_ICON,
+    TALK_ICON_AT, TALK_SHEET_HEIGHT, TALK_SHEET_WIDTH, TRINKET_ATLAS_HEIGHT, TRINKET_ATLAS_WIDTH,
+    TRINKET_CELL, TRINKET_FRAME_GLINT, TRINKET_FRAME_REST, TalkSheet, TrinketAnchor,
+    TrinketAtlasRenderer, UI_ATLAS_HEIGHT, UI_ATLAS_WIDTH, UiAtlasRenderer, VILLAGE_ATLAS_HEIGHT,
+    VILLAGE_ATLAS_WIDTH, VillageCell, VillageLook, WONDER_CELL_HEIGHT, WONDER_CELL_WIDTH,
+    WONDER_GROUND, WONDER_MIDDLE, WonderRenderer, wonder_frame, wonder_frames,
 };
 use formiga_art::{
     GROUND_ATLAS_HEIGHT, GROUND_STRIP_HEIGHT, GROUND_STRIP_WIDTH, GroundLayer, VillageGroundLook,
@@ -96,6 +95,9 @@ struct SpriteGpu {
     /// Which cell of the face texture each face is drawn from, by face slot.
     face_cells: Vec<u16>,
     face_anchors: Vec<PixelPoint>,
+    /// Where each baked frame holds a thing it carries, by slot: a find held up, a watering can,
+    /// whatever was picked. Art pixels facing right, mirrored with facing as the face anchor is.
+    hands: Vec<PixelPoint>,
     /// What each baked frame holds and where, by slot.
     held: Vec<Option<HeldPlacement>>,
     /// The topmost and just-past-the-lowest drawn rows of each baked body frame, in art pixels
@@ -308,6 +310,10 @@ pub struct OverlayRenderer {
     /// Which size each companion is shown at just now, as the app last worked it out from its
     /// footing (`formiga_art::shown_set_back`), so the overlay and the grab mask agree on it.
     set_back_shown: BTreeMap<CreatureId, bool>,
+    /// Each companion's one-tick bridge between clips, as the app last advanced it
+    /// (`formiga_art::ClipBridge`), so the overlay, its bubbles and the grab mask draw the settle
+    /// on the same tick.
+    clip_bridges: BTreeMap<CreatureId, ClipBridge>,
     shelter: Option<ShelterGpu>,
     ground: Option<GroundGpu>,
     bubble: Option<BubbleGpu>,
@@ -593,6 +599,7 @@ impl OverlayRenderer {
             sprites: BTreeMap::new(),
             set_back_sprites: BTreeMap::new(),
             set_back_shown: BTreeMap::new(),
+            clip_bridges: BTreeMap::new(),
             shelter: None,
             ground: None,
             bubble: None,
@@ -721,6 +728,35 @@ impl OverlayRenderer {
             .get(&creature.id)
             .copied()
             .unwrap_or_else(|| drawn_set_back(creature.state.depth, true))
+    }
+
+    /// Where each companion's one-tick bridge between clips stands, from the app, once a tick.
+    pub fn show_clip_bridges(&mut self, bridges: &BTreeMap<CreatureId, ClipBridge>) {
+        self.clip_bridges.clone_from(bridges);
+    }
+
+    /// What a companion's body is drawn as this tick: [`BodyPresentation::for_creature`], or the
+    /// settle in its place while its clip bridge is on.
+    pub(super) fn presented(&self, creature: &Creature) -> BodyPresentation {
+        let body = BodyPresentation::for_creature(creature);
+        self.clip_bridges
+            .get(&creature.id)
+            .map_or(body, |bridge| bridge.shown(body))
+    }
+
+    /// The outline of `body`'s frame as this display baked it for `creature`, and whether the
+    /// creature has anything in its paws in it, for its clip bridge. `None` until its atlas is
+    /// baked.
+    pub fn frame_shape(&self, creature: &Creature, body: BodyPresentation) -> Option<FrameShape> {
+        let sprite = self.sprite_for(creature)?;
+        let slot = atlas_slot(body.clip, body.frame) as usize;
+        let (top, bottom) = *sprite.silhouette.get(slot)?;
+        Some(FrameShape {
+            top,
+            bottom,
+            holding: formiga_art::held_now(creature, body.clip, sprite.held.get(slot).copied()?)
+                .is_some(),
+        })
     }
 
     fn sprite_at(&self, id: CreatureId, set_back: bool) -> Option<&SpriteGpu> {
@@ -1411,15 +1447,21 @@ impl OverlayRenderer {
     ) {
         // Creature scale is expressed in physical pixels. Applying the monitor scale factor a
         // second time made a 3x creature twice the intended size on Retina displays.
-        let sprite_size = FRAME_SIZE as f32 * display_scale as f32;
         let (local_x, contact_y) = self.drawn_contact(creature, display_scale);
-        let placement = FramePlacement::for_creature(creature, sprite.resting_baseline);
-        let frame_top = contact_y + placement.origin_y as f32 * display_scale as f32;
-        let frame_bottom = frame_top + sprite_size;
         // Gap traversal reuses the normal walk atlas and briefly narrows both body and layered face
         // quads. The source texture and hit mask remain unchanged and no runtime art is generated.
         let horizontal_scale = creature_horizontal_scale(creature.state.action);
-        let sprite_width = sprite_size * horizontal_scale;
+        // Placed the way the climb sheet places it, from the one shared rule.
+        let drawn = FramePlacement::for_creature(creature, sprite.resting_baseline).frame_rect(
+            local_x,
+            contact_y,
+            display_scale as f32,
+            horizontal_scale,
+        );
+        let sprite_size = drawn.height;
+        let frame_top = drawn.top;
+        let frame_bottom = frame_top + sprite_size;
+        let sprite_width = drawn.width;
         let left = (local_x - sprite_width / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
         let right = (local_x + sprite_width / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
         let top = 1.0 - frame_top / self.layout.height as f32 * 2.0;
@@ -1431,7 +1473,7 @@ impl OverlayRenderer {
             clip,
             frame,
             facing_right,
-        } = BodyPresentation::for_creature(creature);
+        } = self.presented(creature);
         let slot = atlas_slot(clip, frame);
         // However finely the atlas was baked, its frame fills the same quad on the screen.
         let [mut u_left, mut u_right, v_top, v_bottom] = cell_uv(
@@ -1566,6 +1608,26 @@ impl OverlayRenderer {
                 occlusion_enabled,
             },
         ];
+        // Where a frame pixel lands on the overlay, with the frame facing the way it is drawn.
+        let on_overlay = |at: PixelPoint| {
+            let across = if facing_right {
+                at.x
+            } else {
+                FRAME_SIZE as i32 - at.x
+            } as f32;
+            let unscaled_x = local_x - sprite_size / 2.0 + across * display_scale as f32;
+            (
+                local_x + (unscaled_x - local_x) * horizontal_scale,
+                frame_top + at.y as f32 * display_scale as f32,
+            )
+        };
+        // Where this frame holds up a thing it carries: on the paw it drew, or under its mouth,
+        // and never over its eyes.
+        let hands = on_overlay(formiga_art::held_up_at(
+            sprite.hands[slot as usize],
+            sprite.face_anchors[slot as usize],
+            formiga_art::HELD_UP_REACH,
+        ));
         let trinket = (creature.state.action == ActionKind::PresentDiscovery).then(|| {
             // The colony's own sheet, not this creature's face texture: one quad sampling the
             // cell for the variant it found, on the glint frame for part of the presentation.
@@ -1577,10 +1639,8 @@ impl OverlayRenderer {
             let u_right = (cell_x + TRINKET_CELL) as f32 / TRINKET_ATLAS_WIDTH as f32;
             let v_top = cell_y as f32 / TRINKET_ATLAS_HEIGHT as f32;
             let v_bottom = (cell_y + TRINKET_CELL) as f32 / TRINKET_ATLAS_HEIGHT as f32;
-            // One explicit anchor, shared with the review sheets, rather than a number here.
-            let anchor = PropAnchor::facing(facing_right);
-            let center_x = face_center_x + anchor.dx * display_scale as f32;
-            let center_y = face_center_y + anchor.dy * display_scale as f32;
+            // Held up in the paw the frame raises it in.
+            let (center_x, center_y) = hands;
             let left = (center_x - face_size / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
             let right = (center_x + face_size / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
             let top = 1.0 - (center_y - face_size / 2.0) / self.layout.height as f32 * 2.0;
@@ -1619,22 +1679,10 @@ impl OverlayRenderer {
             ]
         });
         // Something the village has put in its hands — a watering can, something just picked —
-        // held where a keepsake is held, and the water running out of the can while it waters.
+        // held in the paw the frame draws, as a keepsake is, and the water running out of the can
+        // while it waters.
         let mut held = [None, None];
         // What it is eating, sipping or playing with, where this frame holds it.
-        // Where a frame pixel lands on the overlay, with the frame facing the way it is drawn.
-        let on_overlay = |at: PixelPoint| {
-            let across = if facing_right {
-                at.x
-            } else {
-                FRAME_SIZE as i32 - at.x
-            } as f32;
-            let unscaled_x = local_x - sprite_size / 2.0 + across * display_scale as f32;
-            (
-                local_x + (unscaled_x - local_x) * horizontal_scale,
-                frame_top + at.y as f32 * display_scale as f32,
-            )
-        };
         // A kite's string, from the paw holding it up to the kite.
         let tether = formiga_art::held_tether(creature, clip, sprite.held[slot as usize]).map(
             |(paw, kite)| {
@@ -1672,31 +1720,18 @@ impl OverlayRenderer {
                 (quad, sheet)
             },
         );
-        if let Some(beat) = creature.state.beat
-            && let Some(prop) = beat.held
-        {
-            let anchor = PropAnchor::facing(facing_right);
-            let unit = display_scale as f32;
-            let centre = (
-                face_center_x + anchor.dx * unit,
-                face_center_y + anchor.dy * unit,
-            );
-            held[0] = Some(self.object_quad_at(
-                ColonyObjectRenderer::prop_cell(PropSprite::of(prop)),
-                centre,
-                !facing_right,
-                display_scale,
-                occlusion_enabled,
-            ));
-            if beat.kind == BeatKind::Watering && (0.15..0.9).contains(&beat.progress()) {
-                let ahead = if facing_right { 1.0 } else { -1.0 };
-                held[1] = Some(self.object_quad_at(
-                    ColonyObjectRenderer::prop_cell(PropSprite::Water),
-                    (centre.0 + ahead * 7.0 * unit, centre.1 + 7.0 * unit),
-                    !facing_right,
-                    display_scale,
-                    occlusion_enabled,
-                ));
+        if let Some(prop) = creature.state.beat.and_then(|beat| beat.held) {
+            let cells = village_held_cells(prop, clip, frame, hands, facing_right, display_scale);
+            for (quad, cell) in held.iter_mut().zip(cells) {
+                *quad = cell.map(|(cell, centre)| {
+                    self.object_quad_at(
+                        cell,
+                        centre,
+                        !facing_right,
+                        display_scale,
+                        occlusion_enabled,
+                    )
+                });
             }
         }
         (shadow, body, face, trinket, held, carried, tether)
@@ -1900,6 +1935,32 @@ pub(crate) fn render_divisor(half_allowed: bool, scale_factor: f32, display_scal
     } else {
         1
     }
+}
+
+/// The cells and overlay centres of what the village has put in a companion's paws in `frame` of
+/// `clip`: the can, or whatever it picked, centred on `hands`, and then the water, centred on the
+/// can's spout while the pour has it tipped over. Both are turned with the frame, so the water
+/// still runs from the spout when it faces left.
+fn village_held_cells(
+    prop: VillageProp,
+    clip: BodyClip,
+    frame: u8,
+    hands: (f32, f32),
+    facing_right: bool,
+    display_scale: u8,
+) -> [Option<(u32, (f32, f32))>; 2] {
+    let (sprite, water) = formiga_art::village_held(prop, clip, frame);
+    let unit = f32::from(display_scale);
+    let ahead = if facing_right { unit } else { -unit };
+    [
+        Some((ColonyObjectRenderer::prop_cell(sprite), hands)),
+        water.map(|(x, y)| {
+            (
+                ColonyObjectRenderer::prop_cell(PropSprite::Water),
+                (hands.0 + x as f32 * ahead, hands.1 + y as f32 * unit),
+            )
+        }),
+    ]
 }
 
 #[cfg(test)]

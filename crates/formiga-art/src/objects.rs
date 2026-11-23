@@ -48,10 +48,12 @@ pub enum PropSprite {
     Blossom,
     /// A little Z drifting up out of a house somebody is asleep in.
     Snore,
+    /// The watering can tipped over to pour, spout down.
+    WateringCanTipped,
 }
 
 impl PropSprite {
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 14] = [
         Self::WateringCan,
         Self::Water,
         Self::Carrot,
@@ -65,10 +67,23 @@ impl PropSprite {
         Self::Leaf,
         Self::Blossom,
         Self::Snore,
+        Self::WateringCanTipped,
     ];
 
     const fn index(self) -> u32 {
         self as u32
+    }
+
+    /// Where water leaves a can's spout, in pixels of its cell facing right: the top-left corner
+    /// of the first pixel the water runs through. [`Self::Water`] starts its stream on the pixel
+    /// below and right of its own cell's middle, so its cell centred on this point runs from the
+    /// spout, and still does with both cells turned round. `None` for anything without a spout.
+    pub const fn spout(self) -> Option<(i32, i32)> {
+        match self {
+            Self::WateringCan => Some((14, 6)),
+            Self::WateringCanTipped => Some((14, 11)),
+            _ => None,
+        }
     }
 
     /// How something the village holds or chases is drawn.
@@ -1191,11 +1206,35 @@ fn draw_prop(canvas: &mut Canvas, prop: PropSprite, ink: Ink) {
             canvas.line(5, 6, 8, 6, 1, outline);
             canvas.set(4, 7, outline);
         }
-        // Water falling from a spout, in drops.
+        // The same can tipped over to pour, its spout turned down: see [`PropSprite::spout`].
+        PropSprite::WateringCanTipped => {
+            let rows = [
+                "....OO..........",
+                "...OhcOO........",
+                "...OccccOO......",
+                "..OcccccccO.....",
+                "..OcccccccOOOO..",
+                "..OOcccccO...OL.",
+                "....OOccO.......",
+                "......OO........",
+            ];
+            for (y, row) in (5..).zip(rows) {
+                for (x, pixel) in (0..).zip(row.bytes()) {
+                    match pixel {
+                        b'O' => canvas.set(x, y, outline),
+                        b'c' => canvas.set(x, y, coat),
+                        b'h' => canvas.set(x, y, highlight),
+                        b'L' => canvas.set(x, y, METAL_LIGHT),
+                        _ => {}
+                    }
+                }
+            }
+        }
+        // Water running out of a spout at the middle of the cell, falling and breaking into drops.
         PropSprite::Water => {
-            for (dx, dy) in [(0, 0), (2, 2), (-1, 3), (1, 5), (3, 6), (0, 7)] {
-                canvas.set(8 + dx, 5 + dy, WATER_LIGHT);
-                canvas.set(8 + dx, 6 + dy, WATER);
+            for (x, y) in [(8, 8), (8, 10), (9, 12), (11, 12), (7, 13), (10, 14)] {
+                canvas.set(x, y, WATER_LIGHT);
+                canvas.set(x, y + 1, WATER);
             }
         }
         PropSprite::Carrot => {
@@ -1568,6 +1607,54 @@ mod tests {
                 1.0 / COLONY_OBJECT_ROWS as f32
             )
         );
+    }
+
+    /// Water centred on a can's spout starts its stream on the empty pixel just past the spout's
+    /// tip, touching it, falls from there and never runs back over the can, upright or tipped.
+    #[test]
+    fn water_centred_on_a_spout_runs_out_of_it_and_never_over_the_can() {
+        let sheet = ColonyObjectRenderer::render_atlas([42; 32]);
+        let opaque = |cell: u32, x: i32, y: i32| {
+            (0..COLONY_OBJECT_SIZE as i32).contains(&x)
+                && (0..COLONY_OBJECT_SIZE as i32).contains(&y)
+                && cell_pixels(&sheet, cell)[(y * COLONY_OBJECT_SIZE as i32 + x) as usize].a > 0
+        };
+        let water = ColonyObjectRenderer::prop_cell(PropSprite::Water);
+        let half = COLONY_OBJECT_SIZE as i32 / 2;
+        assert!(
+            opaque(water, half, half),
+            "the stream starts at the cell's middle"
+        );
+        for can in [PropSprite::WateringCan, PropSprite::WateringCanTipped] {
+            let (sx, sy) = can.spout().expect("a can has a spout");
+            let cell = ColonyObjectRenderer::prop_cell(can);
+            assert!(!opaque(cell, sx, sy), "{can:?}: the spout's mouth is open");
+            assert!(
+                [(0, -1), (-1, 0), (-1, -1)]
+                    .iter()
+                    .any(|(dx, dy)| opaque(cell, sx + dx, sy + dy)),
+                "{can:?}: the water starts against the spout"
+            );
+            for y in 0..COLONY_OBJECT_SIZE as i32 {
+                for x in 0..COLONY_OBJECT_SIZE as i32 {
+                    if opaque(water, x, y) {
+                        assert!(y >= half, "water runs down from the spout");
+                        assert!(
+                            !opaque(cell, x - half + sx, y - half + sy),
+                            "{can:?}: water over the can at {x},{y}"
+                        );
+                    }
+                }
+            }
+        }
+        for prop in PropSprite::ALL {
+            if !matches!(
+                prop,
+                PropSprite::WateringCan | PropSprite::WateringCanTipped
+            ) {
+                assert_eq!(prop.spout(), None, "{prop:?}");
+            }
+        }
     }
 
     /// The patches a village already had look grown exactly as they did before gardens grew.

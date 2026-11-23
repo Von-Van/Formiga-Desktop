@@ -3,7 +3,7 @@ use crate::review_sheet::over;
 use formiga_art::{
     AnimationSpec, BodyClip, BodyPresentation, Canvas, CreatureRenderer, ExpressionKind,
     FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement, GazeDirection, OUTLINE_RIM,
-    PixelPoint, PropAnchor, Rgba,
+    PixelPoint, Rgba,
 };
 use formiga_core::*;
 use time::{Duration, macros::datetime};
@@ -1324,12 +1324,15 @@ fn feet_and_hanging_hands_meet_the_ledge_for_every_body_plan() {
     assert!(faults.is_empty(), "{faults:#?}");
 }
 
+/// How far a held-up find reaches either side of where it is held.
+const FIND_HALF: i32 = formiga_art::HELD_UP_REACH;
+
 /// R05.3: a carried thing, drawn where the overlay draws it.
 ///
-/// The prop is its own quad, placed from `PropAnchor` against the face anchor and drawn after the
-/// layered face, so it cannot be reviewed from a sprite alone. This rebuilds the overlay's
-/// arrangement — body frame, face anchor, prop quad — for both facings and, in the last column,
-/// for two companions reaching toward one another, which is the moment the anchor exists to serve.
+/// The prop is its own quad, centred on the paw the frame draws (the frame's `hands`) and drawn
+/// after the layered face, so it cannot be reviewed from a sprite alone. This rebuilds the
+/// overlay's arrangement — body frame, face anchor, prop quad — for both facings and, in the last
+/// column, for two companions holding theirs up toward one another.
 #[test]
 fn a_carried_prop_is_held_in_front_of_every_body_plan_in_both_facings() {
     const CELL: i32 = 232;
@@ -1365,9 +1368,20 @@ fn a_carried_prop_is_held_in_front_of_every_body_plan_in_both_facings() {
             let (sprite, anchor) =
                 overlay_sprite(&creature, ActionKind::PresentDiscovery, 2, false);
             stamp(sheet, &sprite, left, top, ZOOM, 1.0);
-            let prop_anchor = PropAnchor::for_creature(&creature);
-            let prop_x = left + anchor.x * ZOOM + (prop_anchor.dx * ZOOM as f32) as i32;
-            let prop_y = top + anchor.y * ZOOM + (prop_anchor.dy * ZOOM as f32) as i32;
+            // Held up in its paw, off its eyes, mirrored with the frame as the overlay mirrors it.
+            let frame = CreatureRenderer::render_body_frame(
+                &creature.appearance,
+                ActionKind::PresentDiscovery,
+                2,
+                false,
+            );
+            let mut hands =
+                formiga_art::held_up_at(frame.hands, frame.face_anchor, formiga_art::HELD_UP_REACH);
+            if !facing_right {
+                hands.x = FRAME_SIZE as i32 - hands.x;
+            }
+            let prop_x = left + hands.x * ZOOM;
+            let prop_y = top + hands.y * ZOOM;
             let prop = CreatureRenderer::render_trinket(
                 &creature.appearance,
                 creature.state.activity_variant,
@@ -1380,21 +1394,23 @@ fn a_carried_prop_is_held_in_front_of_every_body_plan_in_both_facings() {
                 let inset = edge * (FRAME_SIZE as i32 * ZOOM - 1);
                 sheet.fill_rect(left + inset, top, 1, FRAME_SIZE as i32 * ZOOM, GUIDE);
             }
-            (anchor, prop_anchor, prop)
+            (anchor, hands, sprite, prop)
         };
         for (col, facing_right) in [(0, true), (1, false)] {
-            let (anchor, prop_anchor, prop) =
+            let (anchor, hands, sprite, prop) =
                 place(&mut sheet, col * CELL + CELL / 2, facing_right);
-            // Everything below is in art pixels measured from the face anchor, because that is
-            // the frame the overlay itself places the prop quad in.
+            // Everything below is in art pixels of the frame, as the overlay places the quad.
             let half = FACE_FRAME_SIZE as i32 / 2;
-            let (dx, dy) = (prop_anchor.dx as i32, prop_anchor.dy as i32);
-            if (dx > 0) != facing_right {
+            // Against the body that holds it up: the find meets the drawn body somewhere.
+            let touches = (-FIND_HALF..=FIND_HALF).any(|dy| {
+                (-FIND_HALF..=FIND_HALF).any(|dx| sprite.get(hands.x + dx, hands.y + dy).a > 0)
+            });
+            if !touches {
                 faults.push(format!(
-                    "{label} facing {facing_right} carries its prop {dx} px behind itself"
+                    "{label} facing {facing_right} holds its prop up at {hands:?}, off its body"
                 ));
             }
-            let (quad_left, quad_top) = (anchor.x + dx - half, anchor.y + dy - half);
+            let (quad_left, quad_top) = (hands.x - half, hands.y - half);
             let escape = (-quad_left)
                 .max(-quad_top)
                 .max(quad_left + FACE_FRAME_SIZE as i32 - FRAME_SIZE as i32)
@@ -1412,7 +1428,7 @@ fn a_carried_prop_is_held_in_front_of_every_body_plan_in_both_facings() {
                     let (x, y) = (quad_left + px - anchor.x, quad_top + py - anchor.y);
                     if prop.get(px, py).a > 0 && x.abs() <= 4 && y.abs() <= 3 {
                         faults.push(format!(
-                            "{label} facing {facing_right}: the prop {prop_anchor:?} covers the eyes"
+                            "{label} facing {facing_right}: the prop at {hands:?} covers the eyes"
                         ));
                     }
                 }

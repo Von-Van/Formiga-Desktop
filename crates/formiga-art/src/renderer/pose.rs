@@ -30,7 +30,48 @@ pub(super) struct Pose {
     /// Feet set out to the sides, in art pixels: sat down on something with its legs out in
     /// front. Only a seated pose asks for it, so no standing clip changes shape.
     pub(super) splay: i32,
+    /// The front foot drawn up this many pixels off the ground, its knee brought up: hooking a
+    /// leg over a ledge. Only the mantle asks for it, so no other clip changes shape.
+    pub(super) knee: i32,
+    /// The back foot hanging this many pixels below the ground: a leg still trailing over the
+    /// edge of a ledge the rest of the body is up on. Only the mantle asks for it.
+    pub(super) trail: i32,
+    /// Ears laid back flat against the head, in art pixels shorter than they stand: tucked in
+    /// for a leap. Only a leap asks for it, so no other clip changes shape.
+    pub(super) ears_back: i32,
 }
+
+/// Keep-up, beat by beat, in time with [`ActionKind::SoloPlay`]'s four frames: caught against
+/// the paw on the crouch (0), knocked up off it as the body springs (1), at the top of its arc on
+/// the stretch (2), and dropping back (3). Each beat is how far out ahead and how far up the toy
+/// is from where that frame holds it, in art pixels, so a paw raised for the stretch carries the
+/// arc up with it, and a body with no paw free keeps it up off the top of its head instead.
+pub(super) const KEEP_UP_TOSS: [(i32, i32); 4] = [(0, 0), (2, 5), (3, 9), (1, 4)];
+
+/// The beat of a mouthful one frame of [`ActionKind::Eat`] is on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Mouthful {
+    /// Held up in front of the mouth, looked at.
+    Raised,
+    /// Taken in as the head dips to meet it: the mouthful itself, with a bite gone.
+    Bitten,
+    /// In the mouth and being chewed: nothing in the paws.
+    Chewing,
+}
+
+/// Eating, frame by frame: held up, bitten as the head dips, and chewed for two frames, the
+/// crumbs falling on the last of them (see [`Pose::new`] for the body).
+pub(super) const MOUTHFUL: [Mouthful; 4] = [
+    Mouthful::Raised,
+    Mouthful::Bitten,
+    Mouthful::Chewing,
+    Mouthful::Chewing,
+];
+
+/// How far the head is tipped back with the cup on each frame of [`ActionKind::Drink`], in art
+/// pixels: lowered, tipped to the mouth, tipped back further for the deepest of the sip, and
+/// lowered again.
+pub(super) const SIP_TILT: [i32; 4] = [0, 1, 2, 0];
 
 impl Pose {
     pub(super) fn new(
@@ -66,37 +107,53 @@ impl Pose {
         let phase = frame as usize % 6;
         let walk: i32 = [0, 1, 0, -1, 0, 1][phase];
         let alternate: i32 = [1, 0, -1, 0, 1, 0][phase];
+        // The same swing stepped every other frame, for a tail that should read as weight
+        // rather than tick at the clip's own rate.
+        let slow_alternate: i32 = [1, 0, -1, 0, 1, 0][(phase / 2) % 6];
         let bob_amount = genome.gait_bob.max(0.2).round() as i32;
         let mut pose = match action {
             ActionKind::Traverse | ActionKind::SqueezeWindow | ActionKind::Follow => {
                 Self::stride(genome, phase, bob_amount, false)
             }
             ActionKind::Sprint => Self::stride(genome, phase, bob_amount.max(1), true),
-            // Curled up and breathing: a little fuller on the breath in, the ears drooping a
-            // touch further on the breath out.
-            ActionKind::Sleep => Self {
-                bob: frame as i32 % 2,
-                squash_x: 3 + i32::from(frame.is_multiple_of(2)),
-                squash_y: -3,
-                step_a: 0,
-                step_b: 0,
-                play_lift: 0,
-                appendage_lift: -1,
-                tail_sway: 0,
-                ear_perk: -i32::from(frame % 2 == 1),
-                ..Self::default()
-            },
-            ActionKind::Perch | ActionKind::Homebound => Self {
-                bob: 2,
-                squash_x: 1,
-                squash_y: -1,
-                step_a: 0,
-                step_b: 0,
-                play_lift: 0,
-                appendage_lift: 0,
-                tail_sway: 0,
-                ..Self::default()
-            },
+            // Curled up and breathing, one slow breath across the four frames: full on the breath
+            // in, sinking a pixel, drawing in narrower with the ears drooping a touch further,
+            // and rising again before it fills out, so each frame moves one thing a pixel.
+            ActionKind::Sleep => {
+                let (sink, fill) = BREATH[usize::from(frame % 4)];
+                Self {
+                    bob: sink,
+                    squash_x: 3 + fill,
+                    squash_y: -3,
+                    step_a: 0,
+                    step_b: 0,
+                    play_lift: 0,
+                    appendage_lift: -1,
+                    tail_sway: 0,
+                    ear_perk: -i32::from(frame % 4 >= 2),
+                    ..Self::default()
+                }
+            }
+            // Sat down and breathing, a breath every two seconds: drawn up a pixel taller and
+            // narrower as the breath comes in, filling out with the ears lifting at the top of it,
+            // let out a pixel wider and lower, and settling as the ears do, a frame behind the
+            // chest. Each frame moves the outline a pixel. Every other breath ends on a flick of
+            // the tail.
+            ActionKind::Perch | ActionKind::Homebound => {
+                let breath = usize::from(frame % 4);
+                Self {
+                    bob: 2,
+                    squash_x: [1, 0, 1, 2][breath],
+                    squash_y: [-1, 0, 0, -1][breath],
+                    step_a: 0,
+                    step_b: 0,
+                    play_lift: 0,
+                    appendage_lift: 0,
+                    tail_sway: if frame % 8 == 7 { 2 } else { 0 },
+                    ear_perk: i32::from(breath >= 2),
+                    ..Self::default()
+                }
+            }
             // Keeping a toy up off its paw: crouched ready as it rests there, stretched up to knock
             // it, watching it at the top of its arc with its ears up, and bobbing to catch it.
             ActionKind::SoloPlay => match frame % 4 {
@@ -174,29 +231,34 @@ impl Pose {
                     ..Self::default()
                 },
             },
-            // A bite: the snack carried up as the head dips to meet it, a chomp, and a chew with
-            // a happy flick of the tail.
-            ActionKind::Eat => Self {
-                bob: i32::from(frame % 4 == 3),
-                squash_x: 1 + i32::from(frame % 4 == 2),
-                squash_y: -1 - i32::from(frame % 4 == 2),
-                appendage_lift: 1,
-                tail_sway: if frame % 4 == 3 { 2 } else { 0 },
-                lean: i32::from(frame % 4 == 1 || frame % 4 == 2),
-                ear_perk: i32::from(frame % 4 == 2),
-                ..Self::default()
-            },
-            // A sip: the cup lifted, the head tipped back with it while it drinks, and lowered
-            // again with a satisfied settle.
+            // A bite (see [`MOUTHFUL`]): the snack held up and looked at, the head dipped forward
+            // and down to take it, then chewed with full cheeks, and a happy flick of the tail.
+            ActionKind::Eat => {
+                let beat = MOUTHFUL[usize::from(frame % 4)];
+                Self {
+                    bob: i32::from(beat == Mouthful::Bitten),
+                    squash_x: 1 + i32::from(frame % 4 == 2),
+                    squash_y: -1 - i32::from(frame % 4 == 2),
+                    appendage_lift: 1,
+                    tail_sway: if frame % 4 == 3 { 2 } else { 0 },
+                    lean: i32::from(beat == Mouthful::Bitten),
+                    ear_perk: i32::from(frame % 4 == 2),
+                    ..Self::default()
+                }
+            }
+            // A sip (see [`SIP_TILT`]): the cup lifted, the head tipped back with it while it
+            // drinks, further back for the deepest of the sip, and lowered again with a satisfied
+            // settle. The cup is held at the mouth, so it tips back with the head.
             ActionKind::Drink => {
-                let tipped = frame % 4 == 1 || frame % 4 == 2;
+                let tilt = SIP_TILT[usize::from(frame % 4)];
+                let tipped = tilt > 0;
                 Self {
                     bob: i32::from(frame % 4 == 3),
                     squash_x: if tipped { -1 } else { 1 },
                     squash_y: if tipped { 1 } else { -1 },
                     appendage_lift: if tipped { 2 } else { 1 },
                     tail_sway: if frame % 4 == 3 { 2 } else { 1 },
-                    lean: -i32::from(tipped),
+                    lean: -tilt,
                     ear_perk: i32::from(frame % 4 == 2),
                     ..Self::default()
                 }
@@ -225,39 +287,54 @@ impl Pose {
                 tail_sway: -2,
                 ..Self::default()
             },
-            ActionKind::Landing => Self {
-                bob: -2 - walk.abs(),
-                squash_x: -walk,
-                squash_y: walk,
-                step_a: walk * 2,
-                step_b: alternate * 2,
-                play_lift: 1,
-                appendage_lift: 1,
-                tail_sway: walk,
-                ..Self::default()
+            // Down, played once: squashed low and wide on the touch with its legs folding under
+            // it, drawn back up, a pixel past standing with its ears up, and standing as it rests,
+            // so whatever it does next starts from the frame it ends on.
+            ActionKind::Landing => match frame {
+                0 => Self {
+                    bob: 1,
+                    squash_x: 2,
+                    squash_y: -2,
+                    appendage_lift: -1,
+                    tail_sway: -1,
+                    crouch: 2,
+                    ..Self::default()
+                },
+                1 => Self {
+                    squash_x: 1,
+                    squash_y: -1,
+                    crouch: 1,
+                    ..Self::default()
+                },
+                2 => Self {
+                    bob: -1,
+                    squash_x: -1,
+                    squash_y: 1,
+                    appendage_lift: 1,
+                    tail_sway: 1,
+                    ear_perk: 1,
+                    ..Self::default()
+                },
+                _ => Self::resting(genome, 0),
             },
-            ActionKind::ClimbWindow => Self {
-                bob: -walk.abs(),
-                squash_x: 0,
-                squash_y: 1,
-                step_a: -walk * 2,
-                step_b: walk * 2,
-                play_lift: 1,
-                appendage_lift: 2 + walk.abs(),
-                tail_sway: alternate,
-                ..Self::default()
-            },
-            ActionKind::Dangle => Self {
-                bob: 0,
-                squash_x: -1,
-                squash_y: 1,
-                step_a: walk,
-                step_b: -walk,
-                play_lift: 1,
-                appendage_lift: 2,
-                tail_sway: alternate * 2,
-                ..Self::default()
-            },
+            ActionKind::ClimbWindow => Self::climb(frame),
+            // Hanging by its paws with its legs swinging slowly together, out to one side and
+            // up a little, back through the middle, and out to the other, the tail following
+            // them round a beat behind. The paws stay where they hold the ledge.
+            ActionKind::Dangle => {
+                let swing = [0, 2, 0, -2][usize::from(frame % 4)];
+                Self {
+                    bob: 0,
+                    squash_x: -1,
+                    squash_y: 1,
+                    step_a: swing,
+                    step_b: swing,
+                    play_lift: 1,
+                    appendage_lift: 2,
+                    tail_sway: slow_alternate * 2,
+                    ..Self::default()
+                }
+            }
             // The plain peek a creature does while it works out what it is looking at. Its own
             // clip still reads, so it keeps it; it only gains a lean toward the thing, so that
             // even the unposed half of window attention is pointed at something.
@@ -284,6 +361,27 @@ impl Pose {
                 tail_sway: i32::from(frame >= 2),
                 ..Self::default()
             },
+            // Thrown: balled up in the air, legs folded up under it, head and tail tucked in and
+            // the ears laid back. Both frames are this one ball; the second is drawn turned a
+            // little (see `tumble`), so it rolls over as it flies.
+            ActionKind::Tossed => Self {
+                appendage_lift: -1,
+                tail_sway: -2,
+                lean: -1,
+                crouch: 4,
+                ear_perk: -1,
+                ..Self::default()
+            },
+            // Carried: hanging from the hand, drawn out a pixel longer, its paws, ears and tail
+            // hanging still, and the head swaying a pixel over and back, slowly.
+            ActionKind::Dragged => Self {
+                squash_y: 1,
+                appendage_lift: -2,
+                tail_sway: -2,
+                lean: i32::from(frame >= 2),
+                ear_perk: -1,
+                ..Self::default()
+            },
             // Resting keeps a loop of its own rather than the shared bob: see [`Self::resting`].
             ActionKind::Idle => Self::resting(genome, frame),
             _ => Self {
@@ -294,7 +392,8 @@ impl Pose {
                 step_b: 0,
                 play_lift: 0,
                 appendage_lift: 0,
-                tail_sway: alternate,
+                // A tail hangs on the body's bob rather than ticking with it.
+                tail_sway: slow_alternate,
                 ..Self::default()
             },
         };
@@ -302,6 +401,41 @@ impl Pose {
             pose.calm();
         }
         pose
+    }
+
+    /// One frame of a climb up a window's side: a stroke with one paw, frames 0 to 2, and then
+    /// the same with the other. Each stroke is a reach, hanging low and stretched long with the
+    /// shoulders up; a pull, the body hauled two pixels up toward the paw with its head tucked
+    /// in, the leg on the reaching side bent up against the wall and the tail down; and a settle
+    /// onto the new grip, both legs hanging. The world raises the body on the pulls, frame for
+    /// frame (see `formiga_core::CLIMB_FRAMES_PER_SECOND`).
+    fn climb(frame: u8) -> Self {
+        let lead = if frame % 6 < 3 { 1 } else { -1 };
+        match frame % 3 {
+            0 => Self {
+                bob: 1,
+                squash_y: 1,
+                appendage_lift: 3,
+                ..Self::default()
+            },
+            1 => Self {
+                squash_x: 1,
+                squash_y: -1,
+                play_lift: 2,
+                appendage_lift: 1,
+                step_a: if lead < 0 { -2 } else { 0 },
+                step_b: if lead > 0 { 2 } else { 0 },
+                tail_sway: 2,
+                ear_perk: -1,
+                ..Self::default()
+            },
+            _ => Self {
+                play_lift: 1,
+                appendage_lift: 2,
+                tail_sway: 1,
+                ..Self::default()
+            },
+        }
     }
 
     /// One frame of a walk or a run, `phase` of six.
@@ -453,6 +587,9 @@ impl Pose {
             // Ears up for the look and down again, which is what tells a look from a sway.
             ear_perk: [0, 0, 1, 2, 1, 0][beat],
             splay: 0,
+            knee: 0,
+            trail: 0,
+            ears_back: 0,
         }
     }
 
@@ -465,6 +602,36 @@ impl Pose {
         // borrowing the two- and four-frame ones every other pose shares.
         let slow = usize::from(frame % 6);
         match gesture {
+            // Topping out onto a ledge, a frame for each beat of it (see
+            // `formiga_core::MANTLE_FRAMES_PER_SECOND`): squat over the edge with the chest on it
+            // and the front knee drawn up to it; raised up on both paws for the push, the back leg
+            // still trailing below; and stood on the ledge, settling onto its legs.
+            Gesture::Mantle => match frame.min(2) {
+                0 => Self {
+                    squash_x: 1,
+                    squash_y: -1,
+                    appendage_lift: 1,
+                    tail_sway: -1,
+                    lean: 1,
+                    knee: 5,
+                    ..Self::default()
+                },
+                1 => Self {
+                    play_lift: 2,
+                    tail_sway: 1,
+                    lean: 1,
+                    trail: 3,
+                    ..Self::default()
+                },
+                _ => Self {
+                    bob: 1,
+                    squash_x: 1,
+                    squash_y: -1,
+                    tail_sway: 1,
+                    crouch: 1,
+                    ..Self::default()
+                },
+            },
             // A hop on every other beat, landing squashed and springing up stretched.
             Gesture::Cheer => {
                 let hop = [0, 2, 3, 1][usize::from(frame % 4)];
@@ -583,6 +750,9 @@ impl Pose {
                 // Ears up the whole time, with a single flick on the fourth frame.
                 ear_perk: [2, 2, 2, 1, 2, 2][slow],
                 splay: 0,
+                knee: 0,
+                trail: 0,
+                ears_back: 0,
             },
             // Breathing in, drawn up tall with the head tipped back as the paw comes up to the
             // mouth, held at the top, and settling down a little lower than it began. Played once:
@@ -765,6 +935,25 @@ impl Pose {
                     ..Self::default()
                 }
             }
+            // In the air: stretched out long with the paws drawn in and the ears laid back, the
+            // tail trailing as it rises, then a little less stretched and the tail up as it
+            // comes down.
+            Gesture::Leap => {
+                let rising = frame.is_multiple_of(2);
+                Self {
+                    squash_x: -i32::from(rising),
+                    squash_y: 1 + i32::from(rising),
+                    step_a: -1 - i32::from(rising),
+                    step_b: 1 + i32::from(rising),
+                    play_lift: 1 + i32::from(rising),
+                    appendage_lift: -1,
+                    tail_sway: if rising { -2 } else { 1 },
+                    lean: i32::from(rising),
+                    ear_perk: -1,
+                    ears_back: 2,
+                    ..Self::default()
+                }
+            }
             // Drawn up with the nose out, ears forward, the head bobbing in little sniffs.
             Gesture::Sniff => Self {
                 bob: 0,
@@ -777,10 +966,11 @@ impl Pose {
                 play_lift: i32::from(frame % 4 == 1),
                 ..Self::default()
             },
-            // Flat out on its side, legs out and the head laid down ahead of it, breathing.
+            // Flat out on its side, legs out and the head laid down ahead of it, breathing slowly:
+            // drawn in, filling out, sinking into the breath, and drawing in again.
             Gesture::Sprawl => Self {
-                bob: tick,
-                squash_x: 3 + tick,
+                bob: BREATH[usize::from((frame + 3) % 4)].0,
+                squash_x: 3 + BREATH[usize::from((frame + 3) % 4)].1,
                 squash_y: -3,
                 appendage_lift: -1,
                 tail_sway: 2,
@@ -789,10 +979,11 @@ impl Pose {
                 splay: 3,
                 ..Self::default()
             },
-            // Sat tucked up, nothing showing below it, the head drawn in and nodding.
+            // Sat tucked up, nothing showing below it, the head drawn in and nodding as it
+            // breathes: nodding down, filling out, coming up, and drawing in again.
             Gesture::Loaf => Self {
-                bob: 1 + tick,
-                squash_x: 2,
+                bob: 1 + i32::from(frame % 4 == 1 || frame % 4 == 2),
+                squash_x: 2 + i32::from(frame % 4 >= 2),
                 squash_y: -1,
                 appendage_lift: -1,
                 tail_sway: -1,
@@ -804,7 +995,7 @@ impl Pose {
             Gesture::Skip | Gesture::Trudge => Self::default(),
             // Leant out over the patch, braced, tipping the can further and back.
             Gesture::Pour => {
-                let tip = [0, 1, 1, 0][usize::from(frame % 4)];
+                let tip = pour_tip(frame);
                 Self {
                     bob: tip,
                     squash_x: 1,
@@ -952,6 +1143,10 @@ pub(super) fn resting_manner(genome: &AppearanceGenome) -> (i32, bool) {
     (if mixed & 1 == 0 { -1 } else { 1 }, mixed & 2 == 0)
 }
 
+/// One slow breath of a body lying down, four frames of how far it has sunk and how much fuller
+/// it is than when drawn in: full, sunk, drawn in, risen. Each frame moves one of the two a pixel.
+const BREATH: [(i32, i32); 4] = [(0, 1), (1, 1), (1, 0), (0, 0)];
+
 /// Whether a creature stretches on all fours rather than standing up to do it: the original
 /// soft quadrupeds, and the long body plan among the modular ones.
 /// Whether frame `phase` of six of this body's walk or run is a footfall, a foot just down —
@@ -964,6 +1159,14 @@ const SKIP_HOP: [i32; 6] = [0, 2, 1, 0, 2, 1];
 /// Whether `phase` of a skip has it landed, feet on the ground.
 pub(super) fn skip_landing(phase: usize) -> bool {
     SKIP_HOP[phase % 6] == 0
+}
+
+/// How far the can is tipped on each of a pour's four frames: level, over, over, and level again.
+const POUR_TIP: [i32; 4] = [0, 1, 1, 0];
+
+/// How far frame `frame` of a pour has the can tipped over: 0 while it is level.
+pub(super) fn pour_tip(frame: u8) -> i32 {
+    POUR_TIP[usize::from(frame % 4)]
 }
 
 pub(super) fn footfall(genome: &AppearanceGenome, phase: usize) -> bool {

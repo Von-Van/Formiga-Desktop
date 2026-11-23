@@ -920,8 +920,12 @@ mod tests {
             "hidden",
             |settings| settings.visible = false,
             |_, now| {
+                // A climb's mantle is the climb's own pose, not anybody watching anything.
                 now.creatures.iter().all(|creature| {
-                    creature.state.attention.is_none()
+                    creature
+                        .state
+                        .attention
+                        .is_none_or(|pose| pose.gesture == Some(crate::Gesture::Mantle))
                         && !matches!(
                             creature.state.action,
                             ActionKind::InvestigateCursor | ActionKind::AvoidCursor
