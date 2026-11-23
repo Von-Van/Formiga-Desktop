@@ -155,6 +155,9 @@ struct Placement {
     tail: i32,
     steps: [i32; 2],
     splay: i32,
+    /// The front foot drawn up and the back foot hanging, topping out onto a ledge.
+    knee: i32,
+    trail: i32,
 }
 
 impl Placement {
@@ -178,6 +181,8 @@ impl Placement {
             tail: pose.tail_sway.clamp(-1, 1),
             steps: [pose.step_a.clamp(-1, 1), pose.step_b.clamp(-1, 1)],
             splay: pose.splay.clamp(0, 2),
+            knee: pose.knee.clamp(0, 6),
+            trail: pose.trail.clamp(0, 3),
         }
     }
 
@@ -229,7 +234,7 @@ pub(super) fn draw(c: &mut Canvas, pose: Pose, clip: BodyClip, frame: u8) -> Fig
         let step = at.steps[side];
         let out = if side == 0 { -at.splay } else { at.splay };
         let x = at.ground.x + column + step + out;
-        let y = at.ground.y + FOOT_ROW - step.abs();
+        let y = at.ground.y + FOOT_ROW - step.abs() + if side == 0 { at.trail } else { -at.knee };
         for (dy, pixels) in foot.iter().enumerate() {
             row(c, x, y + dy as i32, pixels);
         }
@@ -256,12 +261,14 @@ pub(super) fn draw(c: &mut Canvas, pose: Pose, clip: BodyClip, frame: u8) -> Fig
     // the way a companion's does but only a stub's length; holding on to a ledge is the one reach
     // that has to arrive, and goes all the way.
     let limbs = modular::limbs(clip, frame, body, BodyPlan::Upright);
+    // Pulling itself up onto a ledge, a paw has to arrive at the ledge too.
+    let arrives = hanging || clip == BodyClip::Gesture(Gesture::Mantle);
     let arms: [Option<(PixelPoint, PixelPoint)>; 2] = std::array::from_fn(|side| {
         let Limb::Reach(hand) = limbs[side] else {
             return None;
         };
         let root = at.body(SHOULDERS[side].0, SHOULDERS[side].1);
-        Some((root, if hanging { hand } else { stub(root, hand) }))
+        Some((root, if arrives { hand } else { stub(root, hand) }))
     });
     // A paw stretched up to a ledge goes up behind the cheek, which is wider than the body it
     // rises from; every other paw is in front.
@@ -309,6 +316,11 @@ pub(super) fn draw(c: &mut Canvas, pose: Pose, clip: BodyClip, frame: u8) -> Fig
     }
 
     let floor = at.ground.y + FOOT_ROW + 2;
+    // What it holds is in the near forepaw: on its sooty end, carried out or folded on the belly.
+    let hand = match arms[1] {
+        Some((_, hand)) => hand,
+        None => at.body(20, 17),
+    };
     Figure {
         face,
         crown: at.head(FACE.0, EAR_ROWS as i32 + 1),
@@ -319,6 +331,7 @@ pub(super) fn draw(c: &mut Canvas, pose: Pose, clip: BodyClip, frame: u8) -> Fig
         hip: at.body(9, 18),
         back: at.body(11, 13),
         floor,
+        hand: Some(hand),
     }
 }
 
@@ -348,21 +361,14 @@ fn arm(c: &mut Canvas, root: PixelPoint, hand: PixelPoint) {
     c.fill_rect(hand.x, hand.y, 2, 2, SOOT);
 }
 
-/// Where the fox holds what it is using: in its front paw, folded on its belly, and up at its
-/// muzzle for a mouthful.
-pub(super) fn prop_hold(pose: Pose, clip: BodyClip) -> PropHold {
+/// Where the middle of the fox's mouth is against its face anchor: under the nose on its white
+/// muzzle, where a yawn opens.
+pub(super) const MOUTH_AT: PixelPoint = PixelPoint { x: 0, y: 2 };
+
+/// How low what the fox holds may go: the floor under its feet, and the lowest row they reach.
+pub(super) fn footing(pose: Pose, clip: BodyClip) -> (i32, i32) {
     let at = Placement::new(pose, clip);
-    let face = at.face();
-    PropHold {
-        hands: at.body(21, 16),
-        mouth: PixelPoint {
-            x: face.x + 4,
-            y: face.y + 3,
-        },
-        floor: at.ground.y + FOOT_ROW + 1,
-        ground: at.ground.y + FOOT_ROW + 2,
-        forward: 1,
-    }
+    (at.ground.y + FOOT_ROW + 1, at.ground.y + FOOT_ROW + 2)
 }
 
 /// The fox's face in its 16-pixel frame: two short dashes for eyes, a blush under each, and its

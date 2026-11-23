@@ -234,6 +234,11 @@ impl AttentionRuntime {
 }
 
 impl AttentionRuntime {
+    /// Whether a scene has a part for this companion, owning it or not.
+    pub(super) fn has_plan(&self, id: CreatureId) -> bool {
+        self.plans.contains_key(&id)
+    }
+
     pub fn owns(&self, id: CreatureId) -> bool {
         self.plans.get(&id).is_some_and(|p| {
             !matches!(
