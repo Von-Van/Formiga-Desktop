@@ -1960,7 +1960,8 @@ impl World {
                         window_key: None,
                         relative_x: 0.5,
                     },
-                    elapsed: 0.0,
+                    // A crouch to spring from first.
+                    elapsed: -HOP_GATHER_SECS,
                     duration: (creature.state.position.distance(floor) / 180.0).max(0.1),
                     lift: 0.0,
                     ballistic: false,

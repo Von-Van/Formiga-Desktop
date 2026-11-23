@@ -552,3 +552,99 @@ fn topping_out_hauls_straight_up_before_stepping_onto_the_ledge() {
     }
     assert_eq!(stepping.last().unwrap().y, bounds.y);
 }
+
+/// A hop from standing is drawn in three parts, and the world tells the art which: it crouches
+/// where it stands for a moment first, then is in the air for the whole flight, rising and then
+/// coming down, and from the tick it touches down counts the time since, for the landing. The
+/// action is the landing clip's from the crouch to the touchdown, as it always was.
+#[test]
+fn a_hop_crouches_then_flies_then_lands() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let desktop = desktop();
+    let mut world = World::new([32; 32], created, &desktop);
+    let_colony_wander(&mut world, created);
+    let start = world.save.creatures[0].state.position;
+    let target = Point {
+        x: start.x + if start.x < 700.0 { 220.0 } else { -220.0 },
+        y: start.y,
+    };
+    let surface = world.save.creatures[0].state.surface.clone();
+    let journey = build_window_journey(&world.save.creatures[0], target, surface, &desktop);
+    assert!(
+        matches!(journey, WindowJourney::Hop(_)),
+        "a hop along the floor"
+    );
+    let id = world.save.creatures[0].id;
+    world.save.creatures[0].state.action = journey.initial_action();
+    world.window_journeys.insert(id, journey);
+
+    let mut seen = Vec::new();
+    for _ in 0..80 {
+        world.tick(created, 0.05, &desktop);
+        let state = &world.save.creatures[0].state;
+        seen.push((state.position, state.action, state.presence.hop));
+    }
+    let crouched: Vec<_> = seen
+        .iter()
+        .take_while(|(_, _, hop)| matches!(hop, Some(HopMoment::Gather(_))))
+        .collect();
+    assert!(
+        crouched.len() >= 3,
+        "a crouch of {HOP_GATHER_SECS} s first: {seen:?}"
+    );
+    for (at, action, _) in &crouched[..3] {
+        assert_eq!(*at, start, "it crouches where it stands");
+        assert_eq!(*action, ActionKind::Landing);
+    }
+    let flight: Vec<f32> = seen
+        .iter()
+        .skip(crouched.len())
+        .map_while(|(_, action, hop)| match hop {
+            Some(HopMoment::Flight(across)) if *action == ActionKind::Landing => Some(*across),
+            _ => None,
+        })
+        .collect();
+    assert!(flight.len() >= 10, "in the air for the flight: {seen:?}");
+    assert!(flight.windows(2).all(|pair| pair[0] < pair[1]));
+    assert!(flight[0] > 0.05 && flight[0] < 0.2);
+    assert!(flight.iter().any(|across| *across < 0.5));
+    assert!(flight.iter().any(|across| *across >= 0.5 && *across < 1.0));
+    let down = crouched.len() + flight.len();
+    let (at, action, hop) = seen[down];
+    assert_eq!(at, target);
+    assert_eq!(action, ActionKind::Idle);
+    assert_eq!(hop, Some(HopMoment::Down(0.0)), "touched down");
+    let Some(HopMoment::Down(since)) = seen[down + 4].2 else {
+        panic!("still down: {seen:?}");
+    };
+    assert!((since - 0.2).abs() < 1e-4);
+}
+
+/// Picked up partway through a hop, it is in the hand, not in the air or landing.
+#[test]
+fn a_hop_let_go_of_by_a_pick_up_is_no_longer_a_hop() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let desktop = desktop();
+    let mut world = World::new([32; 32], created, &desktop);
+    let_colony_wander(&mut world, created);
+    let creature = &world.save.creatures[0];
+    let target = Point {
+        x: creature.state.position.x + 200.0,
+        y: creature.state.position.y,
+    };
+    let journey = build_window_journey(creature, target, creature.state.surface.clone(), &desktop);
+    let id = creature.id;
+    world.save.creatures[0].state.action = journey.initial_action();
+    world.window_journeys.insert(id, journey);
+    for _ in 0..8 {
+        world.tick(created, 0.05, &desktop);
+    }
+    assert!(matches!(
+        world.save.creatures[0].state.presence.hop,
+        Some(HopMoment::Flight(_))
+    ));
+    world.save.creatures[0].state.action = ActionKind::Dragged;
+    world.window_journeys.remove(&id);
+    world.tick(created, 0.05, &desktop);
+    assert_eq!(world.save.creatures[0].state.presence.hop, None);
+}

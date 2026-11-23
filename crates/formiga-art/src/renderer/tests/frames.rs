@@ -807,3 +807,70 @@ fn a_toss_has_tucked_frames_of_its_own() {
         );
     }
 }
+
+/// Landing is played once and held: squashed on the touch, back up, a little past, and standing
+/// on the very frame a rest starts from, so the cut to whatever comes next does not show. A leap
+/// has two frames of its own, rising and coming down, unlike any frame of standing or landing.
+/// Carried, a companion hangs still: no frame of being carried bobs, and the hang sways a pixel
+/// over and back at most.
+#[test]
+fn landing_holds_standing_a_leap_has_its_own_frames_and_a_carry_hangs_still() {
+    let landing = AnimationSpec::for_action(ActionKind::Landing);
+    assert_eq!((landing.frames, landing.playback), (4, PlaybackMode::Hold));
+    assert_eq!(landing.frame_at(0.0), 0);
+    assert_eq!(landing.frame_at(0.55), 3);
+    assert_eq!(landing.frame_at(30.0), 3, "landing holds its last frame");
+    let leap = AnimationSpec::for_clip(Gesture::Leap);
+    assert_eq!(leap.frames, 2);
+    assert_eq!(
+        BodyClip::baked()
+            .filter(|clip| *clip == BodyClip::Gesture(Gesture::Leap))
+            .count(),
+        1
+    );
+    let mut subjects: Vec<(String, AppearanceGenome)> = [
+        BodyFamily::Blob,
+        BodyFamily::Hopper,
+        BodyFamily::SoftQuadruped,
+    ]
+    .into_iter()
+    .map(|family| (format!("{family:?}"), genome(family)))
+    .collect();
+    for plan in formiga_core::BodyPlan::ALL {
+        let mut modular = genome(BodyFamily::Blob);
+        let mut design = formiga_core::CreatureDesign::modular([29; 32], 0, None);
+        design.body = plan;
+        modular.design = Some(design);
+        subjects.push((format!("{plan:?}"), modular));
+    }
+    let body = |genome: &AppearanceGenome, clip: BodyClip, frame: u8| {
+        CreatureRenderer::render_body_frame(genome, clip, frame, false).canvas
+    };
+    for (label, genome) in &subjects {
+        let landed = body(genome, ActionKind::Landing.into(), 3);
+        assert_eq!(
+            landed,
+            body(genome, ActionKind::Idle.into(), 0),
+            "{label}: a landing ends standing as a rest begins"
+        );
+        assert_ne!(body(genome, ActionKind::Landing.into(), 0), landed);
+        let [rising, falling] = [0, 1].map(|frame| body(genome, Gesture::Leap.into(), frame));
+        assert_ne!(rising, falling, "{label}: a leap rises and comes down");
+        for frame in [&rising, &falling] {
+            assert_ne!(frame, &landed, "{label}: a leap is not standing");
+        }
+        let carried: Vec<Canvas> = (0..4)
+            .map(|frame| body(genome, ActionKind::Dragged.into(), frame))
+            .collect();
+        assert_eq!(carried[0], carried[1], "{label}");
+        assert_eq!(carried[2], carried[3], "{label}");
+        let rows = |canvas: &Canvas| {
+            let (_, top, _, bottom) = canvas.alpha_bounds().expect("drawn");
+            (top, bottom)
+        };
+        assert!(
+            carried.iter().all(|frame| rows(frame) == rows(&carried[0])),
+            "{label}: being carried does not bob"
+        );
+    }
+}

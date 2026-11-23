@@ -128,6 +128,19 @@ impl VillageActivity {
         }
     }
 
+    /// Where the resident is in a hop up onto its roof or back down, if it is hopping.
+    pub(super) fn hop_moment(&self) -> Option<HopMoment> {
+        let length = match (self.plan, self.step) {
+            (Plan::Roof { .. }, 1) => ROOF_HOP_UP_SECS,
+            (Plan::Roof { .. }, 3) => ROOF_HOP_DOWN_SECS,
+            _ => return None,
+        };
+        Some(hop_moment(
+            (self.step_elapsed - HOP_GATHER_SECS) / length,
+            self.step_elapsed,
+        ))
+    }
+
     /// Whether the village is still the one this plan was made on. The first time it is asked it
     /// notes the ground it is given; after that, any change lets the plan go.
     pub(super) fn still_on(&mut self, ground: Option<PlanGround>) -> bool {
@@ -564,9 +577,10 @@ pub(super) fn advance(
                 }
                 true
             }
-            // Up in a little hop.
+            // Up in a little hop, from a crouch.
             1 => {
-                let t = (activity.step_elapsed / 0.55).clamp(0.0, 1.0);
+                let t =
+                    ((activity.step_elapsed - HOP_GATHER_SECS) / ROOF_HOP_UP_SECS).clamp(0.0, 1.0);
                 creature.state.position = hop_point(beside, top, t);
                 if t >= 1.0 {
                     creature.state.position = top;
@@ -592,7 +606,8 @@ pub(super) fn advance(
             }
             // And down again.
             3 => {
-                let t = (activity.step_elapsed / 0.45).clamp(0.0, 1.0);
+                let t = ((activity.step_elapsed - HOP_GATHER_SECS) / ROOF_HOP_DOWN_SECS)
+                    .clamp(0.0, 1.0);
                 creature.state.position = hop_point(top, beside, t);
                 if t >= 1.0 {
                     creature.state.position = beside;
@@ -1193,8 +1208,10 @@ impl Plan {
     }
 }
 
-/// How long getting down off a roof takes when a sit up there ends early: the same as the end of
-/// a sit that runs its course.
+/// How long the hop up onto a roof takes, once the crouch it springs from is done.
+const ROOF_HOP_UP_SECS: f32 = 0.55;
+/// How long getting down off a roof takes, once crouched to go: the same whether the sit up there
+/// ran its course or ended early.
 const ROOF_HOP_DOWN_SECS: f32 = 0.45;
 
 /// Puts a resident whose plan has ended early back on its own feet outside: out of doors, with

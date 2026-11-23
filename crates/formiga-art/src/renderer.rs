@@ -4,7 +4,8 @@ use crate::{Canvas, Palette, Rgba};
 use formiga_core::{
     ActionKind, AppearanceGenome, BodyFamily, BrowStyle, Celebration, CheekStyle, Creature,
     CursorSnapshot, EffectMotif, EyeShape, ForelimbStyle, Gesture, Habit, HeadAppendageStyle,
-    HighlightStyle, LimbTipStyle, MouthStyle, PatternKind, PupilStyle, RestPose, TailStyle,
+    HighlightStyle, HopMoment, LimbTipStyle, MouthStyle, PatternKind, PupilStyle, RestPose,
+    TailStyle,
 };
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha12Rng;
@@ -270,6 +271,12 @@ impl AnimationSpec {
             ActionKind::Dangle => (4, 3, PlaybackMode::Loop),
             ActionKind::InspectScreen => (4, 4, PlaybackMode::Loop),
             ActionKind::PresentDiscovery => (4, 2, PlaybackMode::Hold),
+            // Carried: hanging still from the hand, swaying a pixel and back each second. The
+            // pairs of frames are alike, so it takes two cells of the atlas.
+            ActionKind::Dragged => (4, 4, PlaybackMode::Loop),
+            // Down, and played once: squashed on the touch, drawn back up, a little past, and
+            // standing, held there for whatever comes next.
+            ActionKind::Landing => (4, 8, PlaybackMode::Hold),
             // Balled up, and the same ball turned a little: a tumble three times a second for as
             // long as it is in the air.
             ActionKind::Tossed => (2, 6, PlaybackMode::Loop),
@@ -349,6 +356,8 @@ impl AnimationSpec {
             Gesture::Chew => (2, 4),
             // Head back, mouth open, and down it goes.
             Gesture::Gulp => (4, 6),
+            // Rising, and coming down: a hop picks the frame by how far across it is.
+            Gesture::Leap => (2, 4),
         };
         Self {
             frames,
@@ -708,6 +717,11 @@ impl BodyPresentation {
             }
             return body;
         }
+        // A hop is one action from the crouch to the touchdown; how far through it is decides the
+        // pose.
+        if let Some(body) = Self::hopping(creature, motion) {
+            return body;
+        }
         // A small moment of its own comes next: a yawn, a start, a turn at the garden.
         if let Some(beat) = state.beat
             && let Some((clip, into)) = beats::beat_pose(beat)
@@ -787,6 +801,51 @@ impl BodyPresentation {
         }
     }
 
+    /// A hop as the world last saw it (see [`formiga_core::HopMoment`]): crouched to spring, then
+    /// up in the air — rising on the leap's first frame and coming down on its second — and once
+    /// down, the landing played through from the touch to standing, as long as it stands there.
+    fn hopping(creature: &Creature, motion: MotionSignature) -> Option<Self> {
+        let state = &creature.state;
+        let shown = |clip: BodyClip, frame: u8| Self {
+            clip,
+            frame,
+            facing_right: state.facing_right,
+        };
+        let hopping = state.action == ActionKind::Landing;
+        match state.presence.hop? {
+            HopMoment::Gather(into) if hopping => Some(shown(
+                BodyClip::Gesture(Gesture::Crouch),
+                motion.frame(Gesture::Crouch, into),
+            )),
+            HopMoment::Flight(across) if hopping => Some(shown(
+                BodyClip::Gesture(Gesture::Leap),
+                u8::from(across >= 0.5),
+            )),
+            HopMoment::Down(since) => {
+                let landing = AnimationSpec::for_action(ActionKind::Landing);
+                let standing = !state.presence.stepping
+                    && !state.indoors
+                    && matches!(
+                        state.action,
+                        ActionKind::Idle
+                            | ActionKind::Perch
+                            | ActionKind::Homebound
+                            | ActionKind::InspectScreen
+                            | ActionKind::Landing
+                    );
+                (standing && since * f32::from(landing.fps) < f32::from(landing.frames)).then(
+                    || {
+                        shown(
+                            BodyClip::Action(ActionKind::Landing),
+                            landing.frame_at(since),
+                        )
+                    },
+                )
+            }
+            _ => None,
+        }
+    }
+
     /// The action's own clip, drawn to agree with what the creature's feet are actually doing.
     ///
     /// An action says what a creature is about, not always whether it is moving: a walk to a
@@ -857,8 +916,10 @@ impl BodyPresentation {
         }
         let resting = walking || matches!(action, ActionKind::Idle | ActionKind::Homebound);
         // Just up from a nap, or just set down: a stretch or a shake before anything else.
+        // A hop it meant to take ends in its landing, with nothing to shake off.
         if resting
             && !presence.reduced
+            && !matches!(presence.hop, Some(HopMoment::Down(_)))
             && let Some((was, ago)) = presence.after
             && let Some((gesture, lasts)) = motion.after_moment(was)
             && ago < lasts

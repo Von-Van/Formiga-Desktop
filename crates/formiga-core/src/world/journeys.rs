@@ -8,6 +8,13 @@ pub(super) const MANTLE_LIFT_POINTS: f32 = 10.0;
 /// haul is the longer half: it is the effort, and the step is the arrival.
 const HAUL_SHARE: f32 = 0.62;
 
+/// How long a creature crouches to spring before a hop from standing, in seconds. The journey
+/// starts this far before nought and holds it where it is until then. A hop across a gap has a
+/// run-up instead.
+pub(super) const HOP_GATHER_SECS: f32 = 0.15;
+/// How far across a hop it is still pushing off the ground, drawn in the crouch it sprang from.
+const HOP_PUSH_OFF: f32 = 0.05;
+
 #[derive(Clone)]
 pub(super) struct HopJourney {
     pub(super) start: Point,
@@ -101,6 +108,20 @@ impl WindowJourney {
             Self::Climb(journey) if journey.approach_duration > 0.05 => ActionKind::Traverse,
             Self::Climb(_) => ActionKind::ClimbWindow,
             Self::Squeeze(_) => ActionKind::InspectScreen,
+        }
+    }
+
+    /// Where the creature it carries is in a hop, if this is one: crouched to spring, or in
+    /// the air. A gap is only a hop once its run-up is done, and stops being one the moment the
+    /// far edge is caught.
+    pub(super) fn hop_moment(&self) -> Option<HopMoment> {
+        match self {
+            Self::Hop(journey) => Some(journey.moment(journey.elapsed)),
+            Self::Gap(journey) if !journey.bridge && journey.elapsed >= journey.preparation => {
+                let flown = journey.elapsed - journey.preparation;
+                (!journey.catch || flown < journey.hop.duration).then(|| journey.hop.moment(flown))
+            }
+            Self::Gap(_) | Self::Climb(_) | Self::Squeeze(_) => None,
         }
     }
 
@@ -339,6 +360,27 @@ impl WindowJourney {
     }
 }
 
+impl HopJourney {
+    /// Where a hop `elapsed` seconds in is: still crouched before it springs, pushing off, or in
+    /// the air and how far across. Touching down is the journey's end.
+    pub(super) fn moment(&self, elapsed: f32) -> HopMoment {
+        hop_moment(
+            elapsed / self.duration.max(0.001),
+            elapsed + HOP_GATHER_SECS,
+        )
+    }
+}
+
+/// Where a hop `progress` of the way across is, the crouch it springs from having begun
+/// `crouched` seconds ago.
+pub(super) fn hop_moment(progress: f32, crouched: f32) -> HopMoment {
+    if progress <= HOP_PUSH_OFF {
+        HopMoment::Gather(crouched.max(0.0))
+    } else {
+        HopMoment::Flight(progress.min(1.0))
+    }
+}
+
 pub(super) fn gap_position(hop: &HopJourney, progress: f32) -> Point {
     let mut point = lerp_point(hop.start, hop.target, progress);
     point.y -= (progress * std::f32::consts::PI).sin()
@@ -386,7 +428,8 @@ pub(super) fn build_window_journey(
             start,
             target,
             surface,
-            elapsed: 0.0,
+            // A crouch to spring from first.
+            elapsed: -HOP_GATHER_SECS,
             duration: (distance / 280.0).clamp(1.0, 2.6),
             lift: 0.0,
             ballistic: false,

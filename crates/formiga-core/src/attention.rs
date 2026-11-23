@@ -118,10 +118,14 @@ pub enum Gesture {
     Chew,
     /// Head tipped back and the mouth open for something small dropped or tossed into it.
     Gulp,
+    /// Up in the air on a hop: stretched out long with its paws drawn in and its ears laid back,
+    /// rising on the first frame and coming down on the second. A hop shows it while it is off
+    /// the ground (see [`crate::HopMoment`]); no attention scene strikes it.
+    Leap,
 }
 
 impl Gesture {
-    pub const ALL: [Self; 35] = [
+    pub const ALL: [Self; 36] = [
         Self::Cheer,
         Self::Gasp,
         Self::Cover,
@@ -157,6 +161,7 @@ impl Gesture {
         Self::Chomp,
         Self::Chew,
         Self::Gulp,
+        Self::Leap,
     ];
 
     /// Whether attention scenes strike this pose. The rest belong to habits, to a companion's
@@ -189,6 +194,7 @@ impl Gesture {
                 | Self::Chomp
                 | Self::Chew
                 | Self::Gulp
+                | Self::Leap
         )
     }
 }

@@ -85,7 +85,9 @@ pub(super) fn draw(
         }
     }
     // A pricked ear grows out of the base it already had, so it stays joined to the head.
-    let ear = (f32::from(d.ear_size) * size).round().max(3.0) as i32 + pose.ear_perk.clamp(0, 2);
+    let ear = ((f32::from(d.ear_size) * size).round().max(3.0) as i32 + pose.ear_perk.clamp(0, 2)
+        - pose.ears_back.clamp(0, 3))
+    .max(2);
     if k.crown > 0 {
         classic_crown(c, p, k.crown, ear_cx, ear_span, ear_top, ear, pose);
     }
@@ -224,11 +226,13 @@ pub(super) fn draw(
     if long {
         four_legs(c, p, d, body, pose, clip, limbs, true);
     } else {
-        // Balled up in the air, the feet are drawn in under the body.
-        let tucked = i32::from(clip == BodyClip::Action(ActionKind::Tossed)) * 2;
+        // Balled up in the air, the feet are drawn in under the body; leaping, drawn up off the
+        // ground as well.
+        let leap = airborne_feet(clip, pose);
+        let tucked = i32::from(clip == BodyClip::Action(ActionKind::Tossed)) * 2 + leap.min(1);
         for ((side, step), limb) in [(-1, pose.step_a), (1, pose.step_b)].into_iter().zip(limbs) {
             let fx = x + side * (rx - 4 - tucked + pose.splay.clamp(0, 3)) + step.clamp(-2, 2);
-            let lift = step.abs().min(2);
+            let lift = step.abs().min(2) + leap;
             // Stick legs are drawn in shade, so they read as thin legs rather than coat.
             let leg = if k.limbs == 2 { p.shadow } else { p.coat };
             c.line(
@@ -818,10 +822,19 @@ pub(super) fn limbs(clip: BodyClip, frame: u8, body: Body, plan: BodyPlan) -> [L
         BodyClip::Action(
             ActionKind::Greet | ActionKind::SocialPlay | ActionKind::InvestigateCursor,
         ) => front(to(beside_head(1), hy - 2 - tick * 2)),
+        // Carried, the paws hang down the sides; folded wings stay folded.
+        BodyClip::Action(ActionKind::Dragged) if plan != BodyPlan::Winged => {
+            both(&|side| to(x + side * rx, y + body.ry - 1))
+        }
         BodyClip::Action(_) => [Limb::Rest; 2],
         BodyClip::Gesture(Gesture::Cheer) => {
             both(&|side| to(beside_head(side), hy - head - 2 - tick))
         }
+        // In the air, wings spread and the paws drawn in.
+        BodyClip::Gesture(Gesture::Leap) if plan == BodyPlan::Winged => {
+            both(&|side| to(x + side * (rx + 5), y - 5 + tick * 2))
+        }
+        BodyClip::Gesture(Gesture::Leap) => [Limb::Rest; 2],
         BodyClip::Gesture(Gesture::Gasp) => both(&|side| to(x + side * (rx + 5), y - 5 - tick)),
         BodyClip::Gesture(Gesture::Cover) => {
             both(&|side| to(hx + side * 3, hy - 1 + if side > 0 { tick * 2 } else { 0 }))
@@ -1073,7 +1086,7 @@ fn four_legs(
             }
             continue;
         }
-        let lift = leg_lift(step, walking);
+        let lift = leg_lift(step, walking) + airborne_feet(clip, pose);
         let x = root.x + step.clamp(-2, 2);
         if k.limbs == 2 {
             // Stick legs, thin and in shade, on small forked feet.
@@ -1101,6 +1114,16 @@ fn four_legs(
                 toe,
             );
         }
+    }
+}
+
+/// How many rows a body's feet are drawn up off the ground in a frame: a leap tucks them up under
+/// it, a row past the lift it rises by, so highest on the way up. Every other clip stands on them.
+fn airborne_feet(clip: BodyClip, pose: Pose) -> i32 {
+    if clip == BodyClip::Gesture(Gesture::Leap) {
+        pose.play_lift.clamp(0, 3) + 1
+    } else {
+        0
     }
 }
 
@@ -1259,6 +1282,7 @@ fn long_limbs(clip: BodyClip, frame: u8, body: Body) -> [Limb; 2] {
         ) => [rest; 2],
         BodyClip::Gesture(
             Gesture::Crouch
+            | Gesture::Leap
             | Gesture::Watch
             | Gesture::Yawn
             | Gesture::Stomp
@@ -1664,6 +1688,14 @@ mod tests {
                             // A four-pawed body stands on three paws to show what it found.
                             ActionKind::PresentDiscovery if plan == BodyPlan::Long => [false, true],
                             ActionKind::PresentDiscovery => [true, true],
+                            // Carried, the paws hang down; a wing stays folded, and a four-pawed
+                            // body hangs on its legs.
+                            ActionKind::Dragged
+                                if matches!(plan, BodyPlan::Winged | BodyPlan::Long) =>
+                            {
+                                [false, false]
+                            }
+                            ActionKind::Dragged => [true, true],
                             ActionKind::Greet
                             | ActionKind::SocialPlay
                             | ActionKind::InvestigateCursor => [false, true],

@@ -281,6 +281,21 @@ pub struct Presence {
     /// Whether the person has asked for reduced motion, so the art keeps a resting companion's
     /// own little moments to itself.
     pub reduced: bool,
+    /// Where it is in a hop: gathering itself to spring, in the air, or just down again. A hop
+    /// keeps the one action from the gather to the touchdown, so this is what lets the art draw
+    /// the crouch, the flight and the landing each as its own pose.
+    pub hop: Option<HopMoment>,
+}
+
+/// Where a creature is in a hop or a leap, as the world saw it at the end of the last tick.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum HopMoment {
+    /// Crouched to spring, this many seconds into the crouch.
+    Gather(f32),
+    /// In the air, this far across: just off the ground at nought, about to touch down at one.
+    Flight(f32),
+    /// Down again, this many seconds since it touched down.
+    Down(f32),
 }
 
 /// Where a creature stood at the end of a tick, as [`Presence`] measures it.
