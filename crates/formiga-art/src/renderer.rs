@@ -198,6 +198,8 @@ pub struct RenderedBodyFrame {
     /// The middle of the mouth the face is drawn with, in frame pixels facing right: the face
     /// anchor and the face layout's own mouth pixel. A mouthful or a sip is carried to it.
     pub mouth: PixelPoint,
+    /// Whether `hands` is on a paw this frame drew, rather than under the mouth.
+    pub(crate) paw: bool,
 }
 
 /// Where one frame holds things, in frame pixels facing right: the paw a toy, a cup or a picked
@@ -1289,7 +1291,7 @@ impl CreatureRenderer {
         frame: u8,
         reduce_motion: bool,
     ) -> RenderedBodyFrame {
-        Self::dress_body_frame(genome, dress, clip.into(), frame, reduce_motion, 1).0
+        Self::dress_body_frame(genome, dress, clip.into(), frame, reduce_motion, 1, true).0
     }
 
     /// Where a frame of `clip` places what it holds from, in frame pixels facing right: the paw
@@ -1324,14 +1326,23 @@ impl CreatureRenderer {
         detail: u32,
     ) -> (RenderedBodyFrame, Canvas) {
         let detail = detail.clamp(1, crate::forms::FINEST_DETAIL);
-        let (rendered, fine) =
-            Self::dress_body_frame(genome, dress, clip.into(), frame, reduce_motion, detail);
+        let (rendered, fine) = Self::dress_body_frame(
+            genome,
+            dress,
+            clip.into(),
+            frame,
+            reduce_motion,
+            detail,
+            true,
+        );
         let fine = fine.unwrap_or_else(|| crate::forms::blocks(&rendered.canvas, detail));
         (rendered, fine)
     }
 
     /// A dressed body frame, with where it holds things, and a sculpted form's painted `detail`
-    /// pixels to each of its own when that is more than one.
+    /// pixels to each of its own when that is more than one. With `trail`, a toy in the air
+    /// leaves its dashes back to where it was on the frame before, which is drawn (without one)
+    /// to find out.
     fn dress_body_frame(
         genome: &AppearanceGenome,
         dress: Option<AccessoryArt>,
@@ -1339,9 +1350,18 @@ impl CreatureRenderer {
         frame: u8,
         reduce_motion: bool,
         detail: u32,
+        trail: bool,
     ) -> (RenderedBodyFrame, Option<Canvas>) {
         let frame = if reduce_motion { 0 } else { frame };
         let clip = clip.body();
+        let previous = (trail && !reduce_motion && clip == BodyClip::Action(ActionKind::SoloPlay))
+            .then(|| {
+                let frames = AnimationSpec::for_clip(clip).frames;
+                let before = (frame + frames - 1) % frames;
+                Self::dress_body_frame(genome, None, clip, before, false, 1, false).0
+            })
+            .and_then(|before| before.held)
+            .map(HeldPlacement::middle);
         let face_genome;
         // The body as painted, before anything is drawn on it, and the same body painted finely.
         let mut fine = None;
@@ -1405,6 +1425,8 @@ impl CreatureRenderer {
                     action,
                     frame,
                     reduce_motion,
+                    held,
+                    previous,
                 );
                 draw_effects(
                     &mut canvas,
@@ -1446,6 +1468,7 @@ impl CreatureRenderer {
             held: held.map(|held| held.translated(dx, dy)),
             hands: moved(hold.hands),
             mouth: moved(hold.mouth),
+            paw: props.paw,
         };
         (rendered, fine)
     }

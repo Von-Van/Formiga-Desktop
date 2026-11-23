@@ -40,6 +40,8 @@ pub(crate) struct PropHold {
     pub(crate) forward: i32,
     /// The face anchor, which a toy in the air keeps clear of.
     pub(crate) face: PixelPoint,
+    /// The top of the head, which a body with no paw free keeps its toy up off.
+    pub(crate) crown: PixelPoint,
     /// Whether `hands` is on a paw the frame drew, rather than under the mouth.
     pub(crate) paw: bool,
 }
@@ -68,13 +70,11 @@ pub(super) fn prop_hold(
             },
         )
     };
-    // A soft quadruped's head leads over the paws it plays with, so a toy is knocked back along
-    // its body, away from the face; every other body knocks it forward.
-    let forward = if genome.design.is_none() && !genome.echo_fox && genome.sculpt.is_none() {
-        match genome.family {
-            BodyFamily::SoftQuadruped => -1,
-            BodyFamily::Blob | BodyFamily::Hopper => 1,
-        }
+    // A body on four legs carries its head out ahead over the paws it plays with, so a toy is
+    // knocked back along it, over its shoulders and away from the face; every other body knocks
+    // it forward.
+    let forward = if genome.sculpt.is_none() && !genome.echo_fox && stretches_long(genome) {
+        -1
     } else {
         1
     };
@@ -85,6 +85,7 @@ pub(super) fn prop_hold(
         ground,
         forward,
         face: figure.face,
+        crown: figure.crown,
         paw: figure.hand.is_some(),
     }
 }
@@ -155,11 +156,10 @@ pub(super) fn activity_held(
     };
     match action {
         ActionKind::SoloPlay => {
-            // One round of keep-up, read straight off the paw: knocked up off the paw, over the
-            // head, caught coming down, and back onto the paw. The toy is the thing that moves,
-            // and it passes through the paw twice a loop, so play reads as play even on a body
-            // whose forelimbs stay folded.
-            let (x, y, spin) = play_path(hold, toy, phase);
+            // One round of keep-up in time with the body (see [`KEEP_UP_TOSS`]): caught against
+            // the paw on the crouch, knocked up off it, at the top of its arc on the stretch and
+            // dropping back, each beat measured from where that frame holds it.
+            let (x, y, spin) = play_path(genome, hold, toy, phase);
             let thing = HeldThing::Toy {
                 kind: toy,
                 colourway: toy_colourway(genome),
@@ -168,23 +168,28 @@ pub(super) fn activity_held(
             Some(HeldPlacement::centred(thing, x, y))
         }
         ActionKind::Eat => {
-            // Held up just in front of the mouth, its near edge at the mouth, eaten down bite by
-            // bite to a crumb. It is held no higher, so it never covers the eyes over the mouth.
-            let thing = HeldThing::Snack {
-                kind: snack,
-                bite: phase,
+            // A mouthful in time with the head (see [`MOUTHFUL`]): held up in front of the mouth,
+            // then carried up into it as the head dips to meet it, so it goes with the mouth
+            // rather than staying where it was held, and gone while it is chewed. It is never
+            // held higher than just under the mouth, so it never covers the eyes over it.
+            let (bite, dx, dy) = match MOUTHFUL[usize::from(phase)] {
+                Mouthful::Raised => (0, 5, 3),
+                Mouthful::Bitten => (1, 4, 2),
+                Mouthful::Chewing => return None,
             };
+            let thing = HeldThing::Snack { kind: snack, bite };
             Some(HeldPlacement::centred(
                 thing,
-                hold.mouth.x + 5 - i32::from(phase == 3),
-                hold.mouth.y + 2,
+                hold.mouth.x + dx,
+                hold.mouth.y + dy,
             ))
         }
         ActionKind::Drink => {
             // Tipped up with its rim at the mouth for the sip, and lowered a little out in front
             // between sips, its rim still under the mouth and the steam off a mug rising clear
-            // of the face.
-            let tipped = phase == 1 || phase == 2;
+            // of the face. Held from the mouth, it goes back with the head as the head tips back
+            // to drink (see [`SIP_TILT`]).
+            let tipped = SIP_TILT[usize::from(phase)] > 0;
             let (dx, dy) = cup_hold(drink, tipped);
             let thing = HeldThing::Cup {
                 kind: drink,
@@ -222,6 +227,8 @@ fn cup_hold(kind: u8, tipped: bool) -> (i32, i32) {
 /// The marks play and a mouthful leave on the body's own frame: the dashes behind a toy in the
 /// air, the knock where it meets the paw, and the crumbs at the end of a mouthful. They are the
 /// creature's own doing, so they stay in its frame while the thing it holds is drawn apart.
+/// `held` is what the frame holds, and `previous` where its middle was on the frame before,
+/// which the dashes run from.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn draw_activity_marks(
     canvas: &mut Canvas,
@@ -231,21 +238,23 @@ pub(super) fn draw_activity_marks(
     action: ActionKind,
     frame: u8,
     reduce_motion: bool,
+    held: Option<HeldPlacement>,
+    previous: Option<PixelPoint>,
 ) {
     let phase = if reduce_motion { 0 } else { frame % 4 };
     // Marks are coloured against the creature, not from it, so they stay readable on its coat.
     let palette = crate::prop_palette(palette, prop_signature(genome));
     match action {
         ActionKind::SoloPlay => {
-            let toy = prop_variants(genome).0;
-            let at = |phase: u8| play_path(hold, toy, phase);
-            let (x, y, _) = at(phase);
-            if !reduce_motion {
-                let (px, py, _) = at((phase + 3) % 4);
-                draw_prop_trail(canvas, palette, (px, py), (x, y));
+            let Some(PixelPoint { x, y }) = held.map(HeldPlacement::middle) else {
+                return;
+            };
+            if !reduce_motion && let Some(from) = previous {
+                draw_prop_trail(canvas, palette, (from.x, from.y), (x, y));
             }
-            if phase == 0 || phase == 3 {
-                // The knock itself: two ticks where the toy meets the paw that is keeping it up.
+            if phase == 0 {
+                // The knock itself, on the beat it is caught: two ticks where the toy meets the
+                // paw that is keeping it up.
                 for (dx, dy) in [(-1, 3), (1, 4)] {
                     canvas.set(x + dx * hold.forward, y + dy, palette.highlight);
                 }
@@ -269,9 +278,77 @@ pub(super) fn draw_activity_marks(
     }
 }
 
-/// Where toy `kind` is on each beat of the play loop, and how far it has turned by then.
-pub(super) fn play_path(hold: PropHold, kind: u8, phase: u8) -> (i32, i32, u8) {
-    let spin = phase % 4;
+/// The pixels of a face, and those `margin` pixels round it, as the overlay draws it over a frame:
+/// what a toy in the air keeps off. Read from the face itself, in the expressions play wears, so
+/// a wide face or a low one is kept clear of exactly as it is drawn.
+struct FaceMask {
+    left: i32,
+    top: i32,
+    rows: [u32; FACE_MASK_SIZE],
+}
+
+/// How wide and tall a [`FaceMask`] is: a face frame and a margin of up to two pixels round it.
+const FACE_MASK_SIZE: usize = FACE_FRAME_SIZE as usize + 4;
+
+impl FaceMask {
+    fn of(genome: &AppearanceGenome, face: PixelPoint, margin: i32) -> Self {
+        let half = FACE_FRAME_SIZE as i32 / 2;
+        let (left, top) = (face.x - half - 2, face.y - half - 2);
+        let mut rows = [0_u32; FACE_MASK_SIZE];
+        for expression in [ExpressionKind::Joy, ExpressionKind::Neutral] {
+            let drawn = CreatureRenderer::render_face_frame(
+                genome,
+                FaceRenderState {
+                    expression,
+                    eyelids: EyelidPose::Open,
+                    gaze: GazeDirection::default(),
+                },
+            );
+            for y in 0..FACE_FRAME_SIZE as i32 {
+                for x in 0..FACE_FRAME_SIZE as i32 {
+                    if drawn.get(x, y).a == 0 {
+                        continue;
+                    }
+                    for dy in -margin..=margin {
+                        for dx in -margin..=margin {
+                            let (row, column) = (y + 2 + dy, x + 2 + dx);
+                            if (0..FACE_MASK_SIZE as i32).contains(&row)
+                                && (0..FACE_MASK_SIZE as i32).contains(&column)
+                            {
+                                rows[row as usize] |= 1 << column;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Self { left, top, rows }
+    }
+
+    fn hits(&self, x: i32, y: i32) -> bool {
+        let (row, column) = (y - self.top, x - self.left);
+        (0..FACE_MASK_SIZE as i32).contains(&row)
+            && (0..FACE_MASK_SIZE as i32).contains(&column)
+            && self.rows[row as usize] & (1 << column) != 0
+    }
+}
+
+/// Where toy `kind` is on each beat of the play loop, and how far it has turned by then: its
+/// middle, in frame pixels facing right.
+///
+/// Each beat is measured from where that frame holds the toy (see [`KEEP_UP_TOSS`]). A paw keeps
+/// it up from beside itself, the side away from the body; a body with no paw free keeps it up off
+/// the top of its head. On the beat it is caught it touches the paw, as near to resting against
+/// it as the face allows. It never goes across the face: where the beat would put it there, it
+/// goes on ahead or higher, the least it takes, and only failing those lower or back.
+pub(super) fn play_path(
+    genome: &AppearanceGenome,
+    hold: PropHold,
+    kind: u8,
+    phase: u8,
+) -> (i32, i32, u8) {
+    let beat = phase % 4;
+    let spin = beat;
     let toy = HeldThing::Toy {
         kind,
         colourway: 0,
@@ -279,48 +356,84 @@ pub(super) fn play_path(hold: PropHold, kind: u8, phase: u8) -> (i32, i32, u8) {
     }
     .drawn();
     let (left, top, right, bottom) = toy.extent();
+    let dots = toy.pixels();
     let forward = hold.forward;
+    let size = FRAME_SIZE as i32;
     // Nothing sinks into the surface underfoot, and the whole toy stays a pixel inside the frame
     // for the atlas's margin.
-    let fit = |y: i32| {
-        y.min(hold.floor - 1 - bottom)
-            .clamp(1 - top, FRAME_SIZE as i32 - 2 - bottom)
+    let (highest, lowest) = (1 - top, (hold.floor - 1 - bottom).min(size - 2 - bottom));
+    let fit_y = |y: i32| y.min(lowest).max(highest);
+    let fit_x = |x: i32| x.clamp(1 - left, size - 2 - right);
+    let fits = |(x, y): (i32, i32)| fit_x(x) == x && fit_y(y) == y;
+    // Clear of the face and a pixel round it, so a glance or a blink never brushes it; failing
+    // that, clear of the face itself.
+    let masks = [
+        FaceMask::of(genome, hold.face, 1),
+        FaceMask::of(genome, hold.face, 0),
+    ];
+    let clear = |mask: &FaceMask, (x, y): (i32, i32)| {
+        !dots.iter().any(|&(dx, dy)| mask.hits(x + dx, y + dy))
     };
-    // Resting against the paw on the side away from the body, its near edge on the paw's own
-    // row, so it is held by the paw rather than hung over whatever the paw is in front of. With
-    // no paw free it is kept up off the nose instead, hanging just under the mouth.
     let (rest_x, rest_y) = if hold.paw {
-        let y = fit(hold.hands.y - 1);
+        // Against the paw on the side away from the body, its near edge on the paw's own row.
+        let y = fit_y(hold.hands.y - 1);
         (hold.hands.x - toy.edge(hold.hands.y - y, -forward), y)
     } else {
-        (hold.hands.x, fit(hold.mouth.y + 1 - top))
+        // Resting on the top of the head.
+        (hold.crown.x, fit_y(hold.crown.y - 1 - bottom))
     };
-    let (dx, dy) = match spin {
-        0 => (0, 0),
-        // Knocked up and away from the body.
-        1 => (3, -4),
-        // The top of its arc: clear of the creature, never over its face, and never so high that
-        // the paw it came off has visibly let go of it.
-        2 => (5, -7),
-        // Coming back down onto the paw.
-        _ => (1, -1),
+    // Every place the toy could go within `reach` of `from`, that keeps it whole in the frame and
+    // off the face.
+    let places = |mask: &FaceMask, from: (i32, i32), reach: i32| {
+        (-reach..=reach)
+            .flat_map(move |dy| (-reach..=reach).map(move |dx| (from.0 + dx, from.1 + dy)))
+            .filter(move |&at| fits(at) && clear(mask, at))
+            .collect::<Vec<_>>()
     };
-    let y = fit(rest_y + dy);
-    let inside = |x: i32| x.clamp(1 - left, FRAME_SIZE as i32 - 2 - right);
-    // Never across the eyes: it slides on past the face, as little as it takes, which on the
-    // beats it rests against the paw is no more than a pixel or two along it.
-    let eyes = (
-        hold.face.x - 5,
-        hold.face.y - 4,
-        hold.face.x + 5,
-        hold.mouth.y - 3,
-    );
-    // Forward first; a face with no room left in front of it sends the toy back the other way.
-    let x = (0..FRAME_SIZE as i32)
-        .map(|slide| inside(rest_x + (dx + slide) * forward))
-        .chain((1..FRAME_SIZE as i32).map(|slide| inside(rest_x + (dx - slide) * forward)))
-        .find(|&x| !toy.covers((x, y), eyes))
-        .unwrap_or_else(|| inside(rest_x + dx * forward));
+    if beat == 0 && hold.paw {
+        // Caught: on the side of the paw away from the body, so it is not across the paw from
+        // where it is knocked to; as near the paw as the face lets it be, touching it along a row
+        // or a column if it can; then as near to resting against it as it can be.
+        let (hx, hy) = (hold.hands.x, hold.hands.y);
+        let gap = |(x, y): (i32, i32)| {
+            dots.iter()
+                .map(|&(dx, dy)| ((x + dx - hx).abs() + (y + dy - hy).abs() - 1).max(0))
+                .min()
+                .unwrap_or(i32::MAX)
+        };
+        let caught = masks.iter().find_map(|mask| {
+            places(mask, (rest_x, rest_y), 12)
+                .into_iter()
+                .min_by_key(|&(x, y)| {
+                    (
+                        (x - rest_x) * forward < -2,
+                        gap((x, y)),
+                        2 * ((x - rest_x).abs() + (y - rest_y).abs())
+                            + i32::from((x - rest_x) * forward < 0),
+                    )
+                })
+        });
+        if let Some((x, y)) = caught {
+            return (x, y, spin);
+        }
+    }
+    let (ahead, lift) = KEEP_UP_TOSS[usize::from(beat)];
+    let from = (fit_x(rest_x + ahead * forward), fit_y(rest_y - lift));
+    // On ahead or up is cheapest, lower dearer, and back toward the body dearest of all, so the
+    // toy keeps to one side of the face through the whole round.
+    let cost = |(x, y): (i32, i32)| {
+        let on = (x - from.0) * forward;
+        let up = from.1 - y;
+        2 * on.max(0) + 5 * (-on).max(0) + 2 * up.max(0) + 3 * (-up).max(0)
+    };
+    let (x, y) = masks
+        .iter()
+        .find_map(|mask| {
+            places(mask, from, size / 2)
+                .into_iter()
+                .min_by_key(|&at| cost(at))
+        })
+        .unwrap_or(from);
     (x, y, spin)
 }
 

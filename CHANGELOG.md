@@ -77,6 +77,14 @@ All notable changes are documented here.
   presents its find against its chest and a Long body in its raised forepaw, a body standing on
   all four carries things in its mouth, snacks and cups come to the mouth itself, and nothing
   held goes over the eyes. Clips that hold nothing draw exactly as before.
+- A toy, a snack and a cup move with the body that is using them. At keep-up the toy is caught
+  in the paw on the crouch, knocked up as the body springs and at the top of its arc on the
+  stretch, and the paw goes with it: held out to catch, up at the chin, up beside the head and
+  back down, a wing opening for it on a winged body and a Long body lifting one forepaw with the
+  other three down. A body on four legs keeps its toy up back over its shoulders, and no toy ever
+  crosses the face. A snack is held up, carried into the mouth as the head dips to it, and gone
+  while it is chewed, with crumbs at the end; a cup tips back with the head, further on the deepest
+  of the sip. Every other clip draws exactly as before.
 
 ### Fixed
 

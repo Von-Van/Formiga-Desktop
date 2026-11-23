@@ -571,7 +571,7 @@ pub(super) fn draw_forelimbs(
         BodyFamily::SoftQuadruped => i32::from(genome.forelimbs.length).min(4),
         _ => i32::from(genome.forelimbs.length),
     };
-    let (left_target, right_target) = limb_targets(
+    let (left_target, mut right_target) = limb_targets(
         limb_pose.left_root,
         limb_pose.right_root,
         limb_pose.clip,
@@ -580,6 +580,17 @@ pub(super) fn draw_forelimbs(
         genome.forelimbs.rest_pose,
         limb_pose.pose,
     );
+    // A soft quadruped keeps its toy up back over its shoulders, away from the head it carries
+    // out in front, so it catches it with the near paw drawn in under its chest.
+    if limb_pose.family == BodyFamily::SoftQuadruped
+        && limb_pose.clip == BodyClip::Action(ActionKind::SoloPlay)
+        && limb_pose.frame.is_multiple_of(4)
+    {
+        right_target = PixelPoint {
+            x: limb_pose.right_root.x - 3,
+            y: limb_pose.right_root.y + length - 1,
+        };
+    }
     let inner = match limb_pose.family {
         BodyFamily::Blob => palette.coat,
         BodyFamily::Hopper => palette.shadow,
@@ -724,7 +735,8 @@ pub(super) fn limb_targets(
             left,
             right,
             match frame % 4 {
-                0 => ((2, length), (-2, length)),
+                // The near paw held out to catch the toy coming down, rather than at its side.
+                0 => ((2, length), (length - 1, 1)),
                 1 => ((2, 1), (length + 1, -2)),
                 2 => ((length - 1, -length), (-length + 1, -length)),
                 _ => ((-length - 1, -2), (-2, 1)),
