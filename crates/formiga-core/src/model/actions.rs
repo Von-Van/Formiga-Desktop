@@ -62,9 +62,10 @@ impl ActionKind {
         Self::PetReaction,
     ];
 
-    /// Unique body clips baked into the creature atlas. Tossing deliberately reuses the dragged
-    /// body clip, so it remains expressive without consuming another four 48x48 texture slots.
-    pub const BODY_CLIPS: [Self; 22] = [
+    /// Unique body clips baked into the creature atlas. Tossing has two frames of its own, balled
+    /// up in the air, and a squeeze through a narrow gap two pinched frames of its own, each added
+    /// last so every clip before it keeps its place in the atlas.
+    pub const BODY_CLIPS: [Self; 24] = [
         Self::Idle,
         Self::Traverse,
         Self::Perch,
@@ -87,6 +88,8 @@ impl ActionKind {
         Self::Dangle,
         Self::InspectScreen,
         Self::PresentDiscovery,
+        Self::Tossed,
+        Self::SqueezeWindow,
     ];
 
     pub const AUTONOMOUS: [Self; 15] = [
@@ -280,6 +283,21 @@ pub struct Presence {
     /// Whether the person has asked for reduced motion, so the art keeps a resting companion's
     /// own little moments to itself.
     pub reduced: bool,
+    /// Where it is in a hop: gathering itself to spring, in the air, or just down again. A hop
+    /// keeps the one action from the gather to the touchdown, so this is what lets the art draw
+    /// the crouch, the flight and the landing each as its own pose.
+    pub hop: Option<HopMoment>,
+}
+
+/// Where a creature is in a hop or a leap, as the world saw it at the end of the last tick.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum HopMoment {
+    /// Crouched to spring, this many seconds into the crouch.
+    Gather(f32),
+    /// In the air, this far across: just off the ground at nought, about to touch down at one.
+    Flight(f32),
+    /// Down again, this many seconds since it touched down.
+    Down(f32),
 }
 
 /// Where a creature stood at the end of a tick, as [`Presence`] measures it.

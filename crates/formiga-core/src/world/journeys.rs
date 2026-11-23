@@ -4,9 +4,76 @@ use super::*;
 const INSPECTION_RADIUS: f32 = 12.0;
 pub(super) const MANTLE_LIFT_POINTS: f32 = 10.0;
 
-/// How much of the pull-up is spent hauling straight up, before the step in onto the ledge. The
-/// haul is the longer half: it is the effort, and the step is the arrival.
-const HAUL_SHARE: f32 = 0.62;
+/// How many frames a second a top-out onto a ledge is drawn at. The art plays its mantle at this
+/// rate from the moment the climb tops out, so the haul and the step in below change over on the
+/// frame the art does.
+pub const MANTLE_FRAMES_PER_SECOND: u8 = 5;
+/// How many of the mantle's frames the haul takes: its chest over the edge with a knee up, and the
+/// push up on both paws. The step in onto the ledge is the third. The haul is the longer part: it
+/// is the effort, and the step is the arrival.
+pub const MANTLE_HAUL_FRAMES: u8 = 2;
+/// How much of the haul's rise is made with the chest over the edge, before the push: a little,
+/// as the knee comes up. The push makes the rest.
+const HAUL_CHEST_RISE: f32 = 0.15;
+/// How much of the push is made at once, as the paws plant and the pose changes to the push.
+const HAUL_HEAVE: f32 = 0.6;
+
+/// How many frames a second a climb up a window's side is drawn at. The art plays its climb at
+/// this rate, so the rise below and the hands drawn keep step.
+pub const CLIMB_FRAMES_PER_SECOND: u8 = 6;
+/// A climb goes a hand at a time, and each hand's stroke is this many frames: a reach up, a pull
+/// and a settle onto the new grip. The climb's clip is two strokes, one with each hand.
+pub const CLIMB_STROKE_FRAMES: u8 = 3;
+/// How much of a stroke's rise each of its frames takes: hardly any while the hand reaches up,
+/// most of it on the pull, and a little as the body settles onto the new grip. Never none, so a
+/// climber is never stood still on the wall — a journey that holds still is a pause, which a
+/// scene may fill with a pose.
+const CLIMB_STROKE_RISE: [f32; CLIMB_STROKE_FRAMES as usize] = [0.08, 1.0, 0.3];
+
+/// How far a climber's paw on the window's side reaches past its frame's middle, in art pixels,
+/// for the bodies that reach furthest: a long body's forepaw held out ahead of it, and a classic
+/// hopper's arm. See [`climb_grip_reach`].
+const CLIMB_REACH_LONG: f32 = 18.0;
+/// The same for every other body: the paws go up beside the head.
+const CLIMB_REACH: f32 = 16.0;
+/// How far over a window's edge line a climber's paw on that side grips, in art pixels: its tip,
+/// so the paw is drawn on the edge rather than beside it.
+const CLIMB_GRIP_OVER_EDGE: f32 = 2.0;
+/// How far inside a window's edge line the middle of a companion is once it has pushed itself up
+/// onto the ledge, in art pixels: enough for its back paw, planted at the hip for the push, to be
+/// on the ledge too.
+const MANTLE_PUSH_OVER_EDGE: f32 = 10.0;
+/// How far inside a window's edge line a climb's track ran before it went up the outside, in
+/// points. Still where a companion climbs a window whose side has no room beside it: one against
+/// the side of its display or of the habitat.
+const CLIMB_INSIDE_TRACK: f32 = 5.0;
+
+/// How far a companion wearing `appearance`, climbing a window's side facing it, holds its paw on
+/// the window's side out past the middle of its frame, in art pixels. Every paw a climb draws on
+/// that side goes no further than this and a little less than it — a climb's paws go up beside the
+/// head, and a long body's forepaw out ahead of it — so a climb with the frame's middle this far
+/// out from a window's edge line, less [`CLIMB_GRIP_OVER_EDGE`], grips the edge with its paw and
+/// hangs beside the window rather than over it. This crate cannot see the art, so this
+/// approximates it; `formiga_art`'s
+/// `a_climbing_paw_reaches_as_far_as_the_simulation_climbs_by` holds it to the real frames.
+pub fn climb_grip_reach(appearance: &AppearanceGenome) -> f32 {
+    // A fox and a sculpted form draw in place of the body the design or family would.
+    if appearance.echo_fox || appearance.sculpt.is_some() {
+        return CLIMB_REACH;
+    }
+    match appearance.design.map(|design| design.body) {
+        Some(BodyPlan::Long) => CLIMB_REACH_LONG,
+        None if appearance.family == BodyFamily::Hopper => CLIMB_REACH_LONG,
+        _ => CLIMB_REACH,
+    }
+}
+
+/// How long a creature crouches to spring before a hop from standing, in seconds. The journey
+/// starts this far before nought and holds it where it is until then. A hop across a gap has a
+/// run-up instead.
+pub(super) const HOP_GATHER_SECS: f32 = 0.15;
+/// How far across a hop it is still pushing off the ground, drawn in the crouch it sprang from.
+const HOP_PUSH_OFF: f32 = 0.05;
 
 #[derive(Clone)]
 pub(super) struct HopJourney {
@@ -48,6 +115,9 @@ pub(super) struct ClimbJourney {
     pub(super) start: Point,
     pub(super) approach: Point,
     pub(super) climb_end: Point,
+    /// Where across the companion's middle is once it has pushed itself up over the edge: past
+    /// the edge line, with both its paws on the ledge, and no further in than `target`.
+    pub(super) over_x: f32,
     pub(super) target: Point,
     surface: SurfaceAttachment,
     pub(super) elapsed: f32,
@@ -102,6 +172,9 @@ pub(super) struct JourneyStep {
     pub(super) position: Point,
     pub(super) action: ActionKind,
     pub(super) complete: bool,
+    /// A pose the journey strikes over its action, and where the creature looks while it does:
+    /// the mantle at the top of a climb. None for every other step.
+    pub(super) pose: Option<(Gesture, Point)>,
 }
 
 impl WindowJourney {
@@ -115,6 +188,20 @@ impl WindowJourney {
             Self::Climb(_) => ActionKind::ClimbWindow,
             Self::Squeeze(_) => ActionKind::InspectScreen,
             Self::Entrance(_) => ActionKind::Traverse,
+        }
+    }
+
+    /// Where the creature it carries is in a hop, if this is one: crouched to spring, or in
+    /// the air. A gap is only a hop once its run-up is done, and stops being one the moment the
+    /// far edge is caught.
+    pub(super) fn hop_moment(&self) -> Option<HopMoment> {
+        match self {
+            Self::Hop(journey) => Some(journey.moment(journey.elapsed)),
+            Self::Gap(journey) if !journey.bridge && journey.elapsed >= journey.preparation => {
+                let flown = journey.elapsed - journey.preparation;
+                (!journey.catch || flown < journey.hop.duration).then(|| journey.hop.moment(flown))
+            }
+            Self::Gap(_) | Self::Climb(_) | Self::Squeeze(_) => None,
         }
     }
 
@@ -193,6 +280,7 @@ impl WindowJourney {
                             position: journey.hop.start,
                             action: ActionKind::InspectScreen,
                             complete: false,
+                            pose: None,
                         };
                     }
                     let progress = (journey.elapsed - 0.6) / (journey.preparation - 0.6);
@@ -221,6 +309,7 @@ impl WindowJourney {
                         position,
                         action,
                         complete: false,
+                        pose: None,
                     }
                 } else {
                     let progress = ((journey.elapsed - journey.preparation) / journey.hop.duration)
@@ -246,6 +335,7 @@ impl WindowJourney {
                         complete: progress >= 1.0
                             && (!journey.catch
                                 || caught_for >= if journey.helped { 1.7 } else { 2.4 }),
+                        pose: None,
                     }
                 }
             }
@@ -279,6 +369,7 @@ impl WindowJourney {
                     },
                     action: ActionKind::Landing,
                     complete: progress >= 1.0,
+                    pose: None,
                 }
             }
             Self::Climb(journey) => {
@@ -288,6 +379,7 @@ impl WindowJourney {
                         position: journey.start,
                         action: ActionKind::InspectScreen,
                         complete: false,
+                        pose: None,
                     };
                 }
                 let approach_end = journey.approach_duration;
@@ -299,45 +391,59 @@ impl WindowJourney {
                         position: lerp_point(journey.start, journey.approach, smoothstep(progress)),
                         action: ActionKind::Traverse,
                         complete: false,
+                        pose: None,
                     }
                 } else if journey.elapsed < climb_end {
-                    let progress = ((journey.elapsed - approach_end)
-                        / journey.climb_duration.max(0.001))
-                    .clamp(0.0, 1.0);
+                    let progress =
+                        climb_progress(journey.elapsed - approach_end, journey.climb_duration);
                     JourneyStep {
                         position: lerp_point(journey.approach, journey.climb_end, progress),
                         action: ActionKind::ClimbWindow,
                         complete: false,
+                        pose: None,
                     }
                 } else {
-                    // Topping out is two beats, not one drift. Hauling and stepping in used to
-                    // happen together, so a creature crossed the last stretch diagonally — rising
-                    // and sliding sideways at the same time, which reads as the body clipping
-                    // along the edge rather than climbing onto it. Now it pulls itself straight
-                    // up where its hands are, and then steps in onto the ledge.
+                    // Topping out is a mantle of its own, frame for frame with the art: the
+                    // chest brought up to the edge with a knee up, straight up beside the window
+                    // with the forearm laid over the edge; the push, which heaves the companion up
+                    // and over the edge onto both paws on the ledge; and a stand with a little
+                    // settle as it steps the rest of the way in. Rising and sliding in together
+                    // all the way up used to drag a body hung over the window along its edge;
+                    // now the body hangs beside the window and only the push crosses the edge,
+                    // as a heave does. It is still a climb while it does.
                     let mantle = (journey.elapsed - climb_end).max(0.0);
-                    let haul = journey.mantle_duration * HAUL_SHARE;
+                    let haul = mantle_haul_secs(journey.mantle_duration);
                     let over = Point {
-                        x: journey.climb_end.x,
+                        x: journey.over_x,
                         y: journey.target.y,
                     };
-                    if mantle < haul {
-                        let progress = (mantle / haul.max(0.001)).clamp(0.0, 1.0);
-                        JourneyStep {
-                            position: lerp_point(journey.climb_end, over, smoothstep(progress)),
-                            action: ActionKind::ClimbWindow,
-                            complete: false,
+                    let position = if mantle < haul {
+                        let t = mantle / haul.max(0.001);
+                        Point {
+                            x: lerp(journey.climb_end.x, over.x, haul_across(t)),
+                            y: lerp(journey.climb_end.y, over.y, haul_rise(t)),
                         }
                     } else {
                         let step = (journey.mantle_duration - haul).max(0.001);
+                        // Carried in by the push, and coming to a stop on the ledge.
                         let progress = ((mantle - haul) / step).clamp(0.0, 1.0);
-                        JourneyStep {
-                            position: lerp_point(over, journey.target, smoothstep(progress)),
-                            // Up and over: the landing clip is the one that settles a creature
-                            // onto a surface, which is exactly what this step is.
-                            action: ActionKind::Landing,
-                            complete: journey.elapsed >= total,
-                        }
+                        lerp_point(over, journey.target, 1.0 - (1.0 - progress).powi(2))
+                    };
+                    // Looking ahead along the ledge it is climbing onto.
+                    let inward = if journey.target.x < journey.climb_end.x {
+                        -1.0
+                    } else {
+                        1.0
+                    };
+                    let ahead = Point {
+                        x: journey.target.x + inward * 48.0,
+                        y: journey.target.y - 24.0,
+                    };
+                    JourneyStep {
+                        position,
+                        action: ActionKind::ClimbWindow,
+                        complete: journey.elapsed >= total,
+                        pose: Some((Gesture::Mantle, ahead)),
                     }
                 }
             }
@@ -353,6 +459,7 @@ impl WindowJourney {
                         ActionKind::SqueezeWindow
                     },
                     complete: journey.elapsed >= journey.duration,
+                    pose: None,
                 }
             }
             Self::Entrance(journey) => {
@@ -367,9 +474,180 @@ impl WindowJourney {
         }
     }
 
+    /// Which way the journey has its creature face, where that is not simply the way it is
+    /// going: up a window's side and over its edge, a climb faces the window, whichever way the
+    /// walk to it went. A companion that started under the window walks out from under it to the
+    /// side it climbs, and turns to the wall to climb it.
+    pub(super) fn facing_right(&self) -> Option<bool> {
+        match self {
+            Self::Climb(journey) if journey.elapsed >= journey.approach_duration => {
+                Some(journey.target.x >= journey.climb_end.x)
+            }
+            _ => None,
+        }
+    }
+
+    /// How far into the action it is on now the journey is, in seconds, for an action it has
+    /// just changed to. The climb counts from the moment it reached the wall, a tick's fraction
+    /// before the tick that saw it, so the clip's frames (drawn from the action's own elapsed
+    /// time) and the rise (shaped from the journey's) fall on the same instants; every other
+    /// action starts from nothing.
+    pub(super) fn action_elapsed(&self) -> f32 {
+        match self {
+            Self::Climb(journey) => {
+                let into = journey.elapsed - journey.approach_duration;
+                if (0.0..journey.climb_duration).contains(&into) {
+                    into
+                } else if into >= journey.climb_duration {
+                    // The mantle counts from the moment the climb topped out.
+                    into - journey.climb_duration
+                } else {
+                    0.0
+                }
+            }
+            _ => 0.0,
+        }
+    }
+
     /// Whether this is a newcomer walking in, which starts beyond the display's edge.
     pub(super) fn entering(&self) -> bool {
         matches!(self, Self::Entrance(_))
+    }
+}
+
+/// How long the haul of a mantle lasting `mantle` seconds takes: its first
+/// [`MANTLE_HAUL_FRAMES`] frames at [`MANTLE_FRAMES_PER_SECOND`], never more than the mantle.
+fn mantle_haul_secs(mantle: f32) -> f32 {
+    (f32::from(MANTLE_HAUL_FRAMES) / f32::from(MANTLE_FRAMES_PER_SECOND)).min(mantle)
+}
+
+/// How far across the edge the haul has carried a companion, from 0 to 1, `t` of the way through
+/// it: not at all with its chest at the edge, its forearm already over it, and all of it on the
+/// push, heaved over with the rise (see [`haul_rise`]), so the paws planted on the ledge for the
+/// push stay where they were planted rather than sliding in with the body.
+pub(super) fn haul_across(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    if t < 0.5 {
+        0.0
+    } else {
+        let push = (t - 0.5) / 0.5;
+        HAUL_HEAVE + (1.0 - HAUL_HEAVE) * (1.0 - (1.0 - push).powi(2))
+    }
+}
+
+/// How far up the haul a companion is, from 0 to 1, `t` of the way through it: a little with its
+/// chest over the edge as a knee comes up, through the haul's first frame, and the rest on the
+/// push through the second. The push is a heave: most of it is made the moment the paws plant
+/// and the pose changes to it, and the rest eases up onto the ledge, so the paws drawn planted on
+/// the ledge stay on it rather than the body sliding up past them for the length of the frame.
+pub(super) fn haul_rise(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    if t < 0.5 {
+        HAUL_CHEST_RISE * smoothstep(t / 0.5)
+    } else {
+        let push = (t - 0.5) / 0.5;
+        let heave = HAUL_HEAVE + (1.0 - HAUL_HEAVE) * (1.0 - (1.0 - push).powi(2));
+        HAUL_CHEST_RISE + (1.0 - HAUL_CHEST_RISE) * heave
+    }
+}
+
+/// How far up its climb a companion is, from 0 to 1, `into` seconds into a climb that lasts
+/// `duration`: a hand at a time rather than a steady slide. Each stroke rises mostly on its pull
+/// and holds almost still through the reach, frame for frame with the clip, which plays at
+/// [`CLIMB_FRAMES_PER_SECOND`] from the start of the climb. The whole climb still takes
+/// `duration` and ends where it did, so only the shape of the rise changes.
+pub(super) fn climb_progress(into: f32, duration: f32) -> f32 {
+    let total = climb_effort(duration);
+    if total <= f32::EPSILON {
+        return (into / duration.max(0.001)).clamp(0.0, 1.0);
+    }
+    (climb_effort(into.clamp(0.0, duration)) / total).clamp(0.0, 1.0)
+}
+
+/// The rise a climb has made `secs` into it, in strokes' worth of [`CLIMB_STROKE_RISE`].
+fn climb_effort(secs: f32) -> f32 {
+    let frames = secs.max(0.0) * f32::from(CLIMB_FRAMES_PER_SECOND);
+    let per_stroke = f32::from(CLIMB_STROKE_FRAMES);
+    let strokes = (frames / per_stroke).floor();
+    let mut effort = strokes * CLIMB_STROKE_RISE.iter().sum::<f32>();
+    let mut into = frames - strokes * per_stroke;
+    for rise in CLIMB_STROKE_RISE {
+        let part = into.clamp(0.0, 1.0);
+        effort += rise * part;
+        into -= part;
+    }
+    effort
+}
+
+/// Shows the pose a journey's step strikes, `into` seconds into it, for this tick: over a scene's
+/// own pose if the creature is in one, and otherwise as a pose of its own, looking at `looking`.
+/// The step stands on whatever it is climbing onto, so nothing of it hangs. Struck afresh on every
+/// tick the journey carries it, and let go of at the start of the next (see
+/// [`World::let_go_of_journey_poses`]), so a pose never outlasts the step that struck it.
+pub(super) fn strike_journey_pose(
+    creature: &mut Creature,
+    gesture: Gesture,
+    looking: Point,
+    into: f32,
+) {
+    match &mut creature.state.attention {
+        Some(pose) => {
+            pose.gesture = Some(gesture);
+            pose.hanging = 0.0;
+        }
+        None => {
+            creature.state.attention = Some(AttentionPose {
+                target: looking,
+                emotion: AttentionEmotion::Curious,
+                hanging: 0.0,
+                gesture: Some(gesture),
+            });
+        }
+    }
+    // Drawn from the moment the pose began, as the journey counts it.
+    creature.state.action_elapsed = into;
+}
+
+impl World {
+    /// Lets go of every pose a journey struck last tick. A journey that carries its creature on
+    /// strikes its pose again this tick; one that ended, was cut short or was taken over leaves
+    /// its creature showing whatever it does next. A pose made for the journey alone goes with
+    /// it, and a scene's own pose loses only the gesture.
+    pub(super) fn let_go_of_journey_poses(&mut self) {
+        for creature in &mut self.save.creatures {
+            let Some(pose) = &mut creature.state.attention else {
+                continue;
+            };
+            if pose.gesture != Some(Gesture::Mantle) {
+                continue;
+            }
+            if self.attention.has_plan(creature.id) {
+                pose.gesture = None;
+            } else {
+                creature.state.attention = None;
+            }
+        }
+    }
+}
+
+impl HopJourney {
+    /// Where a hop `elapsed` seconds in is: still crouched before it springs, pushing off, or in
+    /// the air and how far across. Touching down is the journey's end.
+    pub(super) fn moment(&self, elapsed: f32) -> HopMoment {
+        hop_moment(
+            elapsed / self.duration.max(0.001),
+            elapsed + HOP_GATHER_SECS,
+        )
+    }
+}
+
+/// Where a hop `progress` of the way across is, the crouch it springs from having begun
+/// `crouched` seconds ago.
+pub(super) fn hop_moment(progress: f32, crouched: f32) -> HopMoment {
+    if progress <= HOP_PUSH_OFF {
+        HopMoment::Gather(crouched.max(0.0))
+    } else {
+        HopMoment::Flight(progress.min(1.0))
     }
 }
 
@@ -407,6 +685,8 @@ pub(super) fn build_window_journey(
     target: Point,
     mut surface: SurfaceAttachment,
     desktop: &DesktopSnapshot,
+    policy: &HabitatPolicy,
+    display_scale: u8,
 ) -> WindowJourney {
     let start = creature.state.position;
     let upward = target.y < start.y;
@@ -420,21 +700,59 @@ pub(super) fn build_window_journey(
             start,
             target,
             surface,
-            elapsed: 0.0,
+            // A crouch to spring from first.
+            elapsed: -HOP_GATHER_SECS,
             duration: (distance / 280.0).clamp(1.0, 2.6),
             lift: 0.0,
             ballistic: false,
         });
     };
 
-    let left_track = window.bounds.x + 5.0;
-    let right_track = window.bounds.right() - 5.0;
+    // A climb goes up the outside of the window's side, the companion hung beside the window by
+    // the paw gripping its edge, so that none of it is over the window until it tops out. Where
+    // that is depends on how wide the companion is drawn, which is in art pixels, so it is
+    // measured in them and turned into points for the display the window is on.
+    let monitor = desktop
+        .monitors
+        .iter()
+        .find(|monitor| monitor.id == surface.monitor_id);
+    let unit = spacing::frame_width(display_scale, monitor.map_or(1.0, |m| m.scale_factor))
+        / CREATURE_ART_WIDTH;
+    let regions = monitor.map(|monitor| accessible_regions(policy, monitor));
+    let half = monitor.map_or(0.0, |monitor| body_half_width(monitor, display_scale));
+    let hang = (climb_grip_reach(&creature.appearance) - CLIMB_GRIP_OVER_EDGE) * unit;
+    // Stop with the body just below its final contact point, then haul it up and over in the
+    // mantle. Previously the contact point reached the ledge before the horizontal pull began,
+    // producing a visible hold-and-reposition hitch.
+    let top_y = window.bounds.y + MANTLE_LIFT_POINTS;
+    let track = |edge: f32, outward: f32| {
+        climb_track(
+            edge,
+            outward,
+            hang,
+            [start.y, top_y],
+            regions.as_deref().unwrap_or_default(),
+            half,
+        )
+    };
+    let left_track = track(window.bounds.x, -1.0);
+    let right_track = track(window.bounds.right(), 1.0);
     let use_left = (start.x - left_track).abs() <= (start.x - right_track).abs();
-    let track_x = if use_left { left_track } else { right_track };
-    let target_x = if use_left {
-        window.bounds.x + 18.0
+    let (track_x, edge, inward) = if use_left {
+        (left_track, window.bounds.x, 1.0)
     } else {
-        window.bounds.right() - 18.0
+        (right_track, window.bounds.right(), -1.0)
+    };
+    let target_x = edge + inward * 18.0;
+    // Over the edge far enough for both paws to be on the ledge for the push, but never past
+    // where it is going to stand, nor back from where it climbed.
+    let over_x = {
+        let over = edge + inward * MANTLE_PUSH_OVER_EDGE * unit;
+        if inward > 0.0 {
+            over.min(target_x).max(track_x)
+        } else {
+            over.max(target_x).min(track_x)
+        }
     };
     let approach = Point {
         x: track_x,
@@ -442,10 +760,7 @@ pub(super) fn build_window_journey(
     };
     let climb_end = Point {
         x: track_x,
-        // Stop with the body just below its final contact point, then lift and move inward in one
-        // smooth mantle. Previously the contact point reached the ledge before the horizontal
-        // pull began, producing a visible hold-and-reposition hitch.
-        y: window.bounds.y + MANTLE_LIFT_POINTS,
+        y: top_y,
     };
     let target = Point {
         x: target_x,
@@ -460,6 +775,7 @@ pub(super) fn build_window_journey(
         start,
         approach,
         climb_end,
+        over_x,
         target,
         surface,
         elapsed: 0.0,
@@ -469,10 +785,43 @@ pub(super) fn build_window_journey(
     })
 }
 
+/// Where across a climb up the side of a window whose edge line is at `edge` goes, `outward` -1
+/// for its left side and 1 for its right: `hang` points out from the edge, beside the window, and
+/// brought in as far as the whole companion needs, `half` its frame's half width, to be drawn on
+/// the habitat's `regions` at each of the heights in `ys`. A side with no habitat beside it at all
+/// — a window against the side of its display, or of the habitat — is climbed just inside the
+/// edge line, as every climb once was.
+fn climb_track(
+    edge: f32,
+    outward: f32,
+    hang: f32,
+    ys: [f32; 2],
+    regions: &[DesktopRect],
+    half: f32,
+) -> f32 {
+    let inside = edge - outward * CLIMB_INSIDE_TRACK;
+    let outside = edge + outward * hang;
+    let at = |y: f32| Point { x: outside, y };
+    if !ys
+        .iter()
+        .all(|&y| regions.iter().any(|region| region.contains(at(y))))
+    {
+        return inside;
+    }
+    let kept = ys.map(|y| keep_whole_in(at(y), regions, half).x);
+    if outward < 0.0 {
+        kept[0].max(kept[1]).min(inside)
+    } else {
+        kept[0].min(kept[1]).max(inside)
+    }
+}
+
 pub(super) fn build_route_hop_journey(
     creature: &Creature,
     hop: TopologyRouteHop,
     desktop: &DesktopSnapshot,
+    policy: &HabitatPolicy,
+    display_scale: u8,
 ) -> WindowJourney {
     let surface = SurfaceAttachment {
         kind: SurfaceKind::WindowLedge,
@@ -481,7 +830,14 @@ pub(super) fn build_route_hop_journey(
         relative_x: ((hop.target.x - hop.to_bounds.x) / hop.to_bounds.width).clamp(0.05, 0.95),
     };
     match hop.kind {
-        RouteHopKind::WindowTier => build_window_journey(creature, hop.target, surface, desktop),
+        RouteHopKind::WindowTier => build_window_journey(
+            creature,
+            hop.target,
+            surface,
+            desktop,
+            policy,
+            display_scale,
+        ),
         RouteHopKind::NarrowGap => WindowJourney::Squeeze(SqueezeJourney {
             from_window: hop.from_window,
             from_bounds: hop.from_bounds,
@@ -957,4 +1313,85 @@ pub(super) fn find_drop_support(
             span.holds(x).then(|| span.place(x))
         })
         .min_by(|a, b| cursor.distance(a.0).total_cmp(&cursor.distance(b.0)))
+}
+
+impl World {
+    /// Starts one companion up onto the ledge of a window the way it climbs one by itself: a look
+    /// at the window first, as a staircase step takes, a walk to the nearer of its sides, the
+    /// climb, the haul and the step in, and then a perch. The climb sheet uses it to show a whole
+    /// climb on demand; the colony itself never calls it. Returns whether the climb began, which
+    /// needs the companion and the window both there and the window's top above the companion.
+    pub fn begin_window_climb(
+        &mut self,
+        creature_id: CreatureId,
+        window_key: WindowKey,
+        desktop: &DesktopSnapshot,
+    ) -> bool {
+        let Some(window) = desktop
+            .windows
+            .iter()
+            .find(|window| window.key == window_key && window.visible && !window.minimized)
+        else {
+            return false;
+        };
+        let top_middle = Point {
+            x: window.bounds.x + window.bounds.width / 2.0,
+            y: window.bounds.y,
+        };
+        let Some(monitor_id) = desktop
+            .monitors
+            .iter()
+            .find(|monitor| monitor.bounds.contains(top_middle))
+            .map(|monitor| monitor.id)
+        else {
+            return false;
+        };
+        let Some(creature) = self
+            .save
+            .creatures
+            .iter_mut()
+            .find(|creature| creature.id == creature_id)
+        else {
+            return false;
+        };
+        if window.bounds.y >= creature.state.position.y {
+            return false;
+        }
+        let surface = SurfaceAttachment {
+            kind: SurfaceKind::WindowLedge,
+            monitor_id,
+            window_key: Some(window_key),
+            relative_x: 0.5,
+        };
+        let target = Point {
+            x: creature.state.position.x,
+            y: window.bounds.y,
+        };
+        let mut journey = build_window_journey(
+            creature,
+            target,
+            surface,
+            desktop,
+            &self.save.settings.habitat,
+            self.save.settings.display_scale,
+        );
+        if let WindowJourney::Climb(climb) = &mut journey {
+            climb.elapsed = -0.3;
+        }
+        let action = journey.initial_action();
+        creature.state.action = action;
+        creature.state.action_elapsed = 0.0;
+        creature.state.action_duration = f32::MAX;
+        creature.state.velocity = Point::default();
+        self.window_routes.remove(&creature_id);
+        self.window_journeys.insert(creature_id, journey);
+        Self::emit(
+            &mut self.events,
+            WorldEvent::ActionStarted {
+                creature_id,
+                action,
+            },
+        );
+        true
+    }
 }

@@ -25,7 +25,7 @@ use crate::updater::{
     check_companion, check_github, download_update,
 };
 use anyhow::{Context, Result};
-use formiga_art::{AnimationSpec, BodyPresentation, MenuIcon};
+use formiga_art::{AnimationSpec, BodyPresentation, ClipBridge, FaceChange, MenuIcon};
 use formiga_core::*;
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
@@ -48,6 +48,7 @@ mod habitat_editor;
 mod hill;
 mod house;
 mod menus;
+mod rides;
 mod settings_window;
 mod trips;
 mod updates;
@@ -135,6 +136,8 @@ pub struct FormigaApp {
     observation_epoch: Instant,
     window_sample: Option<WindowSample>,
     window_scan_initialized: bool,
+    /// How far past the last window read riders on a dragged window are carried: `rides`.
+    ride_carry: rides::RideCarry,
     last_display_scan: Instant,
     log_dir: PathBuf,
     current_cursor: CursorSnapshot,
@@ -142,6 +145,12 @@ pub struct FormigaApp {
     interaction_proxies: BTreeMap<WindowId, InteractionProxy>,
     /// Which size each companion is shown at, after the last tick (see `carry_set_back`).
     set_back_shown: BTreeMap<CreatureId, bool>,
+    /// Each companion's one-tick bridge between clips, after the last tick (see
+    /// `carry_clip_bridges`).
+    clip_bridges: BTreeMap<CreatureId, ClipBridge>,
+    /// Each companion's blink-and-change between expressions, after the last tick (see
+    /// `carry_face_changes`).
+    face_changes: BTreeMap<CreatureId, FaceChange>,
     /// Each house of the village as it can be clicked, while Formiga Home is installed, and the
     /// native window over each.
     house_shapes: crate::houses::HouseShapes,
@@ -216,12 +225,15 @@ impl FormigaApp {
             observation_epoch: Instant::now(),
             window_sample: None,
             window_scan_initialized: false,
+            ride_carry: rides::RideCarry::default(),
             last_display_scan: two_seconds_ago(),
             log_dir,
             current_cursor: CursorSnapshot::default(),
             settings_window: None,
             interaction_proxies: BTreeMap::new(),
             set_back_shown: BTreeMap::new(),
+            clip_bridges: BTreeMap::new(),
+            face_changes: BTreeMap::new(),
             house_shapes: Default::default(),
             house_proxies: BTreeMap::new(),
             wonder_shapes: crate::wonder_proxies::WonderShapes::default(),
@@ -423,7 +435,12 @@ impl FormigaApp {
         if !world.save.settings.visible || !drawing {
             return Duration::from_millis(250);
         }
-        world_tick_interval(world)
+        let frequent = world_needs_frequent_window_scan(world, platform::left_button_down());
+        tick_interval_for_reads(
+            world_tick_interval(world),
+            frequent.then_some(self.last_window_scan),
+            self.last_tick,
+        )
     }
 
     fn snapshot(&mut self) -> DesktopSnapshot {
@@ -437,7 +454,7 @@ impl FormigaApp {
             world_needs_frequent_window_scan(world, platform::left_button_down())
         });
         let scan_interval = if frequent_window_scan {
-            Duration::from_millis(250)
+            FREQUENT_WINDOW_READ
         } else {
             Duration::from_secs(1)
         };
@@ -498,10 +515,17 @@ impl FormigaApp {
             return true;
         }
         self.check_for_companions();
+        let read_before = self.window_sample;
         let desktop = self.snapshot();
         self.follow_who_is_indoors(&desktop);
         self.current_cursor = desktop.cursor;
         let left_button_down = platform::left_button_down();
+        if self.window_sample != read_before {
+            self.ride_carry.read();
+        } else {
+            self.ride_carry
+                .advance(dt, left_button_down, desktop.cursor.velocity);
+        }
         let mut offer_answers = Vec::new();
         if let Some(world) = &mut self.world {
             if world.is_interacting() {
@@ -756,6 +780,75 @@ impl FormigaApp {
         }
     }
 
+    /// Move every companion's one-tick bridge between clips on by a tick
+    /// (`formiga_art::ClipBridge`) and tell every overlay, so the picture, its bubbles and the
+    /// grab mask show the settle on the same tick. Each frame's outline is read from the atlas
+    /// of the display the companion is on; until that is baked nothing is bridged. A bridge
+    /// that starts or ends asks for a frame at once, so the settle is on the desktop for exactly
+    /// the tick it belongs to however slowly the colony is being drawn. While a trip has the
+    /// colony nothing is bridged.
+    fn carry_clip_bridges(&mut self) {
+        let away = self.colony_away();
+        let was = std::mem::take(&mut self.clip_bridges);
+        let mut turned = false;
+        if let (Some(world), false) = (&self.world, away) {
+            let reduced = world.save.settings.reduce_motion;
+            for creature in world
+                .save
+                .creatures
+                .iter()
+                .chain(world.save.visitors.on_stage())
+            {
+                let body = BodyPresentation::for_creature(creature);
+                let shape = self
+                    .overlays
+                    .values()
+                    .find(|overlay| overlay.monitor.id == creature.state.surface.monitor_id)
+                    .and_then(|overlay| overlay.frame_shape(creature, body));
+                let mut bridge = was.get(&creature.id).copied().unwrap_or_default();
+                let before = bridge.bridging();
+                turned |= bridge.advance(body, shape, reduced) != before;
+                self.clip_bridges.insert(creature.id, bridge);
+            }
+        }
+        for overlay in self.overlays.values_mut() {
+            overlay.show_clip_bridges(&self.clip_bridges);
+        }
+        if turned {
+            self.request_overlay_redraw();
+        }
+    }
+
+    /// Move every companion's blink-and-change between expressions on by a tick
+    /// (`formiga_art::FaceChange`) and tell every overlay. One that starts or ends asks for a
+    /// frame at once, so the in-between face is on the desktop for exactly the tick it belongs
+    /// to however slowly the colony is being drawn. While a trip has the colony nothing is
+    /// remembered, so a face coming home cuts straight in.
+    fn carry_face_changes(&mut self) {
+        let was = std::mem::take(&mut self.face_changes);
+        let mut turned = false;
+        if let (Some(world), false) = (&self.world, self.colony_away()) {
+            let reduced = world.save.settings.reduce_motion;
+            for creature in world
+                .save
+                .creatures
+                .iter()
+                .chain(world.save.visitors.on_stage())
+            {
+                let mut change = was.get(&creature.id).copied().unwrap_or_default();
+                let before = change.changing();
+                turned |= change.advance(creature, reduced) != before;
+                self.face_changes.insert(creature.id, change);
+            }
+        }
+        for overlay in self.overlays.values_mut() {
+            overlay.show_face_changes(&self.face_changes);
+        }
+        if turned {
+            self.request_overlay_redraw();
+        }
+    }
+
     fn sync_interaction_proxies(&mut self, event_loop: &ActiveEventLoop) {
         if self.habitat_editor.is_some() {
             for proxy in self.interaction_proxies.values_mut() {
@@ -866,6 +959,11 @@ impl FormigaApp {
                                 world.save.home.is_active(),
                             )
                         }),
+                    bridge: self
+                        .clip_bridges
+                        .get(&creature.id)
+                        .copied()
+                        .unwrap_or_default(),
                 },
             );
         }
@@ -1309,6 +1407,11 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                         Some((staged, train)) => (staged, *train),
                         None => (&world.save, None),
                     };
+                    let carried = if on_trip {
+                        Vec::new()
+                    } else {
+                        self.ride_carry.offsets(world)
+                    };
                     let ui = if on_trip {
                         OverlayUi {
                             bubbles: &[],
@@ -1319,6 +1422,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                             village,
                             wonders: &[],
                             train,
+                            carried: &[],
                         }
                     } else {
                         OverlayUi {
@@ -1330,6 +1434,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                             village,
                             wonders: &wonders,
                             train: None,
+                            carried: &carried,
                         }
                     };
                     if let Err(error) = overlay.render(
@@ -1377,6 +1482,8 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
         }
         if ticked {
             self.carry_set_back();
+            self.carry_clip_bridges();
+            self.carry_face_changes();
             self.sync_interaction_proxies(event_loop);
             self.sync_house_proxies(event_loop);
             self.sync_wonder_proxies(event_loop);

@@ -36,18 +36,22 @@ pub use postcard::{
     postcard_caption,
 };
 pub use renderer::{
-    AccessoryArt, AlphaMask, AnimationSpec, BodyClip, BodyPresentation, CreatureRenderer,
-    DRINK_KINDS, ExpressionKind, EyelidPose, FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState,
-    FramePlacement, GazeDirection, HELD_CELL, HELD_CELLS, HELD_SHEET_COLUMNS, HELD_SHEET_HEIGHT,
-    HELD_SHEET_WIDTH, HeldPlacement, HeldThing, Holding, KITE_STRING, MealPose, MotionSignature,
-    NAP_TURN_SECS, NapTurn, PixelPoint, PlayPicture, PlaybackMode, PropAnchor, RenderedBodyFrame,
-    SNACK_KINDS, TOY_COLOURWAYS, TOY_KINDS, footfall_frame, held_now, held_tether, meal_eyelids,
+    AccessoryArt, AlphaMask, AnimationSpec, BRIDGE_ROWS, BodyClip, BodyPresentation, BridgeReason,
+    ClipBridge, CreatureRenderer, DRINK_KINDS, ExpressionKind, EyelidPose, FACE_CHANGE_FACE,
+    FACE_FRAME_SIZE, FRAME_SIZE, FaceChange, FaceRenderState, FramePlacement, FrameRect,
+    FrameShape, GazeDirection, HELD_CELL, HELD_CELLS, HELD_SHEET_COLUMNS, HELD_SHEET_HEIGHT,
+    HELD_SHEET_WIDTH, HELD_UP_REACH, HeldPlacement, HeldThing, HoldPoints, Holding, KITE_STRING,
+    MINI_PACE, MealPose, MotionSignature, NAP_TURN_SECS, NapTurn, OUTLINE_RIM, PixelPoint,
+    PlayPicture, PlaybackMode, RenderedBodyFrame, RestMoment, SETTLE_FRAME, SNACK_KINDS,
+    TOY_COLOURWAYS, TOY_KINDS, footfall_frame, held_now, held_tether, held_up_at, meal_eyelids,
     meal_face, meal_held, meal_offset, meal_pose, play_face, play_held, play_offset, play_pose,
     prop_in_motion, prop_variants, render_held_sheet, shown_set_back, shows_held_by_default,
+    village_held,
 };
 pub use shelter::{
-    ResidentMark, SHELTER_SIZE, ShelterRenderer, VILLAGE_ATLAS_COLUMNS, VILLAGE_ATLAS_HEIGHT,
-    VILLAGE_ATLAS_WIDTH, VILLAGE_DAY_HEIGHT, VILLAGE_HOUSES, VillageCell, VillageLook,
+    PENNANT_PATCH, ResidentMark, SHELTER_SIZE, ShelterRenderer, VILLAGE_ATLAS_COLUMNS,
+    VILLAGE_ATLAS_HEIGHT, VILLAGE_ATLAS_WIDTH, VILLAGE_DAY_HEIGHT, VILLAGE_HOUSES, VillageCell,
+    VillageLook, WIND_HOLD_SECS, WIND_ROUND_SECS, village_gust,
 };
 pub use souvenirs::{SOUVENIR_ICON, SOUVENIR_TILE, draw_souvenir, souvenir_strip};
 pub use sticker::{
@@ -72,10 +76,11 @@ pub use trinkets::{
     TRINKET_RESTING_HEIGHT, TrinketAtlasRenderer, TrinketInk, draw_trinket,
 };
 pub use ui_atlas::{
-    BUBBLE_ANCHOR, BUBBLE_CELL, LABEL_TAB_GAP, LABEL_TAB_HEIGHT, MENU_BODY_HEIGHT, MENU_CELL,
-    MENU_MAX_ITEMS, MENU_MIN_ITEMS, MENU_NOTCH_HEIGHT, MENU_STRIP_HEIGHT, MENU_UNAVAILABLE_TEXT,
-    MenuIcon, MenuLayout, MenuRect, SpriteRect, UI_ATLAS_HEIGHT, UI_ATLAS_WIDTH, UiAtlasRenderer,
-    menu_label_text,
+    BUBBLE_ANCHOR, BUBBLE_CELL, ContactShadow, LABEL_TAB_GAP, LABEL_TAB_HEIGHT, MENU_BODY_HEIGHT,
+    MENU_CELL, MENU_MAX_ITEMS, MENU_MIN_ITEMS, MENU_NOTCH_HEIGHT, MENU_STRIP_HEIGHT,
+    MENU_UNAVAILABLE_TEXT, MenuIcon, MenuLayout, MenuRect, SHADOW_FADE_HEIGHT, SHADOW_MAX_WIDTH,
+    SHADOW_SHEET_HEIGHT, SHADOW_SHEET_WIDTH, ShadowGround, SpriteRect, UI_ATLAS_HEIGHT,
+    UI_ATLAS_WIDTH, UiAtlasRenderer, menu_label_text,
 };
 pub use vignette::{
     VIGNETTE_HEIGHT, VIGNETTE_WIDTH, Vignette, render_vignette, render_vignette_figures,

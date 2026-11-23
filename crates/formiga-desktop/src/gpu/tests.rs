@@ -22,11 +22,11 @@ fn window(
 
 #[test]
 fn multi_creature_presentation_capacity_and_stall_recovery_are_bounded() {
-    // Four creatures, four dwellings and the two trees that bookend them, the sixteen keepsakes
-    // the trees hold between them, one bubble, and the colony's eight belongings.
+    // Four creatures, each on its shadow, four dwellings and the two trees that bookend them, the
+    // sixteen keepsakes the trees hold between them, one bubble, and the colony's eight belongings.
     assert_eq!(
         INITIAL_VERTEX_CAPACITY,
-        4 * 18 + 6 * 6 + formiga_core::TREE_HOOKS * 6 + 6 + 8 * 6
+        4 * 24 + 6 * 6 + formiga_core::TREE_HOOKS * 6 + 6 + 8 * 6
     );
     assert_eq!(
         expanded_vertex_capacity(INITIAL_VERTEX_CAPACITY, INITIAL_VERTEX_CAPACITY),
@@ -271,6 +271,7 @@ fn every_motion_and_readability_choice_bakes_the_same_atlas_every_time() {
         assert_eq!(atlas.body_cells.len(), total_animation_frames() as usize);
         assert_eq!(atlas.face_cells.len(), face_slot_count() as usize);
         assert_eq!(atlas.face_anchors.len(), total_animation_frames() as usize);
+        assert_eq!(atlas.hands.len(), total_animation_frames() as usize);
         assert!(cost(atlas) <= full_layout_bytes(), "{choice:?}");
     }
     assert_eq!(cost(&first[0]), cost(&first[2]));
@@ -376,6 +377,51 @@ fn every_frame_and_face_is_drawn_from_a_cell_that_holds_it() {
     }
 }
 
+/// With motion reduced each clip bakes one cell, shared by every frame of it, and that cell is the
+/// clip's still frame: what it holds there is what the moving clip holds on that frame, the snack
+/// at the mouth and the cup tipped to it rather than the first frame of either.
+#[test]
+fn reduced_motion_bakes_each_clip_as_one_cell_of_its_still_frame() {
+    let world = World::new(
+        [7; 32],
+        time::OffsetDateTime::UNIX_EPOCH,
+        &formiga_core::DesktopSnapshot::default(),
+    );
+    let creature = &world.save.creatures[0];
+    let reduced = build_atlas_pixels(creature, true, false, None, 1);
+    let moving = build_atlas_pixels(creature, false, false, None, 1);
+    for clip in BodyClip::baked() {
+        let still = atlas_slot(clip, AnimationSpec::still_frame(clip)) as usize;
+        for frame in 0..AnimationSpec::for_clip(clip).frames {
+            let slot = atlas_slot(clip, frame) as usize;
+            assert_eq!(
+                reduced.body_cells[slot], reduced.body_cells[still],
+                "{clip:?} frame {frame} has a cell of its own under reduced motion"
+            );
+        }
+        assert_eq!(
+            reduced.held[still].map(|held| held.thing),
+            moving.held[still].map(|held| held.thing),
+            "{clip:?} holds still on another frame than its still frame"
+        );
+    }
+    let cells = |atlas: &AtlasPixels| {
+        atlas
+            .body_cells
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+    };
+    eprintln!(
+        "reduced motion: {} body cells, {} bytes; moving: {} body cells, {} bytes",
+        cells(&reduced),
+        reduced.body_pixels.len() + reduced.face_pixels.len(),
+        cells(&moving),
+        moving.body_pixels.len() + moving.face_pixels.len(),
+    );
+    assert!(cells(&reduced) <= BodyClip::baked().count());
+}
+
 /// Every variant the catalogue has — including the eight the simulation cannot pick yet —
 /// samples a real cell of the colony sheet, on both of its frames.
 #[test]
@@ -404,8 +450,9 @@ fn every_trinket_in_the_catalogue_samples_its_own_cell_of_the_colony_sheet() {
 }
 
 /// The village atlas is one texture: a cell for every house by day, with somebody at home and
-/// without, the same again lit after dark, and one tree cell both trees come from. No two lots may
-/// sample the same cell, and none may sample off the sheet.
+/// without, the same again lit after dark, one tree cell both trees come from, and below it the
+/// tree leaning either way in the wind and the tents' blown-out pennants. No two lots may sample
+/// the same cell, and none may sample off the sheet: the wind costs the texture nothing.
 #[test]
 fn every_village_cell_including_the_tree_has_its_own_place_on_the_one_atlas() {
     let (cell_u, cell_v) = (
@@ -424,6 +471,16 @@ fn every_village_cell_including_the_tree_has_its_own_place_on_the_one_atlas() {
         })
         .collect();
     cells.push(VillageCell::Tree);
+    let wind = [
+        VillageCell::TreeInWind {
+            leaning_right: true,
+        },
+        VillageCell::TreeInWind {
+            leaning_right: false,
+        },
+        VillageCell::Pennants,
+    ];
+    cells.extend(wind);
     let mut seen = std::collections::BTreeSet::new();
     for kind in cells {
         let (u, v) = village_cell(kind);
@@ -436,11 +493,45 @@ fn every_village_cell_including_the_tree_has_its_own_place_on_the_one_atlas() {
             "{kind:?} shares a cell"
         );
         // By day everything is in the top half, which is all the Home page holds.
-        if !matches!(kind, VillageCell::House { lit: true, .. }) {
+        if !matches!(kind, VillageCell::House { lit: true, .. }) && !wind.contains(&kind) {
             assert!(v + cell_v <= 0.5, "{kind:?} is not in the daylit half");
         }
     }
-    assert_eq!(seen.len(), formiga_art::VILLAGE_HOUSES * 4 + 1);
+    assert_eq!(seen.len(), formiga_art::VILLAGE_HOUSES * 4 + 4);
+    // Every slot's blown-out pennant has its own square inside the pennants' cell.
+    let (px, py) = ShelterRenderer::village_cell(VillageCell::Pennants);
+    let mut patches = std::collections::BTreeSet::new();
+    for slot in 0..formiga_art::VILLAGE_HOUSES {
+        for lit in [false, true] {
+            let (x, y) = ShelterRenderer::pennant_patch(slot, lit);
+            assert!(
+                (px..=px + SHELTER_SIZE - formiga_art::PENNANT_PATCH).contains(&x)
+                    && (py..=py + SHELTER_SIZE - formiga_art::PENNANT_PATCH).contains(&y),
+                "slot {slot}'s pennant falls outside its cell"
+            );
+            assert!(
+                patches.insert((x, y)),
+                "slot {slot}'s pennant shares a square"
+            );
+        }
+    }
+    // In a gust both trees lean the way the pennants fly: the inward one, read mirrored, from
+    // the cell that leans the other way. Still, both are the one tree cell.
+    for end in formiga_core::TreeEnd::BOTH {
+        assert_eq!(tree_cell(end, false), VillageCell::Tree);
+    }
+    assert_eq!(
+        tree_cell(formiga_core::TreeEnd::Outward, true),
+        VillageCell::TreeInWind {
+            leaning_right: true
+        }
+    );
+    assert_eq!(
+        tree_cell(formiga_core::TreeEnd::Inward, true),
+        VillageCell::TreeInWind {
+            leaning_right: false
+        }
+    );
     assert!(
         tree_is_mirrored(formiga_core::TreeEnd::Inward)
             && !tree_is_mirrored(formiga_core::TreeEnd::Outward),
@@ -552,6 +643,7 @@ fn a_finer_atlas_is_the_same_picture_at_more_pixels() {
     assert_eq!(fine.body_cells, plain.body_cells);
     assert_eq!(fine.face_cells, plain.face_cells);
     assert_eq!(fine.face_anchors, plain.face_anchors);
+    assert_eq!(fine.hands, plain.hands);
     assert_eq!(fine.silhouette, plain.silhouette);
     let pixel = |pixels: &[u8], width: u32, x: u32, y: u32| {
         let at = ((y * width + x) * 4) as usize;
@@ -704,6 +796,117 @@ fn a_sculpted_form_is_baked_no_finer_than_a_half_resolution_overlay_draws_it() {
     assert_eq!(baked_detail(&appearance, 4, 1), 4);
 }
 
+/// The overlay centres a find held up, a watering can and anything picked on the paw each frame
+/// draws, so the atlas keeps that paw for every body slot, exactly as the frame reports it, beside
+/// the face anchor it keeps the same way.
+#[test]
+fn the_atlas_keeps_each_frames_paw_for_every_body_slot() {
+    let world = World::new(
+        [23; 32],
+        time::OffsetDateTime::UNIX_EPOCH,
+        &formiga_core::DesktopSnapshot::default(),
+    );
+    let creature = &world.save.creatures[0];
+    let atlas = build_atlas_pixels(creature, false, false, None, 1);
+    assert_eq!(atlas.hands.len(), total_animation_frames() as usize);
+    assert_eq!(atlas.hands.len(), atlas.face_anchors.len());
+    for clip in BodyClip::baked() {
+        for frame in 0..AnimationSpec::for_clip(clip).frames {
+            let rendered =
+                CreatureRenderer::render_body_frame(&creature.appearance, clip, frame, false);
+            let slot = atlas_slot(clip, frame) as usize;
+            assert_eq!(atlas.hands[slot], rendered.hands, "{clip:?} frame {frame}");
+            assert_eq!(atlas.face_anchors[slot], rendered.face_anchor);
+        }
+    }
+}
+
+/// Through a whole watering beat, ticked as the desktop ticks it, the can is on the paw on every
+/// frame and the water is drawn only while the pour has the can tipped over, its quad centred on
+/// the tipped can's spout whichever way the companion faces and however large it is drawn.
+#[test]
+fn the_water_runs_from_the_cans_spout_only_while_the_pour_tips_it() {
+    use formiga_art::{BodyPresentation, PropSprite};
+    use formiga_core::{Beat, BeatKind, Gesture, VillageProp};
+    let world = World::new(
+        [23; 32],
+        time::OffsetDateTime::UNIX_EPOCH,
+        &formiga_core::DesktopSnapshot::default(),
+    );
+    let mut creature = world.save.creatures[0].clone();
+    creature.state.action = ActionKind::Idle;
+    let hands = (300.0, 400.0);
+    let tipped = ColonyObjectRenderer::prop_cell(PropSprite::WateringCanTipped);
+    let upright = ColonyObjectRenderer::prop_cell(PropSprite::WateringCan);
+    let water = ColonyObjectRenderer::prop_cell(PropSprite::Water);
+    let (spout_x, spout_y) = PropSprite::WateringCanTipped
+        .spout()
+        .expect("the tipped can has a spout");
+    let half = COLONY_OBJECT_SIZE as f32 / 2.0;
+    for facing_right in [true, false] {
+        for display_scale in [1_u8, 2, 3] {
+            creature.state.facing_right = facing_right;
+            let mut beat = Beat::new(BeatKind::Watering, 5.0);
+            beat.held = Some(VillageProp::WateringCan);
+            let (mut poured, mut level) = (0, 0);
+            while beat.elapsed <= beat.length {
+                creature.state.beat = Some(beat);
+                let shown = BodyPresentation::for_creature(&creature);
+                assert_eq!(shown.clip, BodyClip::Gesture(Gesture::Pour));
+                let [can, running] = village_held_cells(
+                    VillageProp::WateringCan,
+                    shown.clip,
+                    shown.frame,
+                    hands,
+                    shown.facing_right,
+                    display_scale,
+                );
+                let (can_cell, can_centre) = can.expect("the can is always in its paws");
+                assert_eq!(can_centre, hands, "the can is on the paw the frame draws");
+                // The pour leans into the can on its second and third frames and is level on the
+                // first and last.
+                let tips = matches!(shown.frame % 4, 1 | 2);
+                assert_eq!(running.is_some(), tips, "frame {}", shown.frame);
+                assert_eq!(can_cell, if tips { tipped } else { upright });
+                if let Some((cell, centre)) = running {
+                    poured += 1;
+                    assert_eq!(cell, water);
+                    let unit = f32::from(display_scale);
+                    let across = (spout_x as f32 - half) * unit;
+                    let spout = (
+                        can_centre.0 + if shown.facing_right { across } else { -across },
+                        can_centre.1 + (spout_y as f32 - half) * unit,
+                    );
+                    close(centre.0, spout.0, "water centre x at the spout");
+                    close(centre.1, spout.1, "water centre y at the spout");
+                } else {
+                    level += 1;
+                }
+                beat.elapsed += 0.05;
+            }
+            assert!(poured > 0 && level > 0, "it pours and comes level");
+        }
+    }
+    // Nothing else the village puts in a paw pours, and the can pours on no other clip's frames.
+    for clip in BodyClip::baked() {
+        for frame in 0..AnimationSpec::for_clip(clip).frames {
+            for prop in [
+                VillageProp::WateringCan,
+                VillageProp::Apple,
+                VillageProp::Leaf,
+                VillageProp::Produce(formiga_core::GardenKind::Vegetables),
+            ] {
+                let [held, running] = village_held_cells(prop, clip, frame, hands, true, 2);
+                assert!(held.is_some());
+                let pours = prop == VillageProp::WateringCan
+                    && clip == BodyClip::Gesture(Gesture::Pour)
+                    && matches!(frame, 1 | 2);
+                assert_eq!(running.is_some(), pours, "{prop:?} {clip:?} frame {frame}");
+            }
+        }
+    }
+}
+
 #[test]
 fn layered_atlas_matches_the_baked_budget_per_creature() {
     let desktop = formiga_core::DesktopSnapshot {
@@ -733,33 +936,46 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     let bake_time = started.elapsed();
     let total_bytes = atlas.body_pixels.len() + atlas.face_pixels.len();
     eprintln!("layered atlas: {total_bytes} bytes, baked in {bake_time:?}");
-    // 92 action frames and 121 gesture frames — eight of them the seat and the sled wonders
-    // brought in 0.66.0, twenty-eight a companion's own repertoire (a wash, a shake, a sniff, two
-    // more ways to sleep and two more ways to walk), sixteen the chores and a pet leaned into, and
-    // fourteen the nibble, chomp, chew and gulp of a meal —
+    // 110 action frames — six of them the climb, a stroke with each paw, two the toss's own and
+    // the last two a squeeze's own, pinched — and 130 gesture frames — three of them the mantle
+    // a climb tops out with, eight the seat and the sled wonders brought in 0.66.0, twenty-eight a
+    // companion's own repertoire (a wash, a shake, a sniff, two more ways to sleep and two more
+    // ways to walk), sixteen the chores and a pet leaned into, fourteen the nibble, chomp, chew and
+    // gulp of a meal, and two a hop's leap through the air — and sixteen more for breathing:
+    // eight frames each for sitting on a window and on the doorstep where each had one pose, and
+    // four for each way of sleeping where each had two —
     // and fifteen expressions' faces in every eyelid pose
     // and gaze. Until 0.62.0 every one had a cell of its own, ten columns of 48px bodies and
     // twenty-seven of 16px faces to a row, and the face texture ended in eight trinket cells
     // nothing read: 1,824,768 bytes with the temperament poses and their faces. Since 0.62.0 a
     // frame or face that comes out the same as one already baked shares its cell — a held pose,
     // eyes shut whichever way they would be looking — and the trinket cells are gone.
-    assert_eq!(total_animation_frames(), 213);
+    assert_eq!(total_animation_frames(), 240);
     // 1,244,160 until 0.66.0, when the walk, the run, the greeting and the meal stopped repeating
     // frames they had shared and the texture grew by a row of ten cells, to 1,336,320;
     // 1,244,160 again from 0.66.1, whose scoot along on a leaf sled repeats two of its four
     // frames where pedalling a bike repeated none, which brings it back under that row; and
     // 1,520,640 with the repertoire, three rows more, 1,612,800 with the chores and the pet, and
-    // 1,704,960 with the four ways a meal is eaten (fourteen frames).
-    assert_eq!(total_bytes, 1_704_960);
-    assert_eq!(full_layout_bytes(), 2_442_240);
+    // 1,704,960 with the four ways a meal is eaten (fourteen frames), and still that with the
+    // climb's two more frames, the mantle's three and the toss's two, which fit in cells the last
+    // row had spare, and with the leap's two, which take the two cells being carried gave up when
+    // it stopped bobbing and came to repeat its frames; 1,797,120 with the breathing, one row
+    // more (a seated breath's second loop is its first but for the tail), and still that with a
+    // squeeze's two pinched frames, which fill cells the last row had spare; and 1,889,280 once
+    // the marks over a greeting, a game with a friend and a cheer drift and fade across their
+    // frames, so fewer of those frames come out alike: one row more again.
+    assert_eq!(total_bytes, 1_889_280);
+    assert_eq!(full_layout_bytes(), 2_626_560);
     // Tripled in 0.58.0 so the pose vocabulary has somewhere to grow: the budget is what
     // stops a creature costing more than a creature should, not what stops it having poses.
     assert!(full_layout_bytes() <= 4_500_000);
     // A full colony of six like this one: 9,676,800 bytes. Even with no two frames alike it
-    // would be 13,547,520, which is why the ceiling was raised from 10 MiB to 15 MiB in 0.62.0.
+    // would be 13,547,520, which is why the ceiling was raised from 10 MiB to 15 MiB in 0.62.0,
+    // and to 16 MiB in 0.68.0, when the animation pass's new clips (climb, mantle, toss, leap,
+    // squeeze, breathing) put the no-two-frames-alike colony just past 15 MiB.
     assert!(
-        full_layout_bytes() * formiga_core::MAX_COLONY_CREATURES < 15 * 1024 * 1024,
-        "a full colony's atlases could exceed 15 MiB"
+        full_layout_bytes() * formiga_core::MAX_COLONY_CREATURES < 16 * 1024 * 1024,
+        "a full colony's atlases could exceed 16 MiB"
     );
     assert!(total_bytes < atlas.body_pixels.len() * 3);
     // The optional outline is baked into the same atlas: no extra texture, no extra frame,
@@ -771,6 +987,7 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     );
     assert_eq!(outlined.body_cells, atlas.body_cells);
     assert_eq!(outlined.face_anchors, atlas.face_anchors);
+    assert_eq!(outlined.hands, atlas.hands);
     let (mut added, mut changed) = (0, 0);
     for (plain, edged) in atlas
         .body_pixels
@@ -789,16 +1006,19 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     );
     assert!(added > 0, "an outline does appear around the creature");
     assert_eq!(atlas.face_anchors.len(), total_animation_frames() as usize);
+    // A toss has two frames of its own, after every other action's.
     assert_eq!(
-        atlas_slot(ActionKind::Tossed, 2),
-        atlas_slot(ActionKind::Dragged, 2)
+        atlas_slot(ActionKind::Tossed, 0),
+        atlas_slot(ActionKind::PresentDiscovery, 3) + 1
     );
+    // A squeeze has two frames of its own, after every other action's. Appended clips from other
+    // changes move this and the gesture offset below by their frame counts and nothing else.
     assert_eq!(
-        atlas_slot(ActionKind::SqueezeWindow, 2),
-        atlas_slot(ActionKind::Traverse, 2)
+        atlas_slot(ActionKind::SqueezeWindow, 0),
+        atlas_slot(ActionKind::Tossed, 1) + 1
     );
     // Gestures follow the action clips, and every baked frame owns exactly one slot.
-    assert_eq!(atlas_slot(formiga_core::Gesture::Cheer, 0), 92);
+    assert_eq!(atlas_slot(formiga_core::Gesture::Cheer, 0), 110);
     let mut slots = BTreeSet::new();
     for clip in BodyClip::baked() {
         for frame in 0..AnimationSpec::for_clip(clip).frames {
@@ -808,8 +1028,6 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
         }
     }
     assert_eq!(slots.len(), total_animation_frames() as usize);
-    assert_eq!(creature_horizontal_scale(ActionKind::SqueezeWindow), 0.72);
-    assert_eq!(creature_horizontal_scale(ActionKind::Traverse), 1.0);
     if !cfg!(debug_assertions) {
         assert!(
             bake_time < std::time::Duration::from_millis(75),
@@ -960,6 +1178,46 @@ fn a_smaller_creature_keeps_its_bubble_as_close_to_its_head_as_an_adult() {
             "{name}: the tail's tip belongs one art pixel above the crown"
         );
     }
+}
+
+/// A bubble hangs off the highest crown its clip reaches, not off each frame's own, so over a
+/// bouncing greeting or a hop it holds still while the head moves under it, and its tail stays
+/// clear of the head at the top of every bounce.
+#[test]
+fn a_bubble_holds_still_over_a_bobbing_clip() {
+    let world = ui_world();
+    let atlas = build_atlas_pixels(&world.save.creatures[0], false, false, None, 1);
+    let size = (TALK_BUBBLE.0 as f32, TALK_BUBBLE.1 as f32);
+    let scale = 3.0;
+    let frame_top = 300.0;
+    for clip in [
+        BodyClip::Action(ActionKind::Greet),
+        BodyClip::Action(ActionKind::Idle),
+        BodyClip::Gesture(formiga_core::Gesture::Cheer),
+    ] {
+        let tops: Vec<u8> = (0..AnimationSpec::for_clip(clip).frames)
+            .map(|frame| atlas.silhouette[atlas_slot(clip, frame) as usize].0)
+            .collect();
+        let crown = clip_crown(&atlas.silhouette, clip).expect("baked");
+        assert_eq!(crown, *tops.iter().min().unwrap(), "{clip:?}");
+        let placed: Vec<f32> = tops
+            .iter()
+            .map(|top| {
+                let foot_bottom = frame_top + 47.0 * scale;
+                let head_top = frame_top + f32::from(crown) * scale;
+                let y = talk_origin(700.0, (head_top, foot_bottom), scale, DRAWABLE, size).y;
+                // The tail's tip is above this frame's own crown too.
+                assert!(y + size.1 * scale < frame_top + f32::from(*top) * scale);
+                y
+            })
+            .collect();
+        assert!(placed.windows(2).all(|pair| pair[0] == pair[1]), "{clip:?}");
+    }
+    // The greeting does bob, which is why this matters.
+    let greet: Vec<u8> = (0..4)
+        .map(|frame| atlas.silhouette[atlas_slot(ActionKind::Greet, frame) as usize].0)
+        .collect();
+    assert!(greet.iter().any(|top| *top != greet[0]), "{greet:?}");
 }
 
 #[test]
@@ -1615,4 +1873,307 @@ fn a_small_companions_menu_is_still_big_enough_to_use() {
         let cell_points = formiga_art::MENU_CELL as f32 * scale / factor;
         assert!(cell_points >= 21.0, "{cell_points} points a cell");
     }
+}
+
+// -------------------------------------------------------------------------------------
+// Contact shadows.
+// -------------------------------------------------------------------------------------
+
+/// The Retina drawable `ui_desktop` lays out on, full resolution.
+const SHADOW_LAYOUT: PhysicalSize<u32> = PhysicalSize::new(2880, 1800);
+
+/// A quad's pixel rectangle on `SHADOW_LAYOUT`: left, top, right, bottom.
+fn shadow_rect(quad: &[Vertex; 6]) -> (f32, f32, f32, f32) {
+    let to_x = |value: f32| (value + 1.0) / 2.0 * SHADOW_LAYOUT.width as f32;
+    let to_y = |value: f32| (1.0 - value) / 2.0 * SHADOW_LAYOUT.height as f32;
+    (
+        to_x(quad[0].position[0]),
+        to_y(quad[0].position[1]),
+        to_x(quad[1].position[0]),
+        to_y(quad[5].position[1]),
+    )
+}
+
+/// What the overlay works out for a companion's shadow, laid out the way `vertices_for` lays
+/// out its body: the shadow quad if any, and the frame's left edge, top edge and contact line.
+fn drawn_shadow(
+    creature: &Creature,
+    atlas: &AtlasPixels,
+    grounds: &ShadowGrounds<'_>,
+    display_scale: u8,
+) -> (Option<[Vertex; 6]>, f32, f32, f32) {
+    let unit = f32::from(display_scale);
+    let monitor = grounds.monitor;
+    let drawn = creature
+        .state
+        .drawn_position(unit / monitor.scale_factor.max(1.0));
+    let local_x = (drawn.x - monitor.bounds.x) * monitor.scale_factor;
+    let contact_y = (drawn.y - monitor.bounds.y) * monitor.scale_factor;
+    let baseline = CreatureRenderer::resting_baseline(&creature.appearance, false);
+    let placement = FramePlacement::for_creature(creature, baseline);
+    let frame_top = contact_y + placement.origin_y as f32 * unit;
+    let BodyPresentation {
+        clip,
+        frame,
+        facing_right,
+    } = BodyPresentation::for_creature(creature);
+    let slot = atlas_slot(clip, frame) as usize;
+    let quad = grounds
+        .spot(
+            creature,
+            creature.state.position,
+            atlas.silhouette[slot].1,
+            (local_x, contact_y),
+            frame_top,
+            display_scale,
+        )
+        .and_then(|spot| {
+            shadow_quad(
+                atlas.feet[slot],
+                facing_right,
+                spot,
+                SHADOW_LAYOUT,
+                1.0,
+                |value| value,
+            )
+        });
+    let frame_left = local_x - FRAME_SIZE as f32 * unit / 2.0;
+    (quad, frame_left, frame_top, contact_y)
+}
+
+fn standing(creature: &Creature, action: ActionKind, frame: u8, x: f32, y: f32) -> Creature {
+    let mut creature = creature.clone();
+    creature.state.action = action;
+    creature.state.action_elapsed = 0.0;
+    creature.state.attention = None;
+    creature.state.beat = None;
+    creature.state.play = None;
+    creature.state.flourish = None;
+    creature.state.position = Point { x, y };
+    creature.state.depth = 0.0;
+    // Far enough into the clip to show `frame`.
+    let spec = AnimationSpec::for_action(action);
+    creature.state.action_elapsed = f32::from(frame) / f32::from(spec.fps.max(1));
+    creature
+}
+
+/// Every companion on its feet stands on exactly one shadow, whatever it is doing on the
+/// ground, and nobody being carried has one.
+#[test]
+fn every_companion_on_its_feet_has_one_shadow_and_none_while_carried() {
+    let world = ui_world();
+    let monitor = &ui_desktop().monitors[0];
+    let settings = &world.save.settings;
+    let grounds = ShadowGrounds {
+        monitor,
+        render_divisor: 1,
+        windows: &[],
+        settings,
+        village: None,
+    };
+    let floor = 856.0;
+    for creature in &world.save.creatures {
+        let atlas = build_atlas_pixels(creature, false, false, None, 1);
+        for action in [
+            ActionKind::Idle,
+            ActionKind::Traverse,
+            ActionKind::Sprint,
+            ActionKind::Sleep,
+            ActionKind::Eat,
+            ActionKind::Greet,
+            ActionKind::Landing,
+            ActionKind::PetReaction,
+        ] {
+            for frame in 0..AnimationSpec::for_action(action).frames {
+                let on_feet = standing(creature, action, frame, 600.0, floor);
+                let (quad, ..) = drawn_shadow(&on_feet, &atlas, &grounds, 3);
+                assert!(quad.is_some(), "{action:?} frame {frame} has no shadow");
+            }
+        }
+        let carried = standing(creature, ActionKind::Dragged, 0, 600.0, 400.0);
+        assert!(
+            drawn_shadow(&carried, &atlas, &grounds, 3).0.is_none(),
+            "a companion being carried casts no shadow"
+        );
+    }
+}
+
+/// A shadow is never wider than the frame it is under draws, either way round, at any frame of
+/// any clip, and never reaches up past the feet: its top row is the feet's own bottom row, on the
+/// line they stand on, and a frame that lifts its feet off that line keeps it there, smaller.
+#[test]
+fn a_shadow_stays_within_the_silhouette_and_never_climbs_above_the_feet() {
+    let world = ui_world();
+    let creature = &world.save.creatures[0];
+    let atlas = build_atlas_pixels(creature, false, false, None, 1);
+    let unit = 3.0;
+    let (frame_left, contact_y) = (600.0, 900.0);
+    let baseline = CreatureRenderer::resting_baseline(&creature.appearance, false);
+    let contact_row = FRAME_SIZE as i32 - baseline as i32;
+    let mut drawn = 0;
+    for clip in BodyClip::baked() {
+        for frame in 0..AnimationSpec::for_clip(clip).frames {
+            let slot = atlas_slot(clip, frame) as usize;
+            let body =
+                CreatureRenderer::render_body_frame(&creature.appearance, clip, frame, false)
+                    .canvas;
+            let (left, _, right, bottom) = body.alpha_bounds().expect("the frame draws something");
+            let lift = (contact_row - (bottom as i32 + 1)).max(0) as f32;
+            for facing_right in [true, false] {
+                let spot = ShadowSpot {
+                    frame_centre_x: frame_left + FRAME_SIZE as f32 * unit / 2.0,
+                    ground_y: contact_y,
+                    lift,
+                    unit,
+                    ground: ShadowGround::Desktop,
+                };
+                let Some(quad) = shadow_quad(
+                    atlas.feet[slot],
+                    facing_right,
+                    spot,
+                    SHADOW_LAYOUT,
+                    1.0,
+                    |value| value,
+                ) else {
+                    continue;
+                };
+                drawn += 1;
+                let (from, to) = if facing_right {
+                    (left, right + 1)
+                } else {
+                    (FRAME_SIZE - right - 1, FRAME_SIZE - left)
+                };
+                let (shadow_left, shadow_top, shadow_right, _) = shadow_rect(&quad);
+                let what = format!("{clip:?} frame {frame} facing right {facing_right}");
+                assert!(
+                    shadow_left >= frame_left + from as f32 * unit - 0.01
+                        && shadow_right <= frame_left + to as f32 * unit + 0.01,
+                    "{what}: the shadow is wider than the silhouette"
+                );
+                close(shadow_top, contact_y - unit, &what);
+            }
+        }
+    }
+    assert!(
+        drawn > total_animation_frames() as usize,
+        "hardly any frame had a shadow"
+    );
+}
+
+/// Thrown, a companion's shadow stays on whatever it would come down on — the ledge under it,
+/// or the floor where the ledge is covered or not under it at all — and shrinks the higher it
+/// is, until it is gone.
+#[test]
+fn in_the_air_a_shadow_stays_on_the_ground_below_and_shrinks_with_height() {
+    let world = ui_world();
+    let monitor = &ui_desktop().monitors[0];
+    let ledge = DesktopRect {
+        x: 400.0,
+        y: 600.0,
+        width: 400.0,
+        height: 200.0,
+    };
+    let windows = [window(1, 1, ledge, None)];
+    let grounds = ShadowGrounds {
+        monitor,
+        render_divisor: 1,
+        windows: &windows,
+        settings: &world.save.settings,
+        village: None,
+    };
+    let creature = &world.save.creatures[0];
+    let atlas = build_atlas_pixels(creature, false, false, None, 1);
+    let unit = 3.0;
+    let ledge_line = ledge.y * monitor.scale_factor;
+    let mut last_width = f32::INFINITY;
+    let mut gone = false;
+    for rise in (0..=60).map(|step| step as f32 * 4.0) {
+        let thrown = standing(creature, ActionKind::Tossed, 0, 600.0, ledge.y - rise);
+        match drawn_shadow(&thrown, &atlas, &grounds, 3).0 {
+            Some(quad) => {
+                assert!(!gone, "a shadow came back higher up, at {rise} points");
+                let (left, top, right, _) = shadow_rect(&quad);
+                close(top, ledge_line - unit, "on the ledge below");
+                assert!(right - left <= last_width + 0.01, "it grew going up");
+                last_width = right - left;
+            }
+            None => gone = true,
+        }
+    }
+    assert!(gone, "a companion high above the ledge still had a shadow");
+
+    // Off the end of the ledge, the floor is what is below.
+    let floor_line = 856.0 * monitor.scale_factor;
+    let beside = standing(creature, ActionKind::Tossed, 0, 300.0, 820.0);
+    let (quad, ..) = drawn_shadow(&beside, &atlas, &grounds, 3);
+    close(
+        shadow_rect(&quad.expect("low over the floor")).1,
+        floor_line - unit,
+        "on the floor",
+    );
+
+    // A ledge behind another window is not somewhere to come down.
+    let covered = [
+        window(2, 0, DesktopRect { y: 500.0, ..ledge }, None),
+        window(1, 1, ledge, None),
+    ];
+    let behind = ShadowGrounds {
+        windows: &covered,
+        ..grounds
+    };
+    let above = standing(creature, ActionKind::Tossed, 0, 600.0, 495.0);
+    let (quad, ..) = drawn_shadow(&above, &atlas, &behind, 3);
+    close(
+        shadow_rect(&quad.expect("just over the front window")).1,
+        500.0 * monitor.scale_factor - unit,
+        "on the front window, not the one behind it",
+    );
+
+    // Hanging by its hands from something low, the shadow is on the floor under its feet, and
+    // smaller than standing there would make it.
+    let hanging = standing(creature, ActionKind::Dangle, 0, 300.0, 780.0);
+    let quad = drawn_shadow(&hanging, &atlas, &grounds, 3)
+        .0
+        .expect("hanging a little off the floor");
+    let standing_there = standing(creature, ActionKind::Idle, 0, 300.0, 856.0);
+    let full = drawn_shadow(&standing_there, &atlas, &grounds, 3)
+        .0
+        .expect("standing on the floor");
+    let ((left, top, right, _), (full_left, _, full_right, _)) =
+        (shadow_rect(&quad), shadow_rect(&full));
+    close(top, floor_line - unit, "under a hanging companion");
+    assert!(right - left < full_right - full_left);
+}
+
+/// On the village's grass a shadow is drawn as the ground shades itself: three rows, all of
+/// them on the grass behind the line the feet stand on.
+#[test]
+fn on_the_village_grass_a_shadow_lies_back_across_it() {
+    let world = ui_world();
+    let monitor = &ui_desktop().monitors[0];
+    let floor_line = 856.0 * monitor.scale_factor;
+    let grounds = ShadowGrounds {
+        monitor,
+        render_divisor: 1,
+        windows: &[],
+        settings: &world.save.settings,
+        village: Some(VillageStrip {
+            left: 1000.0,
+            right: 1600.0,
+            line_y: floor_line,
+        }),
+    };
+    let creature = &world.save.creatures[0];
+    let atlas = build_atlas_pixels(creature, false, false, None, 1);
+    let unit = 3.0;
+    let at_home = standing(creature, ActionKind::Idle, 0, 650.0, 856.0);
+    let (quad, ..) = drawn_shadow(&at_home, &atlas, &grounds, 3);
+    let (_, top, _, bottom) = shadow_rect(&quad.expect("a shadow at home"));
+    close(top, floor_line - 3.0 * unit, "village shadow top");
+    close(bottom, floor_line, "village shadow foot");
+    // Out on the desktop beside the village, it is the desktop's two rows again.
+    let out = standing(creature, ActionKind::Idle, 0, 200.0, 856.0);
+    let (quad, ..) = drawn_shadow(&out, &atlas, &grounds, 3);
+    let (_, top, _, bottom) = shadow_rect(&quad.expect("a shadow out on the desktop"));
+    close(bottom - top, 2.0 * unit, "desktop shadow height");
 }

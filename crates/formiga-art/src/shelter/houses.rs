@@ -118,6 +118,9 @@ pub(super) struct House {
     pub(super) occupied: bool,
     /// Whose house it is.
     pub(super) mark: Option<super::ResidentMark>,
+    /// Caught in a breath of wind: a tent's pennant streams out further. Nothing else about a
+    /// house moves in the wind.
+    pub(super) gust: bool,
 }
 
 impl House {
@@ -399,9 +402,13 @@ fn tent(canvas: &mut Canvas, house: House, m: Materials) {
     // The pole through the peak, and a pennant flying from it.
     canvas.line(apex.0, apex.1, apex.0, apex.1 - u(3), 1, m.outline);
     let flag_top = apex.1 - u(3);
-    for row in 0..u(3).max(2) {
-        let reach = (u(3).max(2) - row).max(1);
-        canvas.fill_rect(apex.0 + 1, flag_top + row, reach, 1, m.trim.base);
+    let rows = u(3).max(2);
+    for row in 0..rows {
+        let reach = (rows - row).max(1);
+        // In a gust it is blown out flat: a pixel longer on every row but the last, over the
+        // whole of what it covers still, so the gust is only ever drawn on top of the calm.
+        let blown = i32::from(house.gust && row + 1 < rows);
+        canvas.fill_rect(apex.0 + 1, flag_top + row, reach + blown, 1, m.trim.base);
     }
     canvas.set(apex.0 + 1, flag_top, m.trim.light);
     triangle_doorway(canvas, house, m);

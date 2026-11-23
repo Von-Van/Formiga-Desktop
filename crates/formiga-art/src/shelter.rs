@@ -19,8 +19,10 @@ pub const VILLAGE_HOUSES: usize = formiga_core::MAX_COLONY_CREATURES;
 
 /// Seven cells across, a house for each companion and the tree, and four down. The top row is every
 /// house by day and the keepsake tree; the second row the same houses by day with somebody at home;
-/// the third and fourth rows the same again lit from inside after dark. The daylit half on its own
-/// is what the Home page and the colony portrait draw from.
+/// the third and fourth rows the same again lit from inside after dark. Under the tree, its column
+/// holds the village in a breath of wind: the tree leaning right, leaning left, and the tents'
+/// blown-out pennants. The daylit half on its own is what the Home page and the colony portrait
+/// draw from.
 pub const VILLAGE_ATLAS_COLUMNS: u32 = VILLAGE_HOUSES as u32 + 1;
 pub const VILLAGE_ATLAS_WIDTH: u32 = SHELTER_SIZE * VILLAGE_ATLAS_COLUMNS;
 pub const VILLAGE_ATLAS_HEIGHT: u32 = SHELTER_SIZE * 4;
@@ -50,6 +52,53 @@ pub enum VillageCell {
     },
     /// The keepsake tree both ends of the village are drawn from.
     Tree,
+    /// The keepsake tree in a breath of wind, its crown pushed a pixel to the right of the cell,
+    /// or to the left: the outward tree takes the first and the inward one, drawn mirrored, the
+    /// second, so both lean the way the pennants fly. The second is only in the whole atlas.
+    TreeInWind { leaning_right: bool },
+    /// The pennants of every tent in the village blown out in the same wind: for each house slot,
+    /// by day and lit after dark, a [`PENNANT_PATCH`]-pixel square holding only the pixels a gust
+    /// changes, laid over the house at [`ShelterRenderer::pennant_origin`]. Only in the whole
+    /// atlas, and only filled for the slots built as tents.
+    Pennants,
+}
+
+/// The side of one square of [`VillageCell::Pennants`], in shelter pixels.
+pub const PENNANT_PATCH: u32 = 16;
+
+/// How long one round of the village's wind takes, in seconds: a still spell and then a gust,
+/// each between [`WIND_HOLD_SECS`] long, so the two always add up to this.
+pub const WIND_ROUND_SECS: f32 = 8.0;
+/// The shortest and longest the village holds still, or holds its gust, in seconds.
+pub const WIND_HOLD_SECS: std::ops::RangeInclusive<f32> = 3.0..=5.0;
+
+/// Whether the village is in a breath of wind `clock` seconds into the app's own clock: its trees
+/// leaning and its pennants blown out. It comes round every [`WIND_ROUND_SECS`], still for three
+/// to five seconds of each round and gusting for the rest, how long each spell lasts and where in
+/// the round the colony starts both taken from the colony's own seed, so two colonies never sway
+/// in step and nothing about it is stored. With motion reduced it never blows.
+pub fn village_gust(clock: f32, colony_seed: [u8; 32], reduced: bool) -> bool {
+    if reduced {
+        return false;
+    }
+    let seed = u64::from_le_bytes(colony_seed[8..16].try_into().unwrap_or([0; 8]));
+    let mix = |value: u64| {
+        let mut z = value.wrapping_add(0x9e37_79b9_7f4a_7c15);
+        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        z ^ (z >> 31)
+    };
+    let unit = |value: u64| (value & 0xffff) as f32 / 65_535.0;
+    let at = clock.max(0.0) + unit(mix(seed)) * WIND_ROUND_SECS;
+    let round = (at / WIND_ROUND_SECS).floor();
+    let into = at - round * WIND_ROUND_SECS;
+    let (shortest, longest) = (*WIND_HOLD_SECS.start(), *WIND_HOLD_SECS.end());
+    let still = shortest
+        + (longest - shortest)
+            * unit(mix(
+                seed ^ (round as u64).wrapping_mul(0x2545_f491_4f6c_dd1d)
+            ));
+    into >= still
 }
 
 /// Whose house it is, as the house shows it: the colours of the curtain its resident hangs in the
@@ -148,8 +197,30 @@ impl ShelterRenderer {
                 usize::from(occupied) + if lit { 2 } else { 0 },
             ),
             VillageCell::Tree => (VILLAGE_HOUSES, 0),
+            VillageCell::TreeInWind { leaning_right } => {
+                (VILLAGE_HOUSES, if leaning_right { 1 } else { 2 })
+            }
+            VillageCell::Pennants => (VILLAGE_HOUSES, 3),
         };
         (column as u32 * SHELTER_SIZE, row as u32 * SHELTER_SIZE)
+    }
+
+    /// Where the blown-out pennant of the house in village slot `slot` sits in the atlas, by day
+    /// or lit after dark: a [`PENNANT_PATCH`]-pixel square inside [`VillageCell::Pennants`].
+    pub fn pennant_patch(slot: usize, lit: bool) -> (u32, u32) {
+        let (x, y) = Self::village_cell(VillageCell::Pennants);
+        (
+            x + slot.min(VILLAGE_HOUSES - 1) as u32 * PENNANT_PATCH,
+            y + u32::from(lit) * PENNANT_PATCH,
+        )
+    }
+
+    /// Where the top-left of a slot's pennant patch lands in the house's own cell, in shelter
+    /// pixels: over the top of the pole, which stands on the peak of the tent.
+    pub fn pennant_origin(genome: &ShelterGenome, slot: usize) -> (i32, i32) {
+        let dwelling = Dwelling::in_slot(slot);
+        let (_, height) = dwelling_size(genome, dwelling.span);
+        (dwelling.cx - 4, dwelling.bottom - height - 6)
     }
 
     /// Every house in the village by day, with and without somebody at home, and — with
@@ -179,14 +250,9 @@ impl ShelterRenderer {
                 } else {
                     Rgba::new(236, 240, 236, 255)
                 };
-                for occupied in [false, true] {
-                    let (x, y) = Self::village_cell(VillageCell::House {
-                        slot,
-                        lit,
-                        occupied,
-                    });
-                    for row in 0..SHELTER_SIZE as i32 {
-                        for column in 0..SHELTER_SIZE as i32 {
+                let haze = |canvas: &mut Canvas, (x, y): (u32, u32), size: u32| {
+                    for row in 0..size as i32 {
+                        for column in 0..size as i32 {
                             let (px, py) = (x as i32 + column, y as i32 + row);
                             let pixel = canvas.get(px, py);
                             // The shadow on the ground stays a shadow.
@@ -195,6 +261,18 @@ impl ShelterRenderer {
                             }
                         }
                     }
+                };
+                for occupied in [false, true] {
+                    let cell = Self::village_cell(VillageCell::House {
+                        slot,
+                        lit,
+                        occupied,
+                    });
+                    haze(&mut canvas, cell, SHELTER_SIZE);
+                }
+                // Its pennant in the wind, faded as far as the house it flies over.
+                if after_dark {
+                    haze(&mut canvas, Self::pennant_patch(slot, lit), PENNANT_PATCH);
                 }
             }
         }
@@ -265,6 +343,57 @@ impl ShelterRenderer {
         let (x, y) = Self::village_cell(VillageCell::Tree);
         let (inset_x, inset_y) = crate::TREE_INSET;
         blit_cell(&mut canvas, &tree, x as i32 + inset_x, y as i32 + inset_y);
+        // The village in a breath of wind, in the cells the tree's column has spare below it:
+        // the tree leaning either way, and every tent's pennant blown out. The tree leaning right
+        // falls in the daylit half, so it is there too, which costs that texture nothing.
+        for leaning_right in [true, false] {
+            if !leaning_right && !after_dark {
+                continue;
+            }
+            let tree = crate::KeepsakeTreeRenderer::render_in_wind(
+                genome,
+                if leaning_right { 1 } else { -1 },
+            );
+            let (x, y) = Self::village_cell(VillageCell::TreeInWind { leaning_right });
+            blit_cell(&mut canvas, &tree, x as i32 + inset_x, y as i32 + inset_y);
+        }
+        if after_dark {
+            for slot in 0..VILLAGE_HOUSES {
+                let house = ShelterGenome {
+                    style: styles.get(slot).copied().unwrap_or(genome.style),
+                    ..*genome
+                };
+                if house.style != ShelterStyle::Tent {
+                    continue;
+                }
+                let dressed = decorations.get(slot).map_or(&[][..], Vec::as_slice);
+                for lit in [false, true] {
+                    let draw = |gust: bool| {
+                        let mut tile = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
+                        let dwelling = Dwelling {
+                            mark: marks.get(slot).copied().flatten(),
+                            lit,
+                            gust,
+                            ..Dwelling::in_slot(slot)
+                        };
+                        draw_dwelling(&mut tile, &house, dressed, dwelling);
+                        tile
+                    };
+                    let (calm, blown) = (draw(false), draw(true));
+                    let (origin_x, origin_y) = Self::pennant_origin(&house, slot);
+                    let (x, y) = Self::pennant_patch(slot, lit);
+                    for row in 0..PENNANT_PATCH as i32 {
+                        for column in 0..PENNANT_PATCH as i32 {
+                            let (tx, ty) = (origin_x + column, origin_y + row);
+                            let pixel = blown.get(tx, ty);
+                            if pixel != calm.get(tx, ty) {
+                                canvas.set(x as i32 + column, y as i32 + row, pixel);
+                            }
+                        }
+                    }
+                }
+            }
+        }
         canvas
     }
 
@@ -326,6 +455,8 @@ struct Dwelling {
     mark: Option<ResidentMark>,
     lit: bool,
     occupied: bool,
+    /// In a breath of wind (see [`houses::House::gust`]).
+    gust: bool,
 }
 
 impl Dwelling {
@@ -337,6 +468,7 @@ impl Dwelling {
             mark: None,
             lit: false,
             occupied: false,
+            gust: false,
         }
     }
 
@@ -362,6 +494,7 @@ fn draw_dwelling(
         mark,
         lit,
         occupied,
+        gust,
     } = dwelling;
     let palette = PALETTES[genome.palette_index as usize % PALETTES.len()];
     let accent = PALETTES[genome.accent_index as usize % PALETTES.len()];
@@ -391,6 +524,7 @@ fn draw_dwelling(
             lit,
             occupied,
             mark,
+            gust,
         },
         houses::Materials::for_style(genome.style, palette, accent),
     );
@@ -639,7 +773,7 @@ mod tests {
             // in its own smaller cell, in the middle of this one and on the same ground line.
             let mut tree = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
             let (inset_x, inset_y) = crate::TREE_INSET;
-            crate::tree::draw_tree(&mut tree, &genome, 32 + inset_x, 61 + inset_y);
+            crate::tree::draw_tree(&mut tree, &genome, 32 + inset_x, 61 + inset_y, 0);
             let (tx, ty) = ShelterRenderer::village_cell(VillageCell::Tree);
             for y in 0..SHELTER_SIZE as i32 {
                 for x in 0..SHELTER_SIZE as i32 {
@@ -706,6 +840,7 @@ mod tests {
                     lit: false,
                     occupied: false,
                     mark: None,
+                    gust: false,
                 }
                 .door();
                 let mut changed = 0;
@@ -1280,6 +1415,160 @@ mod tests {
                         );
                     }
                 }
+            }
+        }
+    }
+
+    /// The village's wind comes and goes on its own clock: still for three to five seconds and
+    /// then gusting for three to five, round and round, each colony starting somewhere else in the
+    /// round, and never at all with motion reduced.
+    #[test]
+    fn the_wind_comes_and_goes_every_few_seconds_at_each_colonys_own_phase() {
+        let spells = |seed: [u8; 32]| {
+            let mut spells: Vec<(bool, f32)> = Vec::new();
+            let step = 0.05;
+            for tick in 0..(600.0 / step) as u32 {
+                let gust = village_gust(tick as f32 * step, seed, false);
+                match spells.last_mut() {
+                    Some((was, length)) if *was == gust => *length += step,
+                    _ => spells.push((gust, step)),
+                }
+            }
+            spells
+        };
+        let mut starts = Vec::new();
+        for byte in [0_u8, 7, 91, 200] {
+            let mut seed = [byte; 32];
+            seed[9] = byte.wrapping_mul(37);
+            let run = spells(seed);
+            // The first and last spells are cut off by the window; every whole one is held three
+            // to five seconds, give or take a sample, and they take turns.
+            assert!(run.len() > 100, "the wind changed only {} times", run.len());
+            for pair in run.windows(2) {
+                assert_ne!(pair[0].0, pair[1].0);
+            }
+            for (gust, length) in &run[1..run.len() - 1] {
+                assert!(
+                    (2.9..=5.1).contains(length),
+                    "a {} spell held {length} s",
+                    if *gust { "gusting" } else { "still" }
+                );
+            }
+            // Not every spell the same length.
+            assert!(
+                run[1..run.len() - 1]
+                    .iter()
+                    .any(|(_, length)| (*length - run[1].1).abs() > 0.3)
+            );
+            starts.push(
+                (0..200)
+                    .map(|tick| village_gust(tick as f32 * 0.05, seed, false))
+                    .collect::<Vec<_>>(),
+            );
+            // Held still with motion reduced.
+            assert!((0..12_000).all(|tick| !village_gust(tick as f32 * 0.05, seed, true)));
+        }
+        starts.sort();
+        starts.dedup();
+        assert!(starts.len() > 1, "every colony gusts in step");
+    }
+
+    /// The wind costs the atlas nothing: it lives in the tree's column below the tree, and the
+    /// daylit half is still exactly the top of the whole. The tree leaning in
+    /// the wind is the tree drawn with its crown pushed over, and keeps every cord where it was.
+    /// A tent's pennant patch holds only what a gust changes, every pixel of it solid, and laid
+    /// over the still house it gives exactly the house in the gust; a house of any other type
+    /// has nothing in its square.
+    #[test]
+    fn the_wind_is_a_lean_in_the_trees_and_a_pennant_laid_over_the_still_house() {
+        let genome = ShelterGenome {
+            style: ShelterStyle::Tent,
+            palette_index: 3,
+            accent_index: 8,
+            width: 42,
+            height: 36,
+            detail_seed: 0x5eed_0fa1_1700_beef,
+        };
+        let styles: Vec<ShelterStyle> = (0..VILLAGE_HOUSES)
+            .map(|slot| ShelterStyle::ALL[slot % ShelterStyle::ALL.len()])
+            .collect();
+        let dressed: Vec<Vec<ShelterDecorationKind>> = (0..VILLAGE_HOUSES)
+            .map(|slot| ShelterDecorationKind::ALL[slot..slot + 2].to_vec())
+            .collect();
+        let village = ShelterRenderer::render_village(&genome, &dressed, &[], &styles, true);
+        let (inset_x, inset_y) = crate::TREE_INSET;
+        for (leaning_right, sway) in [(true, 1), (false, -1)] {
+            let tree = crate::KeepsakeTreeRenderer::render_in_wind(&genome, sway);
+            let still = crate::KeepsakeTreeRenderer::render(&genome);
+            assert_ne!(tree, still, "the wind moves nothing");
+            let (x, y) = ShelterRenderer::village_cell(VillageCell::TreeInWind { leaning_right });
+            for row in 0..crate::TREE_CELL as i32 {
+                for column in 0..crate::TREE_CELL as i32 {
+                    assert_eq!(
+                        village.get(x as i32 + inset_x + column, y as i32 + inset_y + row),
+                        tree.get(column, row)
+                    );
+                }
+            }
+            // The trunk and the cords stay put: below the crown, nothing moves.
+            for row in 50..crate::TREE_CELL as i32 {
+                for column in 0..crate::TREE_CELL as i32 {
+                    assert_eq!(tree.get(column, row), still.get(column, row));
+                }
+            }
+        }
+        // The daylit half is still exactly the top of the whole.
+        let day = ShelterRenderer::render_village(&genome, &dressed, &[], &styles, false);
+        for y in 0..VILLAGE_DAY_HEIGHT as i32 {
+            for x in 0..VILLAGE_ATLAS_WIDTH as i32 {
+                assert_eq!(day.get(x, y), village.get(x, y));
+            }
+        }
+        for (slot, style) in styles.iter().copied().enumerate() {
+            let house = ShelterGenome { style, ..genome };
+            let (origin_x, origin_y) = ShelterRenderer::pennant_origin(&house, slot);
+            for lit in [false, true] {
+                let draw = |gust: bool| {
+                    let mut tile = Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
+                    draw_dwelling(
+                        &mut tile,
+                        &house,
+                        &dressed[slot],
+                        Dwelling {
+                            lit,
+                            gust,
+                            ..Dwelling::in_slot(slot)
+                        },
+                    );
+                    tile
+                };
+                let (still, blown) = (draw(false), draw(true));
+                let (px, py) = ShelterRenderer::pennant_patch(slot, lit);
+                let patch = |x: i32, y: i32| {
+                    let (column, row) = (x - origin_x, y - origin_y);
+                    ((0..PENNANT_PATCH as i32).contains(&column)
+                        && (0..PENNANT_PATCH as i32).contains(&row))
+                    .then(|| village.get(px as i32 + column, py as i32 + row))
+                };
+                let mut changed = 0;
+                for y in 0..SHELTER_SIZE as i32 {
+                    for x in 0..SHELTER_SIZE as i32 {
+                        let laid = match patch(x, y) {
+                            Some(pixel) if pixel.a > 0 => {
+                                assert_eq!(pixel.a, 255, "slot {slot}: a see-through patch");
+                                pixel
+                            }
+                            _ => still.get(x, y),
+                        };
+                        assert_eq!(laid, blown.get(x, y), "slot {slot} {style:?} at ({x}, {y})");
+                        changed += usize::from(still.get(x, y) != blown.get(x, y));
+                    }
+                }
+                assert_eq!(
+                    changed > 0,
+                    style == ShelterStyle::Tent,
+                    "slot {slot} {style:?}: only a tent has a pennant to blow"
+                );
             }
         }
     }
