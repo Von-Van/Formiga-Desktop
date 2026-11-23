@@ -186,18 +186,7 @@ pub(crate) fn kicker(ui: &mut Ui, text: &str) -> egui::Response {
 /// it in the notebook's observing voice.
 pub(crate) fn page_heading(ui: &mut Ui, page: SettingsTab, heading: &str, observation: &str) {
     let scale = text_scale(ui);
-    write(
-        ui,
-        kicker_job(
-            &format!(
-                "Field notes · Nº {:02} · {}",
-                page_number(page),
-                page_kind(page)
-            ),
-            kicker_size(scale),
-            forest(),
-        ),
-    );
+    page_kicker(ui, page);
     // The name grows with the text, but not all the way: at the largest text its glyphs would be
     // big enough to double the font atlas the whole window draws from.
     write(
@@ -211,34 +200,53 @@ pub(crate) fn page_heading(ui: &mut Ui, page: SettingsTab, heading: &str, observ
     ui.add_space(12.0);
 }
 
-/// What the Your colony page observes about the colony: how many specimens there are, and how
-/// many of them are napping.
+/// What kind of field note a page is and its number, over everything on it: the top line of a
+/// page's heading, and the whole of it on a page whose own subject is its heading.
+pub(crate) fn page_kicker(ui: &mut Ui, page: SettingsTab) {
+    write(
+        ui,
+        kicker_job(
+            &format!(
+                "Field notes · Nº {:02} · {}",
+                page_number(page),
+                page_kind(page)
+            ),
+            kicker_size(text_scale(ui)),
+            forest(),
+        ),
+    );
+}
+
+/// What the Your colony page observes about the colony: how many there are, and how many of them
+/// are napping. "Four of them, all awake."
 pub(crate) fn colony_observation(creatures: &[Creature]) -> String {
-    const WORDS: [&str; 13] = [
-        "No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
-        "Eleven", "Twelve",
-    ];
     let count = creatures.len();
-    let number = WORDS
-        .get(count)
-        .map_or_else(|| count.to_string(), |word| (*word).to_owned());
-    let noun = if count == 1 { "specimen" } else { "specimens" };
     let napping = creatures
         .iter()
         .filter(|creature| creature.state.action == ActionKind::Sleep)
         .count();
-    let tail = if count == 0 {
-        "The notebook is waiting."
-    } else if napping == count {
-        "All accounted for, all of them napping."
-    } else if napping * 2 > count {
-        "All accounted for, most of them napping."
-    } else if napping > 0 {
-        "All accounted for, one or two of them napping."
-    } else {
-        "All accounted for, and all of them awake."
+    let state = || {
+        if napping == count {
+            "all napping".to_owned()
+        } else if napping == 0 {
+            "all awake".to_owned()
+        } else if napping * 2 > count {
+            "most of them napping".to_owned()
+        } else if napping == 1 {
+            "one of them napping".to_owned()
+        } else {
+            format!(
+                "{} of them napping",
+                super::today::count_word(napping).to_lowercase()
+            )
+        }
     };
-    format!("{number} {noun} observed. {tail}")
+    match count {
+        0 => "Nobody here yet. The notebook is waiting.".to_owned(),
+        1 if napping == 1 => "Just the one, napping.".to_owned(),
+        1 => "Just the one, awake.".to_owned(),
+        _ => format!("{} of them, {}.", super::today::count_word(count), state()),
+    }
 }
 
 /// A sticky note, taped to the page: the tour. Yellow, with a stepped edge and a shadow, and no
@@ -835,8 +843,9 @@ pub(crate) fn conditions(save: &SaveFile, monitors: &[MonitorInfo]) -> Vec<Strin
         lines.push(format!("{} is napping.", asleep.name));
     }
     lines.push(match creatures.len() {
-        1 => "One specimen.".to_owned(),
-        count => format!("{count} specimens."),
+        0 => "Nobody in the colony.".to_owned(),
+        1 => "Just the one.".to_owned(),
+        count => format!("{} in the colony.", super::today::count_word(count)),
     });
     lines.push("Entirely on this computer.".to_owned());
     lines
