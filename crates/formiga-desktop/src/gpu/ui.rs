@@ -118,7 +118,7 @@ pub(crate) fn menu_scale(display_scale: u8, scale_factor: f32, grid: f32) -> f32
 }
 
 /// The open menu, drawn: its frame, one quad per cell, and the label tab under whichever cell is
-/// hovered. Below the creature the frame sprite is drawn upside down, which puts the notch on top
+/// hovered, or every cell's in one row while a newly opened menu shows them all. Below the creature the frame sprite is drawn upside down, which puts the notch on top
 /// pointing up; the frame is symmetric about its body, so only the notch actually moves, and the
 /// cells and the tab are placed the right way up on top of it.
 pub(super) fn menu_quads(menu: MenuView<'_>, drawable: PhysicalSize<u32>) -> Vec<Vertex> {
@@ -151,6 +151,28 @@ pub(super) fn menu_quads(menu: MenuView<'_>, drawable: PhysicalSize<u32>) -> Vec
             1.0,
             drawable,
         ));
+    }
+    // A newly opened menu's row of every label, hovered item's included, unless "not now" has
+    // taken its place.
+    if let (None, Some(labels)) = (menu.unavailable, menu.labels) {
+        for (index, tab) in labels.tabs() {
+            let Some(icon) = menu.layout.item(index) else {
+                continue;
+            };
+            vertices.extend_from_slice(&ui_atlas_quad(
+                UiAtlasRenderer::menu_label(icon),
+                tab.x,
+                tab.y,
+                art,
+                false,
+                1.0,
+                drawable,
+            ));
+        }
+        if let Some(side) = menu.side {
+            vertices.extend(side_strip_quads(side, drawable));
+        }
+        return vertices;
     }
     // "Not now" under an item that could not be done, in place of its label; otherwise the
     // label of whichever item is hovered.

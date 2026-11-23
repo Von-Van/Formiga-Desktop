@@ -1347,6 +1347,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                             placement,
                             hovered: menu.hovered(),
                             unavailable: menu.unavailable(),
+                            labels: menu.label_row(),
                             side: menu.side().and_then(|side| {
                                 side.placement().map(|placement| SideView {
                                     layout: side.layout(),

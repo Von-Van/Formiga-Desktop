@@ -107,6 +107,8 @@ pub const MENU_STRIP_HEIGHT: u32 = MENU_BODY_HEIGHT + MENU_NOTCH_HEIGHT;
 pub const LABEL_TAB_HEIGHT: u32 = 9;
 /// Breathing room between the notch tip and the label tab under it.
 pub const LABEL_TAB_GAP: u32 = 1;
+/// Art pixels between neighbouring tabs when every item's label shows at once.
+pub const LABEL_ROW_GAP: u32 = 2;
 
 /// Fewest items a menu may hold.
 pub const MENU_MIN_ITEMS: usize = 2;
@@ -342,6 +344,29 @@ impl MenuLayout {
             index,
             UiAtlasRenderer::menu_label(*self.items.get(index)?).width,
         )
+    }
+
+    /// Every item's label tab at once, in one row where the single tab hangs: in the strip's
+    /// order, [`LABEL_ROW_GAP`] apart, and the row centred under the strip. Four labels run wider
+    /// than their strip, so the row hangs past both its ends; whoever places it keeps it on the
+    /// display. Slots past the last item are `None`.
+    pub fn label_row(&self) -> [Option<MenuRect>; MENU_MAX_ITEMS] {
+        let mut row = [None; MENU_MAX_ITEMS];
+        let width = |index: usize| UiAtlasRenderer::menu_label(self.items[index]).width;
+        let total = (0..self.count).map(width).sum::<u32>()
+            + self.count.saturating_sub(1) as u32 * LABEL_ROW_GAP;
+        let mut x = (self.size.0 as i32 - total as i32).div_euclid(2);
+        for (index, slot) in row.iter_mut().enumerate().take(self.count) {
+            let width = width(index);
+            *slot = Some(MenuRect {
+                x,
+                y: (self.size.1 + LABEL_TAB_GAP) as i32,
+                width,
+                height: LABEL_TAB_HEIGHT,
+            });
+            x += (width + LABEL_ROW_GAP) as i32;
+        }
+        row
     }
 
     /// Where the "not now" tab hangs under a cell (see [`MENU_UNAVAILABLE_TEXT`]): where its
@@ -1984,6 +2009,52 @@ mod tests {
             );
             assert!(tab.x >= 0 && tab.x + tab.width as i32 <= width as i32);
         }
+    }
+
+    /// Every label at once: one row where the single tab hangs, in the strip's order, never
+    /// touching, centred under the strip.
+    #[test]
+    fn the_label_row_lays_every_tab_side_by_side_centred_under_the_strip() {
+        for items in [
+            &[
+                MenuIcon::Snack,
+                MenuIcon::Toy,
+                MenuIcon::Home,
+                MenuIcon::Profile,
+            ][..],
+            &[
+                MenuIcon::Snack,
+                MenuIcon::Toy,
+                MenuIcon::CopyCode,
+                MenuIcon::Profile,
+            ],
+            &[MenuIcon::Inside, MenuIcon::Profile],
+        ] {
+            let layout = MenuLayout::new(items);
+            let row = layout.label_row();
+            let tabs: Vec<MenuRect> = row.iter().flatten().copied().collect();
+            assert_eq!(tabs.len(), items.len());
+            assert!(row[items.len()..].iter().all(Option::is_none));
+            for (index, tab) in tabs.iter().enumerate() {
+                assert_eq!(
+                    tab.y,
+                    layout.label_tab(index).unwrap().y,
+                    "level with a tab"
+                );
+                assert_eq!(tab.width, layout.label_tab(index).unwrap().width);
+                if let Some(next) = tabs.get(index + 1) {
+                    assert_eq!(next.x, tab.x + tab.width as i32 + LABEL_ROW_GAP as i32);
+                }
+            }
+            let left = tabs[0].x;
+            let right = tabs.last().map(|tab| tab.x + tab.width as i32).unwrap();
+            let overhang = (left, layout.size().0 as i32 - right);
+            assert!(
+                (overhang.0 - overhang.1).abs() <= 1,
+                "centred under the strip: {overhang:?}"
+            );
+        }
+        assert!(MenuLayout::new(&[]).label_row().iter().all(Option::is_none));
     }
 
     #[test]

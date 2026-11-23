@@ -62,6 +62,12 @@ All notable changes are documented here.
 - On the train, each companion steps up at its coach door in the first frame of a climb, and then
   looks out of a compartment window until the train has gone; coming home, everyone looks out until
   they step off.
+- A companion's menu names its items as it opens while the colony is new. The first three menus
+  opened in a launch show every label in one row under the strip for a second, until the colony
+  has finished or skipped the tour; the row stays on the display at every edge and corner, and the
+  strip sits where it always has. A hovered item's label still shows on the first frame the
+  pointer is over it.
+
 - The notebook reads less like a settings window. Apply and Revert are only under Habitat,
   Applications and Preferences, the pages with preferences on them (and under any page while a
   change is waiting to be applied); elsewhere the foot of the page holds only the undo offer and

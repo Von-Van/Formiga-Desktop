@@ -1,4 +1,4 @@
-use crate::creature_menu::{LocalRect, MenuAnchor, MenuPlacement, SidePlacement};
+use crate::creature_menu::{LabelRow, LocalRect, MenuAnchor, MenuPlacement, SidePlacement};
 use anyhow::{Context, Result};
 use bytemuck::{Pod, Zeroable};
 use formiga_art::{
@@ -227,6 +227,8 @@ pub struct MenuView<'a> {
     /// An item chosen that could not be done just now, which shows "not now" under it in place
     /// of its label.
     pub unavailable: Option<usize>,
+    /// Every item's label in one row under the strip, while a newly opened menu shows them all.
+    pub labels: Option<LabelRow>,
     /// A strip opened beside the menu, if any.
     pub side: Option<SideView<'a>>,
 }

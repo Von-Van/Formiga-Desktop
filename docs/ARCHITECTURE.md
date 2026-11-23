@@ -1239,6 +1239,24 @@ at `MENU_NOTCH_GAP` (15 art pixels) with the frame sprite vertically flipped. It
 horizontally inside the monitor's usable bounds with the notch tracking the creature's centre, and
 snapped to the sprite pixel grid, at every creature size and both integer scale factors.
 
+A hovered item's label shows from the very cursor sample that finds the pointer on its cell
+(`CreatureMenu::track`): there is no hover delay, only the open menu's 50 ms cadence. The first
+three menus opened in a launch (`LABEL_REVEAL_MENUS`, counted by the app's in-memory
+`menus_opened`, the counter the tour reads) show every item's label at once for one second
+(`LABEL_REVEAL_SECS`) from the frame the strip first appears, while the colony has not finished or
+skipped the tour (`save.companion.onboarding_complete`); `reveals_labels` decides it, and houses'
+and wonders' menus count and show them as a creature's do. Nothing counts menus across launches,
+so a colony still new to Formiga sees them on each of its first launches and one past the tour
+never does. `MenuLayout::label_row` lays the tabs in one row where the single tab hangs, in the
+strip's order, `LABEL_ROW_GAP` (2 art pixels) apart, centred under the strip; every row runs 28 to
+48 art pixels wider than its strip, and `place_label_row` moves the row sideways in whole art
+pixels to keep it inside the usable area, or centres it there when it is wider. The row is level
+with the single tab, so the strip's height, `MENU_RISE`, and the vertical clamp are unchanged. The
+hovered item's label is part of the row rather than drawn twice; "not now" and a strip opened
+beside the menu end the row early, since both hang where it does. It appears and goes with no
+animation, reduced motion or not, and its expiry is noticed on a tick the open menu already runs,
+so it adds no wakeup: one redraw request when it goes.
+
 A menu closes on a choice, on a second secondary click on the same creature, when the cursor stays
 farther than 120 logical points from both the strip and the creature for 0.8 seconds, after 8
 seconds without a hover, when the creature is dragged, tossed, hidden, paused, occluded, gone inside

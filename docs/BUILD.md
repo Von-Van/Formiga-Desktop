@@ -317,7 +317,8 @@ Some of the sheets are review tools first and illustrations second. `decoration-
 house decoration on its own, on a companion's cottage of each type — the narrowest house, where a
 decoration has the least room — in blocks by the place on a house it goes, and the four that light
 up, lit after dark; it is the sheet to judge a decoration's silhouette by. `ui-sheet` draws the whole
-interface atlas: every thought bubble, menu frame, icon state, and label tab. `prop-sheet` draws
+interface atlas: every thought bubble, menu frame, icon state, and label tab, and a row of menus
+as they open with every label showing. `prop-sheet` draws
 the colony's whole keepsake sheet on pale, dark and busy wallpaper, sixteen keepsakes held up the
 way the overlay holds them, and the toys, snacks and drinkware in the paws and mouths that hold
 them. `wonder-sheet` draws every wonder's frames and its script played out at six moments, alone and for
