@@ -1612,9 +1612,8 @@ impl OverlayRenderer {
             } else {
                 FRAME_SIZE as i32 - at.x
             } as f32;
-            let unscaled_x = local_x - sprite_size / 2.0 + across * display_scale as f32;
             (
-                local_x + (unscaled_x - local_x) * horizontal_scale,
+                local_x - sprite_size / 2.0 + across * display_scale as f32,
                 frame_top + at.y as f32 * display_scale as f32,
             )
         };

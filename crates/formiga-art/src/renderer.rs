@@ -1234,33 +1234,16 @@ impl FramePlacement {
         }
     }
 
-    /// How wide the frame is drawn against its height while doing `action`: a squeeze through a
-    /// narrow gap draws the body and face quads narrower, and the atlas and hit mask stay as they
-    /// are.
-    pub fn horizontal_scale(action: ActionKind) -> f32 {
-        if action == ActionKind::SqueezeWindow {
-            0.72
-        } else {
-            1.0
-        }
-    }
-
     /// Where the frame is drawn for a contact point at `(contact_x, contact_y)`, on a surface with
-    /// `unit` of its pixels to an art pixel: centred across on the contact point and drawn
-    /// `horizontal_scale` as wide as it is tall. The overlay places every companion this way, and
-    /// so does the climb sheet.
-    pub fn frame_rect(
-        self,
-        contact_x: f32,
-        contact_y: f32,
-        unit: f32,
-        horizontal_scale: f32,
-    ) -> FrameRect {
+    /// `unit` of its pixels to an art pixel: centred across on the contact point, as wide as it is
+    /// tall (a squeeze through a narrow gap is pinched in its own frames, not drawn narrower). The
+    /// overlay places every companion this way, and so does the climb sheet.
+    pub fn frame_rect(self, contact_x: f32, contact_y: f32, unit: f32) -> FrameRect {
         let height = FRAME_SIZE as f32 * unit;
         FrameRect {
             centre_x: contact_x,
             top: contact_y + self.origin_y as f32 * unit,
-            width: height * horizontal_scale,
+            width: height,
             height,
         }
     }

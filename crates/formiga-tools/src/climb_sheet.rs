@@ -324,7 +324,6 @@ impl Sheet {
             view.0 as f32 + (contact.x - origin.x).round() * UNIT as f32,
             view.1 as f32 + (contact.y - origin.y).round() * UNIT as f32,
             UNIT as f32,
-            FramePlacement::horizontal_scale(creature.state.action),
         );
         self.frame(view, &picture, drawn);
     }

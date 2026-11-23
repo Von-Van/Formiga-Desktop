@@ -24,8 +24,6 @@ pub(super) fn may_be_off_the_ground(creature: &Creature) -> bool {
 pub(super) struct ShadowSpot {
     /// The frame's own middle, across.
     pub(super) frame_centre_x: f32,
-    /// How much narrower than its own width the frame is drawn (a squeeze).
-    pub(super) horizontal_scale: f32,
     /// The line the shadow is laid on: where the feet stand, or the ground under them.
     pub(super) ground_y: f32,
     /// How far above that line the feet are, in art pixels.
@@ -50,7 +48,7 @@ pub(super) fn shadow_quad(
     if !facing_right {
         shadow = shadow.mirrored();
     }
-    let across = spot.unit * spot.horizontal_scale;
+    let across = spot.unit;
     let half_frame = FRAME_SIZE as f32 / 2.0;
     let left = snap(spot.frame_centre_x + (shadow.left() - half_frame) * across);
     let right = snap(left + shadow.width as f32 * across);
@@ -152,7 +150,6 @@ impl ShadowGrounds<'_> {
         };
         Some(ShadowSpot {
             frame_centre_x: local_x,
-            horizontal_scale: creature_horizontal_scale(creature.state.action),
             ground_y,
             lift: ((ground_y - feet_y) / unit).max(0.0),
             unit,

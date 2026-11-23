@@ -3237,7 +3237,7 @@ own simulation: `World::begin_window_climb` starts one companion up onto a windo
 the floor the way it climbs one itself (a look, the walk to the window's side, the climb, the
 mantle's haul and step in, each sample labelled with the mantle frame it shows), and every tenth of
 a second up to two seconds into the perch is drawn at 2x against the window, placed by
-`FramePlacement::frame_rect` with `FramePlacement::horizontal_scale`, the rule `gpu.rs` places
+`FramePlacement::frame_rect`, the rule `gpu.rs` places
 every companion's quad by. Under the climbs, each body dangles from a ledge in every frame with its
 hang at none, half and all of its weight, looking along the ledge so its glance down shows. The
 gesture sheet gives the mantle a row of its own for every body, frame by frame beside the watching

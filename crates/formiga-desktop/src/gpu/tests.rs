@@ -1935,7 +1935,6 @@ fn a_shadow_stays_within_the_silhouette_and_never_climbs_above_the_feet() {
             for facing_right in [true, false] {
                 let spot = ShadowSpot {
                     frame_centre_x: frame_left + FRAME_SIZE as f32 * unit / 2.0,
-                    horizontal_scale: 1.0,
                     ground_y: contact_y,
                     lift,
                     unit,
