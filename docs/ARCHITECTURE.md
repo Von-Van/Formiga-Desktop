@@ -593,7 +593,7 @@ new companion's textures come to about 1.70 MB — 1.24 MB
 before its own repertoire of washing, shaking, sniffing and the other ways it sleeps and walks,
 its chores, its pet and the four ways it eats a meal added five rows of cells, 1.34 MB in 0.66.0 alone, when the walk, the run, the greeting and the
 meal stopped repeating frames — and much less under reduced motion, where each clip holds one
-frame. With no two frames alike they would be 2,442,240 bytes, which is what the budgets hold: below a 4,500,000-byte
+frame. With no two frames alike they would be 2,534,400 bytes, which is what the budgets hold: below a 4,500,000-byte
 test limit per creature, raised deliberately from 1.5 MB so the pose vocabulary has room to grow
 without the budget moving each time, and a full colony of six under 16 MiB, raised from 10 MiB in
 0.62.0 for the new poses and faces and from 15 MiB in 0.68.0 for the animation pass's new clips.

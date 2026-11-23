@@ -130,7 +130,7 @@ pub enum Gesture {
 }
 
 impl Gesture {
-    pub const ALL: [Self; 36] = [
+    pub const ALL: [Self; 37] = [
         Self::Cheer,
         Self::Gasp,
         Self::Cover,

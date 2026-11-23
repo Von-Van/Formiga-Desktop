@@ -868,7 +868,7 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     // row had spare, and with the leap's two, which take the two cells being carried gave up when
     // it stopped bobbing and came to repeat its frames.
     assert_eq!(total_bytes, 1_704_960);
-    assert_eq!(full_layout_bytes(), 2_442_240);
+    assert_eq!(full_layout_bytes(), 2_534_400);
     // Tripled in 0.58.0 so the pose vocabulary has somewhere to grow: the budget is what
     // stops a creature costing more than a creature should, not what stops it having poses.
     assert!(full_layout_bytes() <= 4_500_000);

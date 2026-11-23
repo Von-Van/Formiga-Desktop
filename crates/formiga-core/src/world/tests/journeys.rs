@@ -1150,7 +1150,14 @@ fn a_hop_crouches_then_flies_then_lands() {
         y: start.y,
     };
     let surface = world.save.creatures[0].state.surface.clone();
-    let journey = build_window_journey(&world.save.creatures[0], target, surface, &desktop);
+    let journey = build_window_journey(
+        &world.save.creatures[0],
+        target,
+        surface,
+        &desktop,
+        &HabitatPolicy::default(),
+        3,
+    );
     assert!(
         matches!(journey, WindowJourney::Hop(_)),
         "a hop along the floor"
@@ -1213,7 +1220,14 @@ fn a_hop_let_go_of_by_a_pick_up_is_no_longer_a_hop() {
         x: creature.state.position.x + 200.0,
         y: creature.state.position.y,
     };
-    let journey = build_window_journey(creature, target, creature.state.surface.clone(), &desktop);
+    let journey = build_window_journey(
+        creature,
+        target,
+        creature.state.surface.clone(),
+        &desktop,
+        &HabitatPolicy::default(),
+        3,
+    );
     let id = creature.id;
     world.save.creatures[0].state.action = journey.initial_action();
     world.window_journeys.insert(id, journey);
