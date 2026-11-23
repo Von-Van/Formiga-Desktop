@@ -319,7 +319,8 @@ the colony's whole keepsake sheet on pale, dark and busy wallpaper, sixteen keep
 way the overlay holds them, and the toys, snacks and drinkware in the paws and mouths that hold
 them. `wonder-sheet` draws every wonder's frames and its script played out at six moments, alone and for
 two, by the reference companions; `motion-sheet` draws every body's walk, run, rest, meal and sleep
-loops frame by frame, where a loop that hitches or repeats itself shows. `rest-sheet` draws ten
+loops frame by frame, then the shuffle of a squeeze through a gap, pinched with its face, where a
+loop that hitches or repeats itself shows. `rest-sheet` draws ten
 seconds of every body at rest, a frame every third of a second with its face, once as the action
 alone draws it and once as a companion carries itself on the desktop, holding still, shifting,
 glancing about and blinking. `repertoire-sheet` draws every body washing, shaking and sniffing,

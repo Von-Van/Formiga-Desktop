@@ -717,3 +717,117 @@ fn every_companion_is_the_same_echo_fox_in_every_clip() {
         CreatureRenderer::render_body_frame(&foxes[0], ActionKind::Idle, 0, false).canvas,
     );
 }
+
+/// A squeeze through a narrow gap is drawn pinched, not narrowed on screen: two frames of its own
+/// in the atlas on every kind of body — an original family, each modular plan, the Echo Fox and
+/// each sculpted plan — the feet shuffling between them, the whole body drawn about three
+/// quarters as wide as it walks (at most 0.82 of its narrowest stride), with the face drawn in
+/// and pinched with it so that nothing draws a face over it. Reduced motion holds still.
+#[test]
+fn a_squeeze_is_drawn_pinched_with_its_face_in() {
+    let squeeze = BodyClip::Action(ActionKind::SqueezeWindow);
+    assert_eq!(
+        squeeze.body(),
+        squeeze,
+        "a squeeze is baked under its own name"
+    );
+    assert_eq!(
+        BodyClip::baked().filter(|clip| *clip == squeeze).count(),
+        1,
+        "a squeeze has one clip in the atlas"
+    );
+    assert_eq!(
+        BodyClip::baked()
+            .filter(|clip| clip.face_in_frame())
+            .collect::<Vec<_>>(),
+        vec![squeeze],
+        "only a squeeze draws its own face"
+    );
+    let spec = AnimationSpec::for_clip(squeeze);
+    assert_eq!((spec.frames, spec.playback), (2, PlaybackMode::Loop));
+
+    let mut subjects: Vec<(String, AppearanceGenome)> = [
+        BodyFamily::Blob,
+        BodyFamily::Hopper,
+        BodyFamily::SoftQuadruped,
+    ]
+    .into_iter()
+    .map(|family| (format!("{family:?}"), genome(family)))
+    .collect();
+    for plan in formiga_core::BodyPlan::ALL {
+        let mut modular = genome(BodyFamily::Blob);
+        let mut design = formiga_core::CreatureDesign::modular([29; 32], 0, None);
+        design.body = plan;
+        modular.design = Some(design);
+        subjects.push((format!("{plan:?}"), modular));
+    }
+    subjects.push((
+        "Echo Fox".into(),
+        AppearanceGenome {
+            echo_fox: true,
+            ..genome(BodyFamily::Hopper)
+        },
+    ));
+    for plan in formiga_core::forms::Plan::ALL {
+        let mut sculpted = genome(BodyFamily::Blob);
+        sculpted.sculpt = Some(formiga_core::forms::Sculpt::starter(plan));
+        subjects.push((format!("sculpted {plan:?}"), sculpted));
+    }
+
+    let width = |canvas: &Canvas| {
+        let (min_x, _, max_x, _) = canvas.alpha_bounds().expect("drawn");
+        (max_x - min_x + 1) as f32
+    };
+    let looking = FaceRenderState {
+        expression: ExpressionKind::Joy,
+        eyelids: EyelidPose::Half,
+        gaze: GazeDirection::new(-1, 1),
+    };
+    for (label, genome) in &subjects {
+        let walking = (0..AnimationSpec::for_action(ActionKind::Traverse).frames)
+            .map(|frame| {
+                width(
+                    &CreatureRenderer::render_body_frame(
+                        genome,
+                        ActionKind::Traverse,
+                        frame,
+                        false,
+                    )
+                    .canvas,
+                )
+            })
+            .fold(f32::MAX, f32::min);
+        let [first, second] =
+            [0, 1].map(|frame| CreatureRenderer::render_body_frame(genome, squeeze, frame, false));
+        assert_ne!(
+            first.canvas, second.canvas,
+            "{label}: the feet shuffle between the squeeze's frames"
+        );
+        for (frame, drawn) in [&first, &second].into_iter().enumerate() {
+            assert!(
+                width(&drawn.canvas) <= walking * 0.82,
+                "{label} frame {frame}: {} wide against a walk {walking} wide",
+                width(&drawn.canvas)
+            );
+            // The face is in the frame already: a whole frame drawn with any face at all is the
+            // body frame as it stands.
+            assert_eq!(
+                CreatureRenderer::render_composited_frame(
+                    genome,
+                    squeeze,
+                    frame as u8,
+                    true,
+                    false,
+                    looking
+                ),
+                drawn.canvas,
+                "{label} frame {frame}: a face is drawn over the squeeze"
+            );
+        }
+        assert_eq!(
+            CreatureRenderer::render_body_frame(genome, squeeze, 1, true).canvas,
+            CreatureRenderer::render_body_frame(genome, squeeze, 0, true).canvas,
+            "{label}: reduced motion holds still"
+        );
+    }
+}

@@ -37,7 +37,7 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Cursor invitation 24-point, 1.5-second, and 25-points/second boundaries plus pause/hidden clearing | CI | CI |
 | Four-hop window-graph cap, deterministic tier routing, and preference scoring bounds | CI | CI |
 | Exact 10–28-point narrow-gap classification, support validation, and immediate geometry cancellation | CI | CI |
-| Squeeze traversal-atlas reuse, 0.72× body/face scaling, and stable routine codes 0–23 | CI | CI |
+| A squeeze shows its own two-frame clip on every kind of body, moving or stopped in the gap: pinched to at most 0.82 of the narrowest stride with the face drawn in and nothing drawn over it, the feet shuffling, held under reduced motion, the grab mask exactly the drawn frame; stable routine codes 0–23 | CI | CI |
 | Deterministic 3–7-day object scheduling, one-after-downtime behavior, eight-object cap, and stable IDs | CI | CI |
 | Eight-kind object-atlas determinism/alpha coverage, habitat recovery, cached static quads, and `+0.25` utility cap | CI | CI |
 | Deterministic 4–9-day decoration scheduling, one-after-downtime behavior, six-unique-kind cap, and canonicalization | CI | CI |
@@ -245,7 +245,8 @@ How to read them:
 - `body-plans-and-scales.png`, `anchors-by-body-plan.png`, `prop-handoff.png`,
   `outline-on-busy-wallpaper.png`, and `narrow-gaps-and-short-ledges.png` — every body plan at Small,
   Medium, and Large, adult and mini; feet and grips against a drawn contact line; a carried prop in
-  both facings; the optional outline over a busy checker; and squeezes and short ledges.
+  both facings; the optional outline over a busy checker; and squeezes, in their pinched frames,
+  and short ledges.
 
 The sheets were reviewed for this release. `attention-stages.png` and
 `spectator-reactions.png` show the watcher expressions as genuinely distinct: eye openness,

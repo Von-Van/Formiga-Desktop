@@ -256,14 +256,6 @@ pub(super) fn total_animation_frames() -> u32 {
         .sum()
 }
 
-pub(crate) fn creature_horizontal_scale(action: ActionKind) -> f32 {
-    if action == ActionKind::SqueezeWindow {
-        0.72
-    } else {
-        1.0
-    }
-}
-
 pub(super) fn atlas_slot(clip: impl Into<BodyClip>, frame: u8) -> u32 {
     let clip = clip.into().body();
     let clip_offset: u32 = BodyClip::baked()

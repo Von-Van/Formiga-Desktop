@@ -22,6 +22,7 @@ mod play;
 mod playthings;
 mod pose;
 mod props;
+mod squeeze;
 pub use accessories::AccessoryArt;
 use classic::*;
 use effects::*;
@@ -240,6 +241,12 @@ impl BodyClip {
             gesture => gesture,
         }
     }
+
+    /// Whether the clip's frames have the face drawn into them, so that nothing draws a face
+    /// over them: only a squeeze, whose face is pinched narrower with its body.
+    pub const fn face_in_frame(self) -> bool {
+        matches!(self.body(), Self::Action(ActionKind::SqueezeWindow))
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -252,10 +259,10 @@ pub struct AnimationSpec {
 impl AnimationSpec {
     pub fn for_action(action: ActionKind) -> Self {
         let (frames, fps, playback) = match action {
-            ActionKind::Traverse | ActionKind::SqueezeWindow | ActionKind::Follow => {
-                (6, 10, PlaybackMode::Loop)
-            }
+            ActionKind::Traverse | ActionKind::Follow => (6, 10, PlaybackMode::Loop),
             ActionKind::Sprint => (6, 12, PlaybackMode::Loop),
+            // Shuffling through a gap: one foot and then the other, three steps a second.
+            ActionKind::SqueezeWindow => (2, 6, PlaybackMode::Loop),
             ActionKind::Eat | ActionKind::Drink => (4, 6, PlaybackMode::Loop),
             ActionKind::Sleep => (2, 2, PlaybackMode::Loop),
             // Resting is the longest clip a companion plays, because it is the one it plays
@@ -365,7 +372,6 @@ impl AnimationSpec {
         match action {
             ActionKind::Tossed => ActionKind::Dragged,
             ActionKind::PetReaction => ActionKind::Greet,
-            ActionKind::SqueezeWindow => ActionKind::Traverse,
             other => other,
         }
     }
@@ -815,6 +821,17 @@ impl BodyPresentation {
                 motion.frame(BodyClip::Action(action), state.action_elapsed),
             );
         }
+        // Slipping through a gap it stays pinched, stopped or not, and shuffles a foot each
+        // stride of ground it covers.
+        if action == ActionKind::SqueezeWindow {
+            let clip = BodyClip::Action(action);
+            let frame = if presence.stepping {
+                motion.stride_frame(presence.stride) % AnimationSpec::for_clip(clip).frames
+            } else {
+                motion.frame(clip, state.action_elapsed)
+            };
+            return body(clip, frame);
+        }
         let walking = matches!(
             AnimationSpec::body_action(action),
             ActionKind::Traverse | ActionKind::Follow | ActionKind::Sprint
@@ -1252,6 +1269,7 @@ impl CreatureRenderer {
     ) -> (RenderedBodyFrame, Option<Canvas>) {
         let frame = if reduce_motion { 0 } else { frame };
         let clip = clip.body();
+        let wearer = genome;
         let face_genome;
         // The body as painted, before anything is drawn on it, and the same body painted finely.
         let mut fine = None;
@@ -1289,7 +1307,7 @@ impl CreatureRenderer {
         if let Some(dress) = dress {
             accessories::draw_accessory(&mut canvas, dress, figure);
         }
-        let held = activity_held(genome, face_anchor, pose, clip, frame, reduce_motion);
+        let mut held = activity_held(genome, face_anchor, pose, clip, frame, reduce_motion);
         match clip {
             BodyClip::Action(action) => {
                 draw_activity_marks(
@@ -1321,6 +1339,30 @@ impl CreatureRenderer {
                 frame,
                 reduce_motion,
             ),
+        }
+        // Slipping through a gap, the face is drawn into the frame and pinched narrower with the
+        // body: the overlay draws no face of its own over it (see `BodyClip::face_in_frame`).
+        if clip.face_in_frame() {
+            let face = Self::render_face_frame(wearer, squeeze::face());
+            let left = face_anchor.x - FACE_FRAME_SIZE as i32 / 2;
+            let top = face_anchor.y - FACE_FRAME_SIZE as i32 / 2;
+            blit_transparent(&mut canvas, &face, left, top);
+            let pinch = squeeze::Pinch::of(&canvas, &face, PixelPoint { x: left, y: top });
+            canvas = pinch.apply(&canvas, 1);
+            if let Some((bare, body)) = &mut fine {
+                // A sculpted form's face, as finely as its body is painted.
+                blit_transparent(bare, &face, left, top);
+                let fine_face = Self::render_face_frame_in_detail(wearer, squeeze::face(), detail);
+                let d = detail as i32;
+                blit_transparent(body, &fine_face, left * d, top * d);
+                *bare = pinch.apply(bare, 1);
+                *body = pinch.apply(body, detail);
+            }
+            face_anchor = pinch.point(face_anchor);
+            held = held.map(|held| HeldPlacement {
+                at: pinch.point(held.at),
+                ..held
+            });
         }
         let (dx, dy) = keep_atlas_margin(&mut canvas);
         face_anchor.x += dx;
@@ -1553,16 +1595,18 @@ impl CreatureRenderer {
         if !facing_right {
             source_face_state.gaze.x = -source_face_state.gaze.x;
         }
-        let mut face = Self::render_face_frame(genome, source_face_state);
-        if !facing_right {
-            face.mirror_horizontal();
+        if !clip.face_in_frame() {
+            let mut face = Self::render_face_frame(genome, source_face_state);
+            if !facing_right {
+                face.mirror_horizontal();
+            }
+            blit_transparent(
+                &mut body.canvas,
+                &face,
+                body.face_anchor.x - FACE_FRAME_SIZE as i32 / 2,
+                body.face_anchor.y - FACE_FRAME_SIZE as i32 / 2,
+            );
         }
-        blit_transparent(
-            &mut body.canvas,
-            &face,
-            body.face_anchor.x - FACE_FRAME_SIZE as i32 / 2,
-            body.face_anchor.y - FACE_FRAME_SIZE as i32 / 2,
-        );
         // What it holds goes over the face, as the overlay draws it.
         let held = match holding {
             Holding::AsClip => body.held.filter(|_| shows_held_by_default(clip)),

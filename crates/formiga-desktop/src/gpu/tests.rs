@@ -733,7 +733,7 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     let bake_time = started.elapsed();
     let total_bytes = atlas.body_pixels.len() + atlas.face_pixels.len();
     eprintln!("layered atlas: {total_bytes} bytes, baked in {bake_time:?}");
-    // 92 action frames and 121 gesture frames — eight of them the seat and the sled wonders
+    // 94 action frames — the last two a squeeze's own, pinched — and 121 gesture frames — eight of them the seat and the sled wonders
     // brought in 0.66.0, twenty-eight a companion's own repertoire (a wash, a shake, a sniff, two
     // more ways to sleep and two more ways to walk), sixteen the chores and a pet leaned into, and
     // fourteen the nibble, chomp, chew and gulp of a meal —
@@ -743,13 +743,14 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     // nothing read: 1,824,768 bytes with the temperament poses and their faces. Since 0.62.0 a
     // frame or face that comes out the same as one already baked shares its cell — a held pose,
     // eyes shut whichever way they would be looking — and the trinket cells are gone.
-    assert_eq!(total_animation_frames(), 213);
+    assert_eq!(total_animation_frames(), 215);
     // 1,244,160 until 0.66.0, when the walk, the run, the greeting and the meal stopped repeating
     // frames they had shared and the texture grew by a row of ten cells, to 1,336,320;
     // 1,244,160 again from 0.66.1, whose scoot along on a leaf sled repeats two of its four
     // frames where pedalling a bike repeated none, which brings it back under that row; and
     // 1,520,640 with the repertoire, three rows more, 1,612,800 with the chores and the pet, and
-    // 1,704,960 with the four ways a meal is eaten (fourteen frames).
+    // 1,704,960 with the four ways a meal is eaten (fourteen frames), and the same with a
+    // squeeze's two pinched frames, which fill cells the last row had spare.
     assert_eq!(total_bytes, 1_704_960);
     assert_eq!(full_layout_bytes(), 2_442_240);
     // Tripled in 0.58.0 so the pose vocabulary has somewhere to grow: the budget is what
@@ -793,12 +794,14 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
         atlas_slot(ActionKind::Tossed, 2),
         atlas_slot(ActionKind::Dragged, 2)
     );
+    // A squeeze has two frames of its own, after every other action's. Appended clips from other
+    // changes move this and the gesture offset below by their frame counts and nothing else.
     assert_eq!(
-        atlas_slot(ActionKind::SqueezeWindow, 2),
-        atlas_slot(ActionKind::Traverse, 2)
+        atlas_slot(ActionKind::SqueezeWindow, 0),
+        atlas_slot(ActionKind::PresentDiscovery, 3) + 1
     );
     // Gestures follow the action clips, and every baked frame owns exactly one slot.
-    assert_eq!(atlas_slot(formiga_core::Gesture::Cheer, 0), 92);
+    assert_eq!(atlas_slot(formiga_core::Gesture::Cheer, 0), 94);
     let mut slots = BTreeSet::new();
     for clip in BodyClip::baked() {
         for frame in 0..AnimationSpec::for_clip(clip).frames {
@@ -808,8 +811,6 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
         }
     }
     assert_eq!(slots.len(), total_animation_frames() as usize);
-    assert_eq!(creature_horizontal_scale(ActionKind::SqueezeWindow), 0.72);
-    assert_eq!(creature_horizontal_scale(ActionKind::Traverse), 1.0);
     if !cfg!(debug_assertions) {
         assert!(
             bake_time < std::time::Duration::from_millis(75),

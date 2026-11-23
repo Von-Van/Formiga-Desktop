@@ -68,9 +68,10 @@ impl Pose {
         let alternate: i32 = [1, 0, -1, 0, 1, 0][phase];
         let bob_amount = genome.gait_bob.max(0.2).round() as i32;
         let mut pose = match action {
-            ActionKind::Traverse | ActionKind::SqueezeWindow | ActionKind::Follow => {
+            ActionKind::Traverse | ActionKind::Follow => {
                 Self::stride(genome, phase, bob_amount, false)
             }
+            ActionKind::SqueezeWindow => Self::shuffle(genome, frame),
             ActionKind::Sprint => Self::stride(genome, phase, bob_amount.max(1), true),
             // Curled up and breathing: a little fuller on the breath in, the ears drooping a
             // touch further on the breath out.
@@ -368,6 +369,31 @@ impl Pose {
             tail_sway: [1, 2, 1, -1, -2, -1][phase],
             lean: 1 + run,
             ear_perk: i32::from(top),
+            ..Self::default()
+        }
+    }
+
+    /// One frame of edging through a narrow gap, `frame` of two: short shuffling steps, one foot
+    /// a pixel forward and then the other, the ears laid back and the tail kept close. The body
+    /// is posed at its own width; the pinch is drawn over the whole frame afterwards (see
+    /// `squeeze`), so every body is narrowed the same way.
+    fn shuffle(genome: &AppearanceGenome, frame: u8) -> Self {
+        let first = frame.is_multiple_of(2);
+        let (step_a, step_b) = if genome.design.is_none() {
+            // Side on: the legs a short swing apart one way, then the other.
+            if first { (1, -1) } else { (-1, 1) }
+        } else if stretches_long(genome) {
+            // One paw forward at a time, the near hind and then the near fore, three down.
+            if first { (1, 0) } else { (0, 1) }
+        } else {
+            // Facing out: a foot lifted a pixel out to its side, then the other.
+            if first { (-1, 0) } else { (0, 1) }
+        };
+        Self {
+            step_a,
+            step_b,
+            tail_sway: if first { 1 } else { -1 },
+            ear_perk: -1,
             ..Self::default()
         }
     }

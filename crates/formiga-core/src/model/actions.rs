@@ -64,7 +64,9 @@ impl ActionKind {
 
     /// Unique body clips baked into the creature atlas. Tossing deliberately reuses the dragged
     /// body clip, so it remains expressive without consuming another four 48x48 texture slots.
-    pub const BODY_CLIPS: [Self; 22] = [
+    /// A squeeze through a narrow gap has two pinched frames of its own, added last so every clip
+    /// before it keeps its place in the atlas.
+    pub const BODY_CLIPS: [Self; 23] = [
         Self::Idle,
         Self::Traverse,
         Self::Perch,
@@ -87,6 +89,7 @@ impl ActionKind {
         Self::Dangle,
         Self::InspectScreen,
         Self::PresentDiscovery,
+        Self::SqueezeWindow,
     ];
 
     pub const AUTONOMOUS: [Self; 15] = [

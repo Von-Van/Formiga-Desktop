@@ -2,6 +2,21 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Changed
+
+- A companion slipping through a narrow gap between two windows is drawn squeezed in two frames
+  of its own instead of a walk narrowed on screen, which dropped columns unevenly and broke its
+  outline. The body, face and all, is pinched to about three quarters of its width by taking out
+  the columns that change it least — flat coat and the gaps between ears and legs, never the
+  outline, the eyes or a thin leg — while its feet shuffle one and then the other; every body
+  draws it, the original families, every modular plan including four-pawed bodies, the Echo Fox
+  and sculpted forms. Stopped in the gap it stays squeezed, and it is grabbed by the shape it is
+  drawn in. The two frames fill cells the atlas had spare, so a companion's textures stay 1.70 MB;
+  every other clip draws exactly as before. `motion-sheet` shows the shuffle after the everyday
+  loops.
+
 ## [0.68.23] - 2026-11-12
 
 The village on the desktop, wonders put out, visitors among the houses and a run of fixes, released
