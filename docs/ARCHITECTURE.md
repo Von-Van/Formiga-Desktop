@@ -2527,7 +2527,24 @@ deliberately no history database or telemetry layer. Update preferences live in 
 its shell. A `Shell` holds what every page shares — the portraits companions are drawn with, the
 colony's sheet of found things, the tour, and the footer's line of feedback — and each page has a
 state of its own that draws it: `TodayState` (`clubhouse/today.rs`), `JournalState`
-(`clubhouse/journal_page.rs`, with the guest book, the scrapbook and the page of wonders),
+(`clubhouse/journal_page.rs`, with the guest book, the scrapbook and the page of wonders; it
+reads as a diary: each moment is `today::moment_row`, the same line Today's log writes, with its
+time, its picture, its words and the faces it is about, and a pin drawn at the line's end that
+shows while the line is pointed at or the pin has the keyboard and stays on a kept moment, which
+also has a strip of tape across its time; a day with one moment folds to that line, its day where
+its time would be; where a moment would wrap in beside its time, the time goes on the line above;
+the search and the filters are behind a magnifier in the heading's corner, or ⌘F; and a journal
+with nothing but its colony's arrival is the colony's plate and "Day 1. Nothing written down yet;
+I'll jot things here as they happen.", the guest book, scrapbook and wonders appearing only once
+they have something in them; the newest two days' best moment — a landmark first, then any
+arrival, friendship, first find, ritual or visit — is taped in above the day's lines as a picture
+with its caption, a `formiga_art::Vignette` composed by `render_vignette` from the companions'
+own frames on a strip of ground under a patch of sky (a 176×72 picture drawn at one or two
+points to its pixel, a first find drawn over the finder's paws from the colony's sheet of found
+things, a visitor as a shape, a late-night ritual under stars), kept while on the page and
+pictured for review by `formiga-tools vignette-sheet`; and the scrapbook's finds are pasted in
+like snapshots, each drawn large over its name and date, with what it is and who found it on
+hover),
 `ColonyState` (`clubhouse/collection.rs`: the Collection, each companion's wardrobe, the sticker),
 `StudioState` (`clubhouse/studio.rs`), `HomeState` (`clubhouse/home.rs`, with the village preview
 and arranging in `clubhouse/arrange.rs`), and `RecoveryState` (`clubhouse/recovery.rs`: the cards
@@ -2583,7 +2600,10 @@ with them. A colony with no room to bring everyone back refuses and keeps the ch
 For a layout change — cottages, colours, gardens, spots, corner, display, decorations, keepsakes —
 exactly those fields go back, with keepsakes found since kept after the rest. Renames, keeps, and
 preferences are not part of it. The settings window's footer offers "Undo …" on every page while
-there is something to take back, and says on hover how many earlier changes are behind it.
+there is something to take back, and says on hover how many earlier changes are behind it. Apply
+and Revert are in the footer only under the pages with preferences on them (Habitat, Applications
+and Preferences), or under any page while a preference is waiting to be applied; elsewhere the
+footer holds the undo offer and the last notice and nothing else.
 
 Themes and text scaling live entirely in `configure_style`, which the window re-runs when the
 saved preference changes or, under "match system", when the platform's own appearance changes.
@@ -2615,15 +2635,52 @@ shadow beside its free edge, and requests repaints only while it turns; under Re
 never starts. Every box with a stepped edge — cards, tally boxes, tabs, the patch, the notes — is
 a fill and four edge rectangles that leave the corner pixels out; egui's own widgets are drawn
 square with a two-pixel outline.
+The notebook writes a date one way, through `clubhouse::dates`: a day's heading in full ("Monday
+14 September"), a date beside something short ("14 Sep"), a time as "07:00", and a kept moment as
+"14 Sep · 07:00", with the year only when it is not this one, and never an ISO date. The page's
+number is in its corner and nowhere else on it. A page's sections are headed by `journal::kicker`,
+the pencil hand's spaced capitals, on every page alike. The page's kicker is the one place the
+researcher's register is named ("Field notes · Nº 02 · Specimen register"); the companions on it
+are called by name, and what each is doing is `activity_label`'s plain words ("playing with a
+toy"), one for every action, so a new action cannot reach the page unworded.
 A page with more to it than reads at a glance keeps the rest in sections (`clubhouse/sections.rs`):
-Your colony shows the companion, its traits and its tally, then a line for each of its notes, its
-name and leaning, what it wears, Formiga Farm while Farm is installed, sharing, keeping and starting
-over, how everyone gets along, and the collection; Home & keepsakes keeps the village and the house
-picked out in it above lines for the ground's gardens, spots and ornaments, where the village
-lives, pictures, and the belongings in the yards; Preferences keeps a quiet moment above lines for
+Your colony opens on everyone together, the colony's spread (`colony_spread`): the Today page's
+Right now plate, reused, and the pairs who go together as two faces with the one word for how they
+get along between them ("Mallow · cozy · Tofu"), from `colony_standings` without the pairs still
+getting acquainted. Along the top runs a strip (`clubhouse/companion_page.rs`): Everyone, then each
+companion's face, the page open taped, with the left and right arrows and ⌘[ ⌘] turning from
+everyone through each companion before they turn the notebook's page. A face anywhere in the
+notebook — the strip, the plate, the pairs, a friend, Today's highlight and log — turns to that
+companion's page, by setting `Shell::open_companion` for the notebook to act on once the page is
+drawn. A companion's page opens on the companion: the portrait, playing its current clip at the
+clip's own pace up to six frames a second (`Shell::living_portrait`, one companion's frames kept at
+a time, held still under Reduce motion), 144 points where there is
+room beside it and never under 96, beside the name in the hand, the temperament once, the traits
+run over with a highlighter and one line of what it is doing ("Up on a window, playing with
+Tofu.", naming a companion only for a greeting, a follow or a game within reach); its figures
+stamped in the margin ("109 days · 42 pets · 7 finds · 18 climbs"); and, for a companion with
+nothing yet to say about it, "Still getting to know Mallow. I'll write things here as I see
+them." Under that the page writes about it on its own lines (`clubhouse/story.rs`, every sentence
+a tested template filled from a record): the newest thing seen of it, dated, first — the last
+moment it shared with a friend ("Napped beside Tofu this morning, the ninth time I've seen it.")
+or the last moment the journal wrote down about it, whichever is newer, within a fortnight; what
+the notebook has noticed about it, as the Today page words it; its friends as small faces with one
+word under each ("cozy", "playmates", "squabbles"), closest first, each turning to that companion;
+its firsts ("Joined 5 Aug · first friend Tofu, 9 Sep · first find a key, 12 Sep"); and its little
+ways beside a 48-point frame of it doing its newest habit, drawn as the habit sheet draws it. A
+journal line about a find names it ("Moss found a key") where the scrapbook kept the same
+companion's first find of its kind within a minute of the moment. The name is renamed where it is
+written: clicked, it becomes a field, Enter keeps what was typed once `validate_creature_name`
+passes it and Escape leaves it. Then a line for what it wears, and at the foot one for Care & share, which holds everything that changes or shares it: its name
+and where it likes to be, Formiga Farm while Farm is installed, its code, card and sticker, and
+keeping, removing and starting over. Home & keepsakes keeps the village and the house picked out in
+it above lines for the ground's gardens, spots and ornaments, where the village lives, pictures,
+the collection of everything the colony could find, and the belongings in the yards; Preferences keeps a quiet moment above lines for
 the desktop, routines and this notebook; About keeps the colophon above backups, updates, privacy
 and where things are kept. Each line names its section and says how it stands. A section opens in
-the list's place under a way back, which Escape also takes while no text field has the keyboard;
+the list's place under its name, and the way back is the page's own corner turned up at its foot
+(`sections::back_corner`, "‹ Your colony", drawn over the page just above the footer so it stays
+put while the section scrolls), which Escape also takes while no text field has the keyboard;
 the list comes back as it was scrolled, with the section just read barred down its edge, since the
 page's scroll area is keyed by the page and its open section. Which section is open is kept in the
 shell for as long as the window is open and in nothing saved, and a step of the tour that points at

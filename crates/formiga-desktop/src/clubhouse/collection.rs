@@ -1,6 +1,6 @@
 //! Everything the colony has found, and what it is wearing from it.
 //!
-//! The Collection on the Your colony page is every keepsake there is: what has been found in full
+//! The Collection on the Home & keepsakes page is every keepsake there is: what has been found in full
 //! colour, and what has not as a shape with a hint beside it, with sixteen of the found ones picked
 //! to hang in the village's two trees. The Journal keeps its own record of the finds themselves —
 //! only what has actually turned up, with who found it and when. And each companion has a place to
@@ -181,15 +181,48 @@ pub(crate) struct ColonyState {
     /// What became of the last snack or toy offered from a companion's profile, and whose:
     /// written in words, since the answer itself is given out on the desktop.
     pub offer_note: Option<(formiga_core::CreatureId, String)>,
+    /// The companion on the page caught in its newest habit, and what it was drawn from, so it is
+    /// drawn again only when that changes.
+    habit_frame: Option<(HabitFrameKey, TextureHandle)>,
+    /// The name being typed over a companion's own, where its name is written, and whose.
+    pub renaming: Option<(CreatureId, String)>,
 }
+
+/// Whose habit frame it is, how they looked, and which habit it shows.
+type HabitFrameKey = (CreatureId, AppearanceGenome, Option<formiga_core::Habit>);
 
 impl ColonyState {
     pub(super) fn texture_ids(&self) -> Vec<egui::TextureId> {
-        self.collection.texture_ids()
+        let mut ids = self.collection.texture_ids();
+        ids.extend(self.habit_frame.iter().map(|(_, texture)| texture.id()));
+        ids
     }
 
     pub(super) fn release_images(&mut self) {
         self.collection.release_images();
+        self.habit_frame = None;
+    }
+
+    /// The frame of `creature` doing its newest habit, drawn once for each companion turned to.
+    pub(crate) fn habit_frame(
+        &mut self,
+        ctx: &egui::Context,
+        creature: &Creature,
+    ) -> TextureHandle {
+        let key = (
+            creature.id,
+            creature.appearance.clone(),
+            creature.memory.habits.last().copied(),
+        );
+        if self
+            .habit_frame
+            .as_ref()
+            .is_none_or(|(drawn, _)| *drawn != key)
+        {
+            let canvas = super::companion_page::habit_frame(creature);
+            self.habit_frame = Some((key, upload(ctx, "companion-habit", &canvas)));
+        }
+        self.habit_frame.as_ref().unwrap().1.clone()
     }
 
     /// The scale the sticker export will draw at, from the two the art offers.
@@ -214,14 +247,9 @@ impl ColonyState {
         let hung = hung_keepsakes(save.home.tree_keepsakes.as_ref(), found);
         let hanging = hung.iter().flatten().count();
         let collection = card(ui, |ui| {
-            ui.label(
-                RichText::new(format!(
-                    "COLLECTION · {} of {} found",
-                    found.len(),
-                    TRINKET_VARIANTS
-                ))
-                .color(forest())
-                .size(11.0),
+            journal::kicker(
+                ui,
+                &format!("Collection · {} of {} found", found.len(), TRINKET_VARIANTS),
             );
             ui.small(
                 "Everything the colony could ever bring back. What hasn't turned up yet shows \
@@ -311,12 +339,11 @@ impl ColonyState {
                                 .finder
                                 .and_then(|id| save.creatures.iter().find(|c| c.id == id))
                                 .map_or(record.finder_name.as_str(), |c| c.name.as_str());
-                            let at = record.first_at.to_offset(offset);
                             let text = format!(
                                 "{}\n{}\nFound by {finder} · {}\n{}",
                                 info.name,
                                 info.description,
-                                at.date(),
+                                dates::on(record.first_at, offset),
                                 if in_trees {
                                     "Hanging in the trees · click to take it down"
                                 } else {
