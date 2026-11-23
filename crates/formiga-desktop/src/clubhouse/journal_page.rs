@@ -18,6 +18,11 @@ pub(crate) struct JournalState {
     pub search: String,
     /// Whether the guest book shows every visitor it holds, rather than the latest few.
     all_visitors: bool,
+    /// Whether the search and the filters are out, behind the magnifier.
+    pub searching: bool,
+    /// Where each moment's pin was drawn last frame, by when the moment was: what a pointer or
+    /// the review tests find it by, since it is drawn rather than written.
+    pub(crate) pin_spots: Vec<(OffsetDateTime, egui::Rect)>,
     /// One still picture of every kind of wonder, side by side, for the page of them.
     wonder_sheet: Option<([u8; 32], TextureHandle)>,
     /// Every souvenir's picture side by side, each on its velvet, made once one has come home.
@@ -54,99 +59,123 @@ fn day_heading(at: OffsetDateTime, now: OffsetDateTime, offset: time::UtcOffset)
     }
 }
 
+/// A day as a folded line writes it where its time would be: "Today", "Yesterday", "Mon 14 Sep".
+fn short_day(at: OffsetDateTime, now: OffsetDateTime, offset: time::UtcOffset) -> String {
+    let (local, today) = (at.to_offset(offset).date(), now.to_offset(offset).date());
+    match (today - local).whole_days() {
+        days if days <= 0 => "Today".into(),
+        1 => "Yesterday".into(),
+        _ => format!(
+            "{} {}",
+            &local.weekday().to_string()[..3],
+            dates::short_date(local, today.year())
+        ),
+    }
+}
+
+/// What tells one moment from another for the widgets drawn for it: two moments can share a
+/// minute and a companion, but not also what happened.
+pub(crate) fn entry_key(entry: &JournalEntry) -> (i128, Option<CreatureId>, String) {
+    (
+        entry.at.unix_timestamp_nanos(),
+        entry.creature,
+        format!("{:?}", entry.moment),
+    )
+}
+
+/// A pushpin, drawn: a round head over a short point, in `colour`.
+fn pin_glyph(painter: &egui::Painter, rect: egui::Rect, colour: Color32) {
+    let head = rect.center() - egui::vec2(0.0, rect.height() * 0.15);
+    painter.line_segment(
+        [
+            head,
+            head + egui::vec2(-rect.width() * 0.25, rect.height() * 0.4),
+        ],
+        egui::Stroke::new(2.0, colour),
+    );
+    painter.circle_filled(head, rect.width() * 0.26, colour);
+}
+
+/// A moment on its line, as Today writes it, with a pin at the line's end that shows while the
+/// line is pointed at or the pin has the keyboard, and stays on a kept moment; a kept moment has
+/// a strip of tape across its time.
+#[allow(clippy::too_many_arguments)]
 fn moment_card(
     ui: &mut Ui,
+    shell: &mut Shell,
     save: &SaveFile,
     entry: &JournalEntry,
-    offset: time::UtcOffset,
+    when: &str,
     outcome: &mut SettingsOutcome,
     new: bool,
+    pin_spots: &mut Vec<(OffsetDateTime, egui::Rect)>,
 ) {
-    // A line in the log: when, what, and whether it is kept. A kept moment is dated, since it
-    // stays long after its day; one under its day's heading needs only the time.
     let pinned = save.companion.pinned(entry);
-    let scale = journal::text_scale(ui);
-    let when = if pinned {
-        dates::kept(entry.at, offset)
+    let pin_side = 20.0;
+    // Kept clear of the page's right edge, where the scroll bar answers to the pointer.
+    let edge = 14.0;
+    let row = today::moment_row(ui, shell, save, entry, when, new, pin_side + edge + 4.0);
+    let spot = egui::Rect::from_min_size(
+        egui::pos2(row.right() - edge - pin_side, row.bottom() - pin_side - 2.0),
+        egui::vec2(pin_side, pin_side),
+    );
+    let room = pinned || save.companion.pins.len() < MAX_PINNED_ENTRIES;
+    let response = ui.interact(
+        spot,
+        egui::Id::new(("pin", entry_key(entry))),
+        if room {
+            egui::Sense::click()
+        } else {
+            egui::Sense::hover()
+        },
+    );
+    let line_hovered = ui.rect_contains_pointer(row);
+    if pinned || line_hovered || response.has_focus() {
+        let colour = if pinned || response.hovered() {
+            forest()
+        } else {
+            muted()
+        };
+        pin_glyph(ui.painter(), spot, colour);
+    }
+    if pinned {
+        paper::tape_strip(
+            ui.painter(),
+            row.left_bottom() + egui::vec2(18.0, -12.0),
+            egui::vec2(40.0, 12.0),
+            -8f32.to_radians(),
+        );
+    }
+    if response.has_focus() {
+        ui.painter().rect_stroke(
+            spot.expand(2.0),
+            0.0,
+            egui::Stroke::new(2.0, forest()),
+            egui::StrokeKind::Outside,
+        );
+    }
+    if room && response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    let label = if pinned { "Unpin" } else { "Pin" };
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, room, label));
+    let response = if pinned {
+        response.on_hover_text("Kept. Click to let it go with the rest in time.")
+    } else if room {
+        response.on_hover_text("Keep this moment, however long ago it gets.")
     } else {
-        dates::clock(entry.at, offset)
+        response.on_hover_text(format!(
+            "All {MAX_PINNED_ENTRIES} pins are in use. Unpin one to keep another."
+        ))
     };
-    // On a ruled line of its own, with the time, the moment and its pin all sitting on it.
-    journal::ruled_row(ui, |ui| {
-        let when_width = if pinned { 104.0 } else { 46.0 } * scale;
-        ui.allocate_ui_with_layout(
-            egui::vec2(when_width, 0.0),
-            egui::Layout::top_down(egui::Align::Min),
-            |ui| {
-                ui.set_min_width(when_width);
-                journal::write(
-                    ui,
-                    journal::label_job(&when, journal::label_size(scale), muted()),
-                );
-            },
-        );
-        let action = if pinned { "Unpin" } else { "Pin" };
-        let action_width = text_width(ui, RichText::new(action).small()) + 12.0;
-        let text_room =
-            (ui.available_width() - action_width - ui.spacing().item_spacing.x * 2.0).max(80.0);
-        ui.allocate_ui_with_layout(
-            egui::vec2(text_room, 0.0),
-            egui::Layout::top_down(egui::Align::Min),
-            |ui| {
-                ui.set_width(text_room);
-                let text = moment_text(save, entry);
-                // A landmark is set a little stronger, so arrivals and friendships stand out in a
-                // long run of everyday moments.
-                let text = if entry.moment.is_landmark() {
-                    RichText::new(text).strong()
-                } else {
-                    RichText::new(text)
-                };
-                let label = journal::write_marked(
-                    ui,
-                    text,
-                    None,
-                    egui::Sense::hover(),
-                    new.then(note_fill),
-                );
-                if new {
-                    label.on_hover_text("New since the journal was last read");
-                }
-            },
-        );
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-            let pin = |ui: &mut Ui, text: &str, enabled: bool| {
-                let colour = if enabled { forest() } else { muted() };
-                let sense = if enabled {
-                    egui::Sense::click()
-                } else {
-                    egui::Sense::hover()
-                };
-                let response =
-                    journal::write_with(ui, RichText::new(text).small().color(colour), None, sense);
-                if enabled && response.hovered() {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                }
-                response
-            };
-            if pinned {
-                if pin(ui, "Unpin", true).clicked() {
-                    outcome.unpin_moment = Some(entry.clone());
-                }
-            } else {
-                let room = save.companion.pins.len() < MAX_PINNED_ENTRIES;
-                let button = pin(ui, "Pin", room);
-                if button.clicked() {
-                    outcome.pin_moment = Some(entry.clone());
-                }
-                if !room {
-                    button.on_hover_text(format!(
-                        "All {MAX_PINNED_ENTRIES} pins are in use. Unpin one to keep another."
-                    ));
-                }
-            }
-        });
-    });
+    if response.clicked() {
+        if pinned {
+            outcome.unpin_moment = Some(entry.clone());
+        } else {
+            outcome.pin_moment = Some(entry.clone());
+        }
+    }
+    pin_spots.push((entry.at, spot));
 }
 
 fn label_was_shortened(name: &str) -> bool {
@@ -240,25 +269,15 @@ fn guest_book(
     all_visitors: &mut bool,
 ) {
     let visiting = save.visitors.guest.as_ref();
-    journal::kicker(ui, "The guest book");
-    ui.add_space(6.0);
+    // Nobody has come by yet: the page has no guest book until somebody does.
     if visiting.is_none()
         && save.visitors.guest_book.is_empty()
         && save.visitors.favorites.is_empty()
     {
-        card(ui, |ui| {
-            ui.strong("No visitors yet");
-            ui.label(
-                "Now and then someone passing through stops at the houses while they are out. \
-                 A friend can also send you their companion's code, which you paste into the \
-                 creature studio to invite them over for a day.",
-            );
-        });
-        ui.add_space(10.0);
-        ui.separator();
-        ui.add_space(8.0);
         return;
     }
+    journal::kicker(ui, "The guest book");
+    ui.add_space(6.0);
     if let Some(guest) = visiting {
         card(ui, |ui| {
             ui.strong(format!("{} is visiting", guest.creature.name));
@@ -398,26 +417,75 @@ fn page(
     reading: Option<&today::Reading>,
     outcome: &mut SettingsOutcome,
 ) {
+    let offset = local_offset();
+    let now = OffsetDateTime::now_utc();
+    state.pin_spots.clear();
+    // The magnifier in the heading's corner brings out the search and the filters.
+    let corner = ui.max_rect().right_top();
     journal::page_heading(
         ui,
         crate::settings::SettingsTab::Journal,
         "Journal",
         "Small moments, written down before anyone forgets them.",
     );
-    let offset = local_offset();
-    let now = OffsetDateTime::now_utc();
-    if save.companion.journal.is_empty() && save.companion.pins.is_empty() {
-        card(ui, |ui| {
-            ui.heading("The story is just beginning");
-            ui.label(
-                "Nothing has been written down yet. Arrivals, friendships, finds, new habits, \
-                 shared moments and visitors appear here as they happen — on their own time, \
-                 never on a schedule.",
-            );
-            ui.small(
-                "Leave Formiga running and come back later; the Today page will say what is new.",
-            );
-        });
+    let filtering =
+        state.filter.is_some() || state.kind.is_some() || !state.search.trim().is_empty();
+    let search_id = egui::Id::new("journal-search");
+    if ui.input_mut(|input| input.consume_key(egui::Modifiers::COMMAND, egui::Key::F)) {
+        state.searching = true;
+        ui.memory_mut(|memory| memory.request_focus(search_id));
+    }
+    let lens = egui::Rect::from_min_size(corner + egui::vec2(-34.0, 30.0), egui::vec2(30.0, 30.0));
+    let magnifier = companion_page::face_button(
+        ui,
+        lens,
+        egui::Id::new("journal-magnifier"),
+        "Search the journal",
+    )
+    .on_hover_text(format!(
+        "Search the journal, or show only some of it ({}F)",
+        journal::shortcut_modifier()
+    ));
+    {
+        let open = state.searching || filtering;
+        let colour = if open || magnifier.hovered() {
+            forest()
+        } else {
+            muted()
+        };
+        let painter = ui.painter();
+        let glass = lens.center() - egui::vec2(3.0, 3.0);
+        painter.circle_stroke(glass, 8.0, egui::Stroke::new(2.5, colour));
+        painter.line_segment(
+            [glass + egui::vec2(6.0, 6.0), glass + egui::vec2(12.0, 12.0)],
+            egui::Stroke::new(3.0, colour),
+        );
+    }
+    if magnifier.clicked() {
+        state.searching = !state.searching;
+        if state.searching {
+            ui.memory_mut(|memory| memory.request_focus(search_id));
+        } else {
+            state.search.clear();
+            state.kind = None;
+            state.filter = None;
+        }
+    }
+    // A colony only just begun has nothing written down but its arrival: the founders on their
+    // plate and one line, and nothing to look through yet.
+    if (save.companion.journal.is_empty() && save.companion.pins.is_empty())
+        || (today::just_begun(save, now) && save.companion.pins.is_empty())
+    {
+        let local_today = today::today(save, now.to_offset(offset).date(), offset);
+        let mut here = crate::settings::SettingsTab::Journal;
+        today::TodayState::right_now(ui, shell, save, now, &local_today, &mut here);
+        journal::write(
+            ui,
+            format!(
+                "Day {}. Nothing written down yet; I'll jot things here as they happen.",
+                today::colony_day(save, now)
+            ),
+        );
         ui.add_space(14.0);
         guest_book(ui, save, shell, outcome, offset, &mut state.all_visitors);
         state.scrapbook(ui, shell, save);
@@ -498,100 +566,112 @@ fn page(
         .on_hover_text("Moments you pinned. They stay here however long ago they happened.");
         ui.add_space(6.0);
         for entry in &pinned {
-            moment_card(ui, save, entry, offset, outcome, false);
+            let when = dates::kept(entry.at, offset);
+            moment_card(
+                ui,
+                shell,
+                save,
+                entry,
+                &when,
+                outcome,
+                false,
+                &mut state.pin_spots,
+            );
         }
         ui.separator();
         ui.add_space(8.0);
     }
     // Search, then the kinds of moment and the companions the journal actually mentions, so a
-    // filter never offers an empty result.
-    let search_id = egui::Id::new("journal-search");
-    if ui.input_mut(|input| input.consume_key(egui::Modifiers::COMMAND, egui::Key::F)) {
-        ui.memory_mut(|memory| memory.request_focus(search_id));
-    }
-    ui.horizontal(|ui| {
-        let field = ui.add(
-            egui::TextEdit::singleline(&mut state.search)
-                .id(search_id)
-                .hint_text(format!(
-                    "Search the journal ({}F)",
-                    journal::shortcut_modifier()
-                ))
-                .desired_width((ui.available_width() - 90.0).clamp(120.0, 360.0)),
-        );
-        if field.has_focus() && ui.input(|input| input.key_pressed(egui::Key::Escape)) {
-            state.search.clear();
-        }
-        if !state.search.is_empty() && ui.small_button("Clear").clicked() {
-            state.search.clear();
-        }
-    });
-    ui.add_space(6.0);
-    let kinds: Vec<MomentKind> = MomentKind::ALL
-        .into_iter()
-        .filter(|kind| {
-            save.companion
-                .journal
-                .iter()
-                .any(|entry| entry.moment.kind() == *kind)
-        })
-        .collect();
-    if kinds.len() > 1 {
-        ui.horizontal_wrapped(|ui| {
-            if ui
-                .selectable_label(state.kind.is_none(), "Every kind")
-                .clicked()
-            {
-                state.kind = None;
+    // filter never offers an empty result: out from behind the magnifier while asked for, or
+    // while something is being searched or filtered.
+    if state.searching || filtering {
+        ui.horizontal(|ui| {
+            let field = ui.add(
+                egui::TextEdit::singleline(&mut state.search)
+                    .id(search_id)
+                    .hint_text(format!(
+                        "Search the journal ({}F)",
+                        journal::shortcut_modifier()
+                    ))
+                    .desired_width((ui.available_width() - 90.0).clamp(120.0, 360.0)),
+            );
+            if field.has_focus() && ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+                if state.search.is_empty() {
+                    state.searching = false;
+                }
+                state.search.clear();
             }
-            for kind in kinds {
+            if !state.search.is_empty() && ui.small_button("Clear").clicked() {
+                state.search.clear();
+            }
+        });
+        ui.add_space(6.0);
+        let kinds: Vec<MomentKind> = MomentKind::ALL
+            .into_iter()
+            .filter(|kind| {
+                save.companion
+                    .journal
+                    .iter()
+                    .any(|entry| entry.moment.kind() == *kind)
+            })
+            .collect();
+        if kinds.len() > 1 {
+            ui.horizontal_wrapped(|ui| {
                 if ui
-                    .selectable_label(state.kind == Some(kind), kind.label())
+                    .selectable_label(state.kind.is_none(), "Every kind")
                     .clicked()
                 {
-                    state.kind = (state.kind != Some(kind)).then_some(kind);
+                    state.kind = None;
                 }
-            }
-        });
-    }
-    let mut mentioned: Vec<CreatureId> = save
-        .companion
-        .journal
-        .iter()
-        .filter_map(|entry| entry.creature)
-        .collect();
-    mentioned.sort_unstable();
-    mentioned.dedup();
-    if mentioned.len() > 1 {
-        ui.horizontal_wrapped(|ui| {
-            if ui
-                .selectable_label(state.filter.is_none(), "Everyone")
-                .clicked()
-            {
-                state.filter = None;
-            }
-            for id in mentioned {
-                let name = save
-                    .creatures
-                    .iter()
-                    .find(|c| c.id == id)
-                    .map_or_else(|| "A past companion".to_string(), |c| c.name.clone());
-                // Names are capped at 24 characters when they are chosen, but a filter row is a
-                // row of chips: keep one long name from pushing the rest onto its own line.
-                let label = if name.chars().count() > 16 {
-                    format!("{}…", name.chars().take(15).collect::<String>())
-                } else {
-                    name.clone()
-                };
-                let chip = ui.selectable_label(state.filter == Some(id), label);
-                if label_was_shortened(&name) {
-                    chip.clone().on_hover_text(name);
+                for kind in kinds {
+                    if ui
+                        .selectable_label(state.kind == Some(kind), kind.label())
+                        .clicked()
+                    {
+                        state.kind = (state.kind != Some(kind)).then_some(kind);
+                    }
                 }
-                if chip.clicked() {
-                    state.filter = (state.filter != Some(id)).then_some(id);
+            });
+        }
+        let mut mentioned: Vec<CreatureId> = save
+            .companion
+            .journal
+            .iter()
+            .filter_map(|entry| entry.creature)
+            .collect();
+        mentioned.sort_unstable();
+        mentioned.dedup();
+        if mentioned.len() > 1 {
+            ui.horizontal_wrapped(|ui| {
+                if ui
+                    .selectable_label(state.filter.is_none(), "Everyone")
+                    .clicked()
+                {
+                    state.filter = None;
                 }
-            }
-        });
+                for id in mentioned {
+                    let name = save
+                        .creatures
+                        .iter()
+                        .find(|c| c.id == id)
+                        .map_or_else(|| "A past companion".to_string(), |c| c.name.clone());
+                    // Names are capped at 24 characters when they are chosen, but a filter row is a
+                    // row of chips: keep one long name from pushing the rest onto its own line.
+                    let label = if name.chars().count() > 16 {
+                        format!("{}…", name.chars().take(15).collect::<String>())
+                    } else {
+                        name.clone()
+                    };
+                    let chip = ui.selectable_label(state.filter == Some(id), label);
+                    if label_was_shortened(&name) {
+                        chip.clone().on_hover_text(name);
+                    }
+                    if chip.clicked() {
+                        state.filter = (state.filter != Some(id)).then_some(id);
+                    }
+                }
+            });
+        }
     }
     ui.add_space(10.0);
     let unpinned = save
@@ -610,8 +690,6 @@ fn page(
         .filter(|entry| state.kind.is_none_or(|kind| entry.moment.kind() == kind))
         .filter(|entry| moment_matches(save, entry, &state.search))
         .collect();
-    let filtering =
-        state.filter.is_some() || state.kind.is_some() || !state.search.trim().is_empty();
     if filtering {
         journal::write(
             ui,
@@ -637,24 +715,51 @@ fn page(
         });
         ui.add_space(8.0);
     }
-    let mut heading = String::new();
     let reading = reading.cloned().unwrap_or_default();
+    // Day by day, under each day's heading; a day with only one moment folds to the one line,
+    // its day written where its time would be.
+    let mut days: Vec<(String, Vec<&JournalEntry>)> = Vec::new();
     for entry in showing {
         let day = day_heading(entry.at, now, offset);
-        if day != heading {
-            // A line left blank before each day.
-            ui.add_space(4.0);
-            journal::kicker(ui, &day);
-            heading = day;
+        match days.last_mut() {
+            Some((heading, entries)) if *heading == day => entries.push(entry),
+            _ => days.push((day, vec![entry])),
         }
-        moment_card(
-            ui,
-            save,
-            &entry.clone(),
-            offset,
-            outcome,
-            reading.is_new(entry),
-        );
+    }
+    for (day, entries) in days {
+        // A line left blank before each day.
+        ui.add_space(4.0);
+        if let [entry] = entries.as_slice() {
+            let when = format!(
+                "{} · {}",
+                short_day(entry.at, now, offset),
+                dates::clock(entry.at, offset)
+            );
+            moment_card(
+                ui,
+                shell,
+                save,
+                entry,
+                &when,
+                outcome,
+                reading.is_new(entry),
+                &mut state.pin_spots,
+            );
+            continue;
+        }
+        journal::kicker(ui, &day);
+        for entry in entries {
+            moment_card(
+                ui,
+                shell,
+                save,
+                entry,
+                &dates::clock(entry.at, offset),
+                outcome,
+                reading.is_new(entry),
+                &mut state.pin_spots,
+            );
+        }
     }
     ui.add_space(4.0);
     journal::write(
@@ -685,20 +790,12 @@ impl JournalState {
         let atlas = shell.trinket_atlas(ui, save);
         let mut found = save.companion.scrapbook.clone();
         found.sort_by_key(|record| std::cmp::Reverse((record.first_at, record.variant)));
-        journal::kicker(ui, &format!("The scrapbook · {} found", found.len()));
-        ui.add_space(6.0);
+        // Nothing found yet: no scrapbook until the first find.
         if found.is_empty() {
-            card(ui, |ui| {
-                ui.strong("Nothing found yet");
-                ui.label(
-                    "When a companion brings something back for the first time, it is recorded \
-                     here with the date and who found it. Everything still to find is in the \
-                     Collection, on the Home & keepsakes page.",
-                );
-            });
-            ui.add_space(8.0);
             return;
         }
+        journal::kicker(ui, &format!("The scrapbook · {} found", found.len()));
+        ui.add_space(6.0);
         for record in &found {
             let Some(info) = formiga_core::trinket_info(record.variant) else {
                 continue;
@@ -871,6 +968,10 @@ impl JournalState {
         let offset = local_offset();
         let sheet = self.wonder_sheet(ui, save);
         let found = &save.companion.wonders;
+        // No page of wonders until the first one has turned up.
+        if found.is_empty() {
+            return;
+        }
         ui.add_space(14.0);
         journal::kicker(
             ui,

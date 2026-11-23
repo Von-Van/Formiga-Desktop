@@ -839,8 +839,17 @@ fn a_kept_moment_outlives_the_journal_entry_it_was_taken_from() {
         "a kept moment must still be shown: {:?}",
         h.labels.iter().map(|x| &x.0).collect::<Vec<_>>()
     );
-    // And it can still be given up, so a slot is never lost to something invisible.
-    let outcome = h.click("Unpin");
+    // And it can still be given up, so a slot is never lost to something invisible: its pin
+    // stays drawn on a kept moment.
+    let spot = h
+        .clubhouse
+        .journal
+        .pin_spots
+        .iter()
+        .find(|(at, _)| *at == first.at)
+        .map(|(_, rect)| rect.center())
+        .expect("the kept moment's pin");
+    let outcome = h.click_at(spot);
     assert!(
         outcome.unpin_moment.is_some_and(|entry| entry == first),
         "a kept moment stays removable once its entry is gone"
@@ -2377,6 +2386,12 @@ fn the_journal_is_searched_filtered_and_cleared() {
     assert!(shown(&h, "MILESTONES"));
     let dance = "The colony shared a dance";
     assert!(shown(&h, dance));
+    // The search and the filters wait behind the magnifier, and ⌘F brings them out.
+    assert!(!shown(&h, "Every kind"));
+    h.frame(key(egui::Key::F, egui::Modifiers::COMMAND));
+    h.frame(Vec::new());
+    assert!(shown(&h, "Every kind"));
+    assert!(h.clubhouse.journal.searching);
     h.clubhouse.journal.search = "treasure".into();
     h.frame(Vec::new());
     h.frame(Vec::new());
@@ -2397,7 +2412,7 @@ fn the_journal_is_searched_filtered_and_cleared() {
     assert!(!shown(&h, &format!("{name} found a little treasure")));
 }
 
-/// Empty journals and guest books say what will appear there and how, instead of nothing.
+/// An empty journal is the colony on its plate and one line, with no empty boxes.
 #[test]
 fn an_empty_journal_and_guest_book_explain_themselves() {
     let mut h = Harness::new(SettingsTab::Journal);
@@ -2406,8 +2421,16 @@ fn an_empty_journal_and_guest_book_explain_themselves() {
     h.save.visitors = VisitorState::default();
     h.frame(Vec::new());
     h.frame(Vec::new());
-    assert!(shown(&h, "The story is just beginning"));
-    assert!(shown(&h, "No visitors yet"));
+    assert!(
+        h.labels.iter().any(|(text, _)| text.starts_with("Day ")
+            && text.ends_with("Nothing written down yet; I'll jot things here as they happen.")),
+        "{:?}",
+        h.labels.iter().map(|x| &x.0).collect::<Vec<_>>()
+    );
+    assert!(shown(&h, "RIGHT NOW"), "the colony on its plate");
+    for empty in ["THE GUEST BOOK", "No visitors yet", "Nothing found yet"] {
+        assert!(!shown(&h, empty), "{empty} on an empty journal");
+    }
 }
 
 /// Formiga Home is offered for the house picked out on the Home page only while it is installed:
@@ -3794,4 +3817,51 @@ fn the_journal_reopens_where_it_was_left() {
         h.frame(Vec::new());
     }
     assert_eq!(first(&h), left_at);
+}
+
+/// The Journal reads as days: a day with one moment is one line with its day where the time would
+/// be, a moment is pinned from the glyph at its line's end, and in a narrow window at large text
+/// the time goes above a moment that would otherwise wrap in beside it.
+#[test]
+fn the_journal_reads_as_a_diary() {
+    let save = aged_fixture(110);
+    let mut h = Harness::over(SettingsTab::Journal, save);
+    h.screen = egui::vec2(940.0, 4000.0);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    let texts: Vec<&String> = h.labels.iter().map(|(t, _)| t).collect();
+    assert!(
+        texts
+            .iter()
+            .any(|t| t.contains(" · ") && t.split(" · ").nth(1).is_some_and(|c| c.len() == 5)),
+        "a folded day writes its day beside its time: {texts:?}"
+    );
+    // Pinning, from the glyph at the end of a moment's line.
+    let (at, spot) = h.clubhouse.journal.pin_spots[0];
+    let outcome = h.click_at(spot.center());
+    assert!(
+        outcome.pin_moment.is_some_and(|entry| entry.at == at),
+        "the glyph pins its moment"
+    );
+    // Narrow and large: the time over the moment, not beside it.
+    let mut h = Harness::over(SettingsTab::Journal, aged_fixture(110));
+    configure_style(
+        &h.context,
+        AppearancePreferences {
+            text_scale: 150,
+            ..Default::default()
+        },
+    );
+    h.screen = egui::vec2(760.0, 4000.0);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    let line = "The colony took the train to Formiga Hill and came home";
+    let text = h.labels.iter().find(|(t, _)| t == line).expect(line).1;
+    assert!(
+        !h.labels.iter().any(|(t, rect)| t.len() <= 20
+            && t.contains(':')
+            && (rect.center().y - text.center().y).abs() < 4.0
+            && rect.right() < text.left()),
+        "no time beside a moment that would wrap"
+    );
 }

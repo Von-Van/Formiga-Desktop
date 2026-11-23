@@ -1073,50 +1073,7 @@ impl TodayState {
             );
         }
         for entry in today.moments.iter().take(8) {
-            journal::ruled_row(ui, |ui| {
-                ui.spacing_mut().item_spacing.x = 8.0;
-                journal::write(ui, RichText::new(clock(entry.at, offset)).color(muted()));
-                let (spot, _) =
-                    ui.allocate_exact_size(egui::vec2(17.0, pitch), egui::Sense::hover());
-                shell.bubble(
-                    ui.painter(),
-                    egui::pos2(spot.left(), spot.bottom() - 19.0),
-                    16.0,
-                    paper::moment_icon(&entry.moment),
-                );
-                let faces = moment_faces(save, entry);
-                let face = 18.0;
-                let room = ui.available_width() - faces.len() as f32 * (face + 4.0) - 8.0;
-                let text = moment_text(save, entry);
-                let text = if entry.moment.is_landmark() {
-                    bold(text, 16.0 * scale)
-                } else {
-                    RichText::new(text)
-                };
-                journal::write_with(ui, text, Some(room), egui::Sense::hover());
-                for creature in faces {
-                    let (spot, _) =
-                        ui.allocate_exact_size(egui::vec2(face, pitch), egui::Sense::hover());
-                    let texture = shell.portrait_texture(ui.ctx(), creature);
-                    let rect = egui::Rect::from_min_size(
-                        egui::pos2(spot.left(), spot.bottom() - face - 2.0),
-                        egui::vec2(face, face),
-                    );
-                    paper::face(ui.painter(), rect, &texture, true);
-                    if companion_page::face_button(
-                        ui,
-                        rect,
-                        ui.id()
-                            .with(("log-face", entry.at.unix_timestamp(), creature.id)),
-                        &creature.name,
-                    )
-                    .on_hover_text(format!("{}'s page", creature.name))
-                    .clicked()
-                    {
-                        shell.open_companion = Some(creature.id);
-                    }
-                }
-            });
+            moment_row(ui, shell, save, entry, &clock(entry.at, offset), false, 0.0);
         }
         if count > 8 {
             journal::write(
@@ -1478,6 +1435,91 @@ fn tally(ui: &mut Ui, shell: &mut Shell, save: &SaveFile, today: &Today<'_>) {
     if today.found.len() > 3 {
         ui.label(RichText::new(format!("…and {} more.", today.found.len() - 3)).color(muted()));
     }
+}
+
+/// One moment on a line of the page, as Today's log and the Journal both write it: when, the
+/// picture it is jotted beside, what happened (in bold for a landmark, run over with a highlighter
+/// while `new`), and the faces it is about, each turning to its companion's page. `reserve` keeps
+/// room at the line's end for something the caller draws there. Where what happened would wrap
+/// in beside the time, as in a narrow window at large text, the time goes on the line above it.
+/// Returns where the line was drawn.
+pub(crate) fn moment_row(
+    ui: &mut Ui,
+    shell: &mut Shell,
+    save: &SaveFile,
+    entry: &JournalEntry,
+    when: &str,
+    new: bool,
+    reserve: f32,
+) -> egui::Rect {
+    let scale = journal::text_scale(ui);
+    let pitch = journal::rule_pitch(scale);
+    let faces = moment_faces(save, entry);
+    let face = 18.0;
+    let text = moment_text(save, entry);
+    let text = if entry.moment.is_landmark() {
+        bold(text, 16.0 * scale)
+    } else {
+        RichText::new(text)
+    };
+    let gap = 8.0;
+    let faces_width = faces.len() as f32 * (face + gap);
+    let when_width = text_width(ui, RichText::new(when));
+    let beside = ui.available_width() - when_width - 17.0 - faces_width - reserve - 4.0 * gap;
+    let stacked = text_width(ui, text.clone()) > beside;
+    let top = ui.cursor().top();
+    if stacked {
+        journal::write(ui, RichText::new(when).color(muted()));
+    }
+    let row = journal::ruled_row(ui, |ui| {
+        ui.spacing_mut().item_spacing.x = gap;
+        if !stacked {
+            journal::write(ui, RichText::new(when).color(muted()));
+        }
+        let (spot, _) = ui.allocate_exact_size(egui::vec2(17.0, pitch), egui::Sense::hover());
+        shell.bubble(
+            ui.painter(),
+            egui::pos2(spot.left(), spot.bottom() - 19.0),
+            16.0,
+            paper::moment_icon(&entry.moment),
+        );
+        let room = (ui.available_width() - faces_width - reserve - gap).max(80.0);
+        let written = journal::write_marked(
+            ui,
+            text,
+            Some(room),
+            egui::Sense::hover(),
+            new.then(note_fill),
+        );
+        if new {
+            written.on_hover_text("New since the journal was last read");
+        }
+        for creature in faces {
+            let (spot, _) = ui.allocate_exact_size(egui::vec2(face, pitch), egui::Sense::hover());
+            let texture = shell.portrait_texture(ui.ctx(), creature);
+            let rect = egui::Rect::from_min_size(
+                egui::pos2(spot.left(), spot.bottom() - face - 2.0),
+                egui::vec2(face, face),
+            );
+            paper::face(ui.painter(), rect, &texture, true);
+            if companion_page::face_button(
+                ui,
+                rect,
+                ui.id()
+                    .with(("moment-face", journal_page::entry_key(entry), creature.id)),
+                &creature.name,
+            )
+            .on_hover_text(format!("{}'s page", creature.name))
+            .clicked()
+            {
+                shell.open_companion = Some(creature.id);
+            }
+        }
+    });
+    egui::Rect::from_min_max(
+        egui::pos2(row.response.rect.left(), top),
+        egui::pos2(ui.max_rect().right(), row.response.rect.bottom()),
+    )
 }
 
 /// What today's recap can honestly say: the journal's moments from today, newest first; the
