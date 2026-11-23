@@ -1,8 +1,8 @@
 //! A page that has more to it than reads at a glance keeps the rest in sections. The page shows
 //! what matters most first, then a short list of its sections, each a line with its name and how
-//! it stands; choosing one opens it in the list's place, under a way back. Back, or Escape, goes
-//! back to the list where it was left, with the section just read marked, and each section keeps
-//! how far down it was scrolled.
+//! it stands; choosing one opens it in the list's place. The way back is the page's own corner,
+//! turned up at its foot (`back_corner`), or Escape, and goes back to the list where it was left,
+//! with the section just read marked; each section keeps how far down it was scrolled.
 //!
 //! Which section is open is kept for as long as the notebook is open, and in nothing saved. A step
 //! of the tour that points at something in a section opens that section.
@@ -18,8 +18,8 @@ pub(crate) struct Section {
     pub(crate) title: String,
     /// How it stands, in a few words: what is chosen there, or how much there is.
     pub(crate) summary: String,
-    /// What in it the tour points at, if anything: that step opens the section.
-    pub(crate) mark: Option<TourMark>,
+    /// What in it the tour points at, if anything: those steps open the section.
+    pub(crate) marks: Vec<TourMark>,
 }
 
 impl Section {
@@ -32,12 +32,12 @@ impl Section {
             key,
             title: title.into(),
             summary: summary.into(),
-            mark: None,
+            marks: Vec::new(),
         }
     }
 
     pub(crate) fn marked(mut self, mark: TourMark) -> Self {
-        self.mark = Some(mark);
+        self.marks.push(mark);
         self
     }
 }
@@ -83,7 +83,9 @@ pub(crate) fn current(
     sections: &[Section],
 ) -> Option<&'static str> {
     if let Some(mark) = shell.tour.pointing_at()
-        && let Some(section) = sections.iter().find(|section| section.mark == Some(mark))
+        && let Some(section) = sections
+            .iter()
+            .find(|section| section.marks.contains(&mark))
         && shell.sections.open(page) != Some(section.key)
     {
         shell.sections.open_section(page, section.key);
@@ -100,8 +102,8 @@ pub(crate) fn current(
     }
 }
 
-/// The list of `page`'s sections, or the open one's name under a way back to the list. Returns
-/// the section open, for the page to draw beneath. Escape goes back while nothing is being typed.
+/// The list of `page`'s sections, or the open one's name. Returns the section open, for the page
+/// to draw beneath. Escape goes back while nothing is being typed, as the page's corner does.
 pub(crate) fn show(
     ui: &mut Ui,
     shell: &mut shell::Shell,
@@ -115,24 +117,18 @@ pub(crate) fn show(
             let escape = !ui.ctx().text_edit_focused()
                 && ui
                     .input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
-            let back = journal::on_the_line(ui, |ui| {
-                ui.button(format!("\u{2039} {}", journal::page_label(page)))
-                    .on_hover_text("Back to the rest of this page (Esc)")
-            })
-            .inner;
-            if back.clicked() || escape {
+            if escape {
                 shell.sections.close(page);
                 ui.ctx().request_repaint();
                 return None;
             }
-            // A framed button stands taller than a line, so the name goes a line further down.
-            ui.add_space(4.0);
             journal::write(
                 ui,
                 RichText::new(&section.title)
                     .size(20.0 * journal::text_scale(ui).min(1.2))
                     .color(ink()),
             );
+            ui.add_space(10.0);
             Some(section.key)
         }
         None => {
@@ -230,4 +226,80 @@ fn entry(ui: &mut Ui, section: &Section, last: bool) -> egui::Response {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
     response
+}
+
+/// The page's corner turned up at its foot while one of its sections is open: the way back to the
+/// rest of the page, "‹ Your colony", beside a folded corner. `corner` is the page's bottom left,
+/// just above its footer. Answers to a click, and to Space or Enter while it has the keyboard.
+pub(crate) fn back_corner(
+    ui: &mut Ui,
+    shell: &mut shell::Shell,
+    page: SettingsTab,
+    corner: egui::Pos2,
+    scale: f32,
+) {
+    if shell.sections.open(page).is_none() {
+        return;
+    }
+    let fold = 22.0 * scale.min(1.2);
+    let label = format!("\u{2039} {}", journal::page_label(page));
+    let galley = ui
+        .painter()
+        .layout_no_wrap(label, formiga_pencil::hand(16.0 * scale), forest());
+    let rect = egui::Rect::from_min_max(
+        egui::pos2(corner.x, corner.y - fold),
+        egui::pos2(corner.x + fold + 8.0 + galley.size().x + 8.0, corner.y),
+    );
+    let response = ui
+        .interact(
+            rect,
+            egui::Id::new(("back-corner", journal::page_number(page))),
+            egui::Sense::click(),
+        )
+        .on_hover_text("Back to the rest of this page (Esc)");
+    let painter = ui.painter();
+    let lit = response.hovered() || response.has_focus();
+    // The paper under it, so writing scrolled beneath the corner never shows through the label.
+    painter.rect_filled(rect.expand2(egui::vec2(4.0, 2.0)), 0.0, paper());
+    // The corner folded up over the page: a triangle of the paper's back, edged in the line.
+    let tip = [
+        egui::pos2(corner.x, corner.y - fold),
+        egui::pos2(corner.x + fold, corner.y),
+        egui::pos2(corner.x + fold, corner.y - fold),
+    ];
+    painter.add(egui::Shape::convex_polygon(
+        tip.to_vec(),
+        if lit { mint() } else { card_fill() },
+        egui::Stroke::new(2.0, line()),
+    ));
+    painter.galley(
+        egui::pos2(
+            corner.x + fold + 8.0,
+            corner.y - fold / 2.0 - galley.size().y / 2.0,
+        ),
+        galley,
+        forest(),
+    );
+    if response.has_focus() {
+        painter.rect_stroke(
+            rect.expand(2.0),
+            0.0,
+            egui::Stroke::new(2.0, forest()),
+            egui::StrokeKind::Outside,
+        );
+    }
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(
+            egui::WidgetType::Button,
+            true,
+            format!("Back to {}", journal::page_label(page)),
+        )
+    });
+    if response.clicked() {
+        shell.sections.close(page);
+        ui.ctx().request_repaint();
+    }
 }
