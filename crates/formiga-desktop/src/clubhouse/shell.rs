@@ -7,7 +7,7 @@ use super::*;
 
 #[derive(Default)]
 pub(crate) struct Shell {
-    portraits: BTreeMap<CreatureId, (AppearanceGenome, TextureHandle)>,
+    portraits: BTreeMap<CreatureId, Portrait>,
     /// The colony's own sheet of found things: one texture the scrapbook cuts every slot out of,
     /// and the very same sheet the desktop samples when a companion holds one up.
     trinket_atlas: Option<([u8; 32], TextureHandle)>,
@@ -27,6 +27,10 @@ pub(crate) struct Shell {
     living: Option<(LivingKey, TextureHandle, u8)>,
 }
 
+/// A companion's portrait as it was drawn: the look it was drawn from, the texture, and the
+/// part of the tile the companion covers, in the tile's own pixels.
+type Portrait = (AppearanceGenome, TextureHandle, egui::Rect);
+
 /// Whose living portrait it is, how they looked and what they were doing.
 type LivingKey = (CreatureId, AppearanceGenome, ActionKind);
 
@@ -38,7 +42,7 @@ impl Shell {
     pub(super) fn texture_ids(&self) -> impl Iterator<Item = egui::TextureId> + '_ {
         self.portraits
             .values()
-            .map(|(_, t)| t.id())
+            .map(|(_, t, _)| t.id())
             .chain(self.trinket_atlas.iter().map(|(_, t)| t.id()))
             .chain(self.bubble_sheet.iter().map(TextureHandle::id))
             .chain(self.living.iter().map(|(_, texture, _)| texture.id()))
@@ -120,21 +124,45 @@ impl Shell {
         ctx: &egui::Context,
         creature: &Creature,
     ) -> TextureHandle {
+        self.portrait(ctx, creature).0
+    }
+
+    /// The portrait and the part of its tile the companion covers, in the tile's pixels, for
+    /// drawing it to scale standing on a line: the same texture `portrait_texture` hands out.
+    pub(crate) fn portrait(
+        &mut self,
+        ctx: &egui::Context,
+        creature: &Creature,
+    ) -> (TextureHandle, egui::Rect) {
         let drawn = |ctx: &egui::Context| {
-            upload(
-                ctx,
-                "colony-portrait",
-                &CreatureRenderer::render_frame(&creature.appearance, ActionKind::Greet, 2, true),
+            let tile =
+                CreatureRenderer::render_frame(&creature.appearance, ActionKind::Greet, 2, true);
+            let covered = tile.alpha_bounds().map_or(
+                egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(tile.width() as f32, tile.height() as f32),
+                ),
+                |(left, top, right, bottom)| {
+                    egui::Rect::from_min_max(
+                        egui::pos2(left as f32, top as f32),
+                        egui::pos2(right as f32 + 1.0, bottom as f32 + 1.0),
+                    )
+                },
+            );
+            (
+                creature.appearance.clone(),
+                upload(ctx, "colony-portrait", &tile),
+                covered,
             )
         };
         let entry = self
             .portraits
             .entry(creature.id)
-            .or_insert_with(|| (creature.appearance.clone(), drawn(ctx)));
+            .or_insert_with(|| drawn(ctx));
         if entry.0 != creature.appearance {
-            *entry = (creature.appearance.clone(), drawn(ctx));
+            *entry = drawn(ctx);
         }
-        entry.1.clone()
+        (entry.1.clone(), entry.2)
     }
 
     /// The creatures' speech bubbles, the sheet the desktop draws them from, uploaded once.

@@ -68,6 +68,9 @@ All notable changes are documented here.
   strip sits where it always has. A hovered item's label still shows on the first frame the
   pointer is over it.
 
+- Preferences shows Creature size instead of only naming it: Small, Medium and Large each have
+  the colony's first companion standing beside the word at that size, and clicking the companion
+  chooses it too. The three words now rest on one line.
 - The notebook reads less like a settings window. Apply and Revert are only under Habitat,
   Applications and Preferences, the pages with preferences on them (and under any page while a
   change is waiting to be applied); elsewhere the foot of the page holds only the undo offer and

@@ -3090,6 +3090,17 @@ shell for as long as the window is open and in nothing saved, and a step of the 
 something in a section opens it. `no_page_is_drawn_past_the_edge_of_its_window` draws every section
 of every page open as well as each page's list.
 
+Preferences' On your desktop section shows Creature size as well as naming it: Small, Medium and
+Large each have the colony's first companion beside the word, drawn from the portrait the shell
+already keeps at a half, three quarters and the whole of a point to each of its pixels (2:3:4, as
+`display_scale` is), cropped to the part of the tile it covers (`Shell::portrait` keeps those
+bounds with the texture) and standing on the ruled line the words rest on
+(`settings::creature_size_choices`). Each picture is a custom atom inside its option's selectable
+button, so clicking the companion chooses the size and the word stays the button's accessible
+name; choosing a size draws nothing new. With nobody in the colony yet the row is the three words
+alone. `creature_size_is_chosen_by_its_word_or_its_picture_and_keeps_its_words` checks both ways
+of choosing, what AccessKit is told, and the empty colony.
+
 Every colour the pages draw reads from one palette so a single switch moves the whole window
 between cream and charcoal, and keyboard focus is drawn in the accent rather than the platform's
 fainter default. The existing egui font atlas and window/GPU resources are separate. Artwork is regenerated
