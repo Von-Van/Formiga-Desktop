@@ -16,8 +16,8 @@
 //! because that is the space the global cursor sample arrives in.
 
 use formiga_art::{
-    LABEL_TAB_GAP, LABEL_TAB_HEIGHT, MENU_BODY_HEIGHT, MENU_NOTCH_HEIGHT, MENU_STRIP_HEIGHT,
-    MenuIcon, MenuLayout,
+    LABEL_TAB_GAP, LABEL_TAB_HEIGHT, MENU_BODY_HEIGHT, MENU_MAX_ITEMS, MENU_NOTCH_HEIGHT,
+    MENU_STRIP_HEIGHT, MenuIcon, MenuLayout,
 };
 use formiga_core::{CreatureId, DesktopRect, MonitorId, Point};
 
@@ -51,6 +51,21 @@ pub const SIDE_STRIP_GAP: i32 = 2;
 /// How long the "not now" tab hangs under an item that could not be done, in seconds: long
 /// enough to read, short enough to be gone before the owner tries again.
 pub const UNAVAILABLE_SECS: f32 = 1.6;
+
+/// How long every item's label shows under a newly opened strip, while the menu is still new to
+/// its owner (see [`reveals_labels`]).
+pub const LABEL_REVEAL_SECS: f32 = 1.0;
+
+/// How many menus of a launch show every label on opening.
+pub const LABEL_REVEAL_MENUS: u64 = 3;
+
+/// Whether the next menu opened shows all its labels for [`LABEL_REVEAL_SECS`]: one of the first
+/// [`LABEL_REVEAL_MENUS`] opened since Formiga started, for a colony that has not yet finished or
+/// skipped the tour. Nothing counts menus across launches, so a colony still new to Formiga sees
+/// the labels again on each of its first launches, and a colony past the tour never does.
+pub fn reveals_labels(menus_opened: u64, onboarding_complete: bool) -> bool {
+    !onboarding_complete && menus_opened < LABEL_REVEAL_MENUS
+}
 
 /// Whose menu this is. A colony member can be sent home; a guest can be asked to stay instead; a
 /// house can be looked inside, in Formiga Home.
@@ -390,6 +405,62 @@ pub fn place_beside(layout: &MenuLayout, menu: MenuPlacement, usable: LocalRect)
     }
 }
 
+/// Every item's label at once, in one row under the strip: what a newly opened menu shows for
+/// [`LABEL_REVEAL_SECS`] (see [`reveals_labels`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct LabelRow {
+    tabs: [Option<(usize, LocalRect)>; MENU_MAX_ITEMS],
+}
+
+impl LabelRow {
+    /// Each item's index in the strip and where its tab goes, in monitor-local physical pixels.
+    pub fn tabs(&self) -> impl Iterator<Item = (usize, LocalRect)> + '_ {
+        self.tabs.iter().flatten().copied()
+    }
+}
+
+/// Hang every label of a placed strip in one row where its single tab hangs, centred under the
+/// strip, and moved sideways in whole art pixels to stay inside the usable area, as the strip
+/// itself is. A row wider than the usable area is centred on it instead. The row is level with a
+/// single tab, so [`place`] has already kept it on the display top to bottom.
+pub fn place_label_row(layout: &MenuLayout, menu: MenuPlacement, usable: LocalRect) -> LabelRow {
+    let art = menu.art_scale;
+    let row = layout.label_row();
+    let (Some(first), Some(last)) = (row.iter().flatten().next(), row.iter().flatten().last())
+    else {
+        return LabelRow::default();
+    };
+    let left = menu.x + first.x as f32 * art;
+    let right = menu.x + (last.x + last.width as i32) as f32 * art;
+    let width = right - left;
+    let shift = if art <= 0.0 {
+        0.0
+    } else if width > usable.width {
+        ((usable.x + (usable.width - width) / 2.0 - left) / art).round() * art
+    } else if left < usable.x {
+        ((usable.x - left) / art).ceil() * art
+    } else if right > usable.right() {
+        -((right - usable.right()) / art).ceil() * art
+    } else {
+        0.0
+    };
+    let mut placed = LabelRow::default();
+    for (index, (slot, tab)) in placed.tabs.iter_mut().zip(row).enumerate() {
+        *slot = tab.map(|tab| {
+            (
+                index,
+                LocalRect {
+                    x: menu.x + tab.x as f32 * art + shift,
+                    y: menu.y + tab.y as f32 * art,
+                    width: tab.width as f32 * art,
+                    height: tab.height as f32 * art,
+                },
+            )
+        });
+    }
+    placed
+}
+
 /// A strip opened beside the menu: the moments the village could share, or the way to stop one.
 #[derive(Clone, Debug)]
 pub struct SideStrip {
@@ -465,6 +536,8 @@ pub struct CreatureMenu {
     /// How far above and below its feet the strip measures the creature while it is open (see
     /// [`CreatureMenu::attach`]).
     steady: Option<SteadyExtent>,
+    /// How much longer every item's label shows under the strip (see [`reveals_labels`]).
+    revealing: f32,
 }
 
 /// How tall a creature is taken to be while its menu is open, measured from its feet once, when
@@ -503,6 +576,7 @@ impl CreatureMenu {
             usable: None,
             unavailable: None,
             steady: None,
+            revealing: 0.0,
         }
     }
 
@@ -530,6 +604,7 @@ impl CreatureMenu {
             usable: None,
             unavailable: None,
             steady: None,
+            revealing: 0.0,
         }
     }
 
@@ -555,6 +630,7 @@ impl CreatureMenu {
             usable: None,
             unavailable: None,
             steady: None,
+            revealing: 0.0,
         }
     }
 
@@ -582,9 +658,27 @@ impl CreatureMenu {
         self
     }
 
+    /// Show every item's label under the strip for [`LABEL_REVEAL_SECS`] from the first frame it
+    /// is drawn: see [`reveals_labels`].
+    pub fn revealing_labels(mut self) -> Self {
+        self.revealing = LABEL_REVEAL_SECS;
+        self
+    }
+
+    /// Every item's label in one row under the strip, while a newly opened menu is showing them.
+    pub fn label_row(&self) -> Option<LabelRow> {
+        if self.revealing <= 0.0 {
+            return None;
+        }
+        let (placement, usable) = self.placement.zip(self.usable)?;
+        Some(place_label_row(&self.layout, placement, usable))
+    }
+
     /// Open a strip beside the menu holding `items`, or close the one that is open. A strip needs
     /// between two and four items; anything else opens nothing. Returns whether one is open now.
+    /// The strip's own labels hang where the menu's row of labels would, so that row goes.
     pub fn toggle_side(&mut self, items: &[MenuIcon]) -> bool {
+        self.revealing = 0.0;
         if self.side.take().is_some() {
             return false;
         }
@@ -686,6 +780,8 @@ impl CreatureMenu {
             return false;
         };
         self.unavailable = Some((index, UNAVAILABLE_SECS));
+        // "Not now" hangs where the labels do, so they make way for it.
+        self.revealing = 0.0;
         // The owner has just used the menu: it is not untouched.
         self.untouched_for = 0.0;
         true
@@ -770,6 +866,9 @@ impl CreatureMenu {
     /// Advance the hover highlight and the two dismissal timers by one frame. `creature` is the
     /// creature's centre in logical points, so wandering away from the creature counts as staying
     /// with the menu even when the strip itself is some way off.
+    ///
+    /// A hovered item's label shows from the very sample that finds the cursor on it: there is no
+    /// hover delay, only the menu's own 50 ms cursor cadence.
     pub fn track(&mut self, dt: f32, cursor: Option<Point>, creature: Point) -> MenuTick {
         let hovered = cursor.and_then(|cursor| {
             self.placement
@@ -777,6 +876,13 @@ impl CreatureMenu {
         });
         let mut redraw = hovered != self.hovered;
         self.hovered = hovered;
+        if self.revealing > 0.0 {
+            self.revealing -= dt;
+            if self.revealing <= 0.0 {
+                self.revealing = 0.0;
+                redraw = true;
+            }
+        }
         if let Some((index, left)) = self.unavailable {
             let left = left - dt;
             // Pointing at another item asks about that one instead.
@@ -1562,6 +1668,147 @@ mod tests {
             assert_eq!(wonder_of_menu(menu.creature_id()), Some(kind));
         }
         assert_eq!(wonder_of_menu(99), None);
+    }
+
+    /// The label of the cell the cursor reaches shows on the very first frame tracked, the one
+    /// the menu is opened with: no hover delay.
+    #[test]
+    fn the_hovered_label_shows_on_the_first_tracked_frame() {
+        let mut menu = open();
+        let creature = Point { x: 900.0, y: 648.0 };
+        for index in 0..4 {
+            let mut fresh = open();
+            let tick = fresh.track(0.0, Some(cell_centre(&fresh, index)), creature);
+            assert!(tick.redraw, "drawn at once");
+            assert_eq!(fresh.hovered(), Some(index));
+            assert!(fresh.layout().label_tab(index).is_some());
+        }
+        // And moving to another cell names it on that sample too.
+        menu.track(0.05, Some(cell_centre(&menu, 0)), creature);
+        let tick = menu.track(0.05, Some(cell_centre(&menu, 3)), creature);
+        assert!(tick.redraw);
+        assert_eq!(menu.hovered(), Some(3));
+    }
+
+    /// The first three menus of a launch show every label, while the colony has not finished or
+    /// skipped the tour; the fourth, and any for a colony past the tour, do not.
+    #[test]
+    fn only_the_first_three_menus_of_a_new_colony_show_every_label() {
+        // The app asks before counting each menu it opens.
+        let shown: Vec<bool> = (0..6_u64)
+            .map(|opened| reveals_labels(opened, false))
+            .collect();
+        assert_eq!(shown, [true, true, true, false, false, false]);
+        for opened in 0..6 {
+            assert!(!reveals_labels(opened, true), "a colony past the tour");
+        }
+    }
+
+    /// Every label shows from the first frame the strip is placed, for a second, and then goes
+    /// with one redraw. "Not now" and a strip opened beside it end the row early; a menu not asked
+    /// to show them never does.
+    #[test]
+    fn every_label_shows_for_one_second_and_then_goes() {
+        let creature = Point { x: 900.0, y: 648.0 };
+        let beside = Point { x: 930.0, y: 648.0 };
+        let mut menu = CreatureMenu::new(7, MenuTarget::Member, false, 1, false).revealing_labels();
+        assert_eq!(
+            menu.label_row(),
+            None,
+            "nothing to hang it from before it is placed"
+        );
+        menu.attach(Some(anchor(900.0, 600.0, 3.0, 1.0)));
+        // The open's own sync: no time has passed.
+        menu.track(0.0, Some(beside), creature);
+        let row = menu.label_row().expect("every label on the first frame");
+        assert_eq!(row.tabs().count(), 4);
+        let mut elapsed = 0.0;
+        let mut redraws = 0;
+        while menu.label_row().is_some() {
+            let tick = menu.track(0.05, Some(beside), creature);
+            redraws += usize::from(tick.redraw);
+            elapsed += 0.05;
+            assert!(elapsed < LABEL_REVEAL_SECS + 0.2, "the labels never went");
+        }
+        assert!(elapsed >= LABEL_REVEAL_SECS - 0.06, "went after {elapsed}s");
+        assert_eq!(redraws, 1, "one redraw, when they go");
+
+        let mut not_now = open().revealing_labels();
+        assert!(not_now.label_row().is_some());
+        not_now.mark_unavailable(MenuIcon::Snack);
+        assert_eq!(not_now.label_row(), None);
+
+        let mut beside_strip = open().offering_moments().revealing_labels();
+        assert!(beside_strip.toggle_side(&[MenuIcon::Picnic, MenuIcon::Nap]));
+        assert_eq!(beside_strip.label_row(), None);
+
+        assert_eq!(open().label_row(), None);
+    }
+
+    /// The row of every label stays on the display at every edge and corner, at every scale, for
+    /// every kind of menu: level with the single tab, in the strip's order, never touching, and
+    /// centred under the strip where there is room.
+    #[test]
+    fn every_label_stays_on_the_display_at_every_edge() {
+        let menus = [
+            menu_items(MenuTarget::Member, false).to_vec(),
+            menu_items(MenuTarget::Guest, false).to_vec(),
+            WONDER_ITEMS.to_vec(),
+            house_items(false).to_vec(),
+        ];
+        for items in &menus {
+            let layout = MenuLayout::new(items);
+            for scale in [2.0_f32, 3.0, 4.0] {
+                for factor in [1.0_f32, 2.0] {
+                    let usable = anchor(0.0, 600.0, scale, factor).usable;
+                    let middle_y = usable.y + usable.height / 2.0;
+                    let xs = [
+                        usable.x + 2.0,
+                        usable.x + usable.width / 2.0,
+                        usable.right() - 2.0,
+                    ];
+                    let heads = [usable.y + 4.0, middle_y, usable.bottom() - 40.0 * scale];
+                    for &x in &xs {
+                        for &head in &heads {
+                            let mut at = anchor(x, head, scale, factor);
+                            at.foot_bottom = (head + 36.0 * scale).min(usable.bottom() - 2.0);
+                            at.ground = at.foot_bottom;
+                            let placement = place(&layout, at);
+                            let row = place_label_row(&layout, placement, usable);
+                            let tabs: Vec<(usize, LocalRect)> = row.tabs().collect();
+                            assert_eq!(tabs.len(), items.len());
+                            let label = format!("{items:?} at ({x}, {head}) {scale}x/{factor}x");
+                            let level =
+                                placement.y + (MENU_STRIP_HEIGHT + LABEL_TAB_GAP) as f32 * scale;
+                            for (offset, (index, tab)) in tabs.iter().enumerate() {
+                                assert_eq!(*index, offset, "{label}: in the strip's order");
+                                assert_eq!(tab.y, level, "{label}: level with a single tab");
+                                assert!(tab.x >= usable.x, "{label}: off the left");
+                                assert!(tab.right() <= usable.right(), "{label}: off the right");
+                                assert!(tab.y >= usable.y, "{label}: off the top");
+                                assert!(tab.bottom() <= usable.bottom(), "{label}: off the bottom");
+                                if let Some((_, next)) = tabs.get(offset + 1) {
+                                    assert!(next.x > tab.right(), "{label}: tabs touch");
+                                }
+                            }
+                            let frame = placement.frame_rect();
+                            let left = tabs[0].1.x;
+                            let right = tabs[tabs.len() - 1].1.right();
+                            if frame.x - (right - left - frame.width) / 2.0 >= usable.x + scale
+                                && frame.right() + (right - left - frame.width) / 2.0
+                                    <= usable.right() - scale
+                            {
+                                let overhang = (frame.x - left) - (right - frame.right());
+                                assert!(
+                                    overhang.abs() <= scale,
+                                    "{label}: centred under the strip ({overhang})"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     #[test]

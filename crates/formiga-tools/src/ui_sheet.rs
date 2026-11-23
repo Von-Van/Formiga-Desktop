@@ -115,6 +115,27 @@ const MENUS: [(&str, [MenuIcon; 4]); 6] = [
     ),
 ];
 
+/// The menus shown on opening with every label in one row under the strip, as the first few
+/// menus of a launch are while a colony is new: the narrowest strip, the two widest rows, and a
+/// house's two.
+const OPENING_MENUS: [&[MenuIcon]; 4] = [
+    &MENUS[0].1,
+    &MENUS[4].1,
+    &MENUS[5].1,
+    &[MenuIcon::Inside, MenuIcon::Profile],
+];
+
+/// Which labels a menu scene shows.
+#[derive(Clone, Copy)]
+enum Labels {
+    /// The hovered item's, under its cell.
+    Hovered(usize),
+    /// Every item's in one row, as a newly opened menu shows them, with nothing hovered.
+    Row,
+    /// None: nothing on this menu is hovered.
+    Nothing,
+}
+
 const GROWTHS: [(&str, BubbleGrowth); 3] = [
     ("full", BubbleGrowth::Full),
     ("medium", BubbleGrowth::Medium),
@@ -129,7 +150,7 @@ pub fn run(path: PathBuf) -> Result<()> {
     let frame = CreatureRenderer::render_frame(&creature.appearance, ActionKind::Idle, 0, true);
 
     let bubble_band = HEADER + NAME_ROW + GROWTHS.len() as u32 * BUBBLE_SCENE.1 * SCALE + BAND_GAP;
-    let menu_band = HEADER + MENUS.len() as u32 * MENU_SCENE.1 * SCALE + BAND_GAP;
+    let menu_band = HEADER + (MENUS.len() as u32 + 1) * MENU_SCENE.1 * SCALE + BAND_GAP;
     let moment_band = HEADER + MOMENT_SCENE.1 * SCALE + BAND_GAP;
     let small_band = HEADER + 116 + BAND_GAP;
     let height = 8 + 3 * (bubble_band + menu_band + moment_band + small_band) + 8;
@@ -209,10 +230,17 @@ impl Painter<'_> {
             self.sheet.text(12, y + 16, label, 3, INK);
             for hovered in 0..items.len() {
                 let x = GUTTER + hovered as u32 * MENU_SCENE.0 * SCALE;
-                self.menu_scene(background, x, y, hovered, &items);
+                self.menu_scene(background, x, y, Labels::Hovered(hovered), &items);
             }
         }
-        grid_y + MENUS.len() as u32 * MENU_SCENE.1 * SCALE + BAND_GAP
+        // The last row: menus just opened, every label showing.
+        let y = grid_y + MENUS.len() as u32 * MENU_SCENE.1 * SCALE;
+        self.sheet.text(12, y + 16, "on opening", 3, INK);
+        for (column, items) in OPENING_MENUS.into_iter().enumerate() {
+            let x = GUTTER + column as u32 * MENU_SCENE.0 * SCALE;
+            self.menu_scene(background, x, y, Labels::Row, items);
+        }
+        grid_y + (MENUS.len() as u32 + 1) * MENU_SCENE.1 * SCALE + BAND_GAP
     }
 
     /// A colony menu at home with its strip of moments open beside it, a different cell of the
@@ -257,7 +285,7 @@ impl Painter<'_> {
         );
         let origin = (x as i32 + strip_x * SCALE as i32, y as i32 + SCALE as i32);
         // Nothing on the menu itself is hovered: the cursor has moved on to the strip.
-        self.menu(&layout, &items, origin, usize::MAX, SCALE);
+        self.menu(&layout, &items, origin, Labels::Nothing, SCALE);
         let side = MenuLayout::new(strip);
         let side_origin = (
             origin.0 + (layout.size().0 as i32 + SIDE_GAP) * SCALE as i32,
@@ -328,7 +356,13 @@ impl Painter<'_> {
         let mut x = 12;
         for (name, items) in MENUS {
             let layout = MenuLayout::new(&items);
-            self.menu(&layout, &items, (x as i32, menus_y), 0, SMALL_SCALE);
+            self.menu(
+                &layout,
+                &items,
+                (x as i32, menus_y),
+                Labels::Hovered(0),
+                SMALL_SCALE,
+            );
             x += (layout.size().0 + 12) * SMALL_SCALE;
             if name == "at home" {
                 let (strip, _) = MOMENT_STRIPS[0];
@@ -401,8 +435,8 @@ impl Painter<'_> {
         background: Background,
         x: u32,
         y: u32,
-        hovered: usize,
-        items: &[MenuIcon; 4],
+        labels: Labels,
+        items: &[MenuIcon],
     ) {
         let (width, height) = (MENU_SCENE.0 * SCALE, MENU_SCENE.1 * SCALE);
         self.sheet.fill(x, y, width, height, background.base());
@@ -424,18 +458,22 @@ impl Painter<'_> {
         );
 
         let origin = (x as i32 + strip_x * SCALE as i32, y as i32 + SCALE as i32);
-        self.menu(&layout, items, origin, hovered, SCALE);
+        self.menu(&layout, items, origin, labels, SCALE);
     }
 
-    /// The frame, its cells, and the hovered item's label tab, at `scale`.
+    /// The frame, its cells, and the hovered item's label tab or every item's, at `scale`.
     fn menu(
         &mut self,
         layout: &MenuLayout,
         items: &[MenuIcon],
         origin: (i32, i32),
-        hovered: usize,
+        labels: Labels,
         scale: u32,
     ) {
+        let hovered = match labels {
+            Labels::Hovered(index) => Some(index),
+            Labels::Row | Labels::Nothing => None,
+        };
         let (x, y) = origin;
         let frame =
             UiAtlasRenderer::menu_frame(items.len() as u8).expect("2..=4 cells have a frame");
@@ -444,7 +482,7 @@ impl Painter<'_> {
             let Some(cell) = layout.cell(index) else {
                 continue;
             };
-            let rect = UiAtlasRenderer::menu_icon(*icon, index == hovered);
+            let rect = UiAtlasRenderer::menu_icon(*icon, Some(index) == hovered);
             self.sheet.blit(
                 self.atlas,
                 rect,
@@ -453,7 +491,21 @@ impl Painter<'_> {
                 scale,
             );
         }
-        if let (Some(tab), Some(icon)) = (layout.label_tab(hovered), layout.item(hovered)) {
+        let row = layout.label_row();
+        let tabs = match labels {
+            Labels::Hovered(index) => [
+                layout.label_tab(index).map(|tab| (index, tab)),
+                None,
+                None,
+                None,
+            ],
+            Labels::Row => std::array::from_fn(|index| row[index].map(|tab| (index, tab))),
+            Labels::Nothing => [None; 4],
+        };
+        for (index, tab) in tabs.into_iter().flatten() {
+            let Some(icon) = layout.item(index) else {
+                continue;
+            };
             self.sheet.blit(
                 self.atlas,
                 UiAtlasRenderer::menu_label(icon),
@@ -748,6 +800,15 @@ mod tests {
         );
         let head_top = MENU_STRIP_HEIGHT + LABEL_TAB_GAP + LABEL_TAB_HEIGHT + 5;
         assert!(head_top < MENU_SCENE.1, "the head must fit under the strip");
+        // Every label of a just-opened menu fits its scene too, centred under the strip.
+        for items in OPENING_MENUS {
+            let layout = MenuLayout::new(items);
+            let strip_x = MENU_SCENE.0 as i32 / 2 - layout.notch_x();
+            for tab in layout.label_row().into_iter().flatten() {
+                assert!(strip_x + tab.x >= 0, "{items:?} row hangs off the scene");
+                assert!(strip_x + tab.x + tab.width as i32 <= MENU_SCENE.0 as i32);
+            }
+        }
         // And a bubble cell fits above a head in a bubble scene.
         assert!(BUBBLE_CELL.0 <= BUBBLE_SCENE.0 && BUBBLE_CELL.1 < BUBBLE_SCENE.1);
         // A menu and the strip beside it both fit a moments scene, with the creature a third in.

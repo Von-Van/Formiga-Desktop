@@ -630,7 +630,12 @@ impl FormigaApp {
         if !self.ensure_menu_proxy(event_loop) {
             return;
         }
-        self.creature_menu = Some(menu);
+        let reveal = self.reveals_menu_labels();
+        self.creature_menu = Some(if reveal {
+            menu.revealing_labels()
+        } else {
+            menu
+        });
         self.menus_opened += 1;
         // Placed and shown at once, under the click that asked for it.
         self.sync_creature_menu(0.0);

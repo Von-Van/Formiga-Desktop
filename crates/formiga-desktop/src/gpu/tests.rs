@@ -1142,6 +1142,7 @@ fn an_open_menu_draws_one_frame_one_quad_per_cell_and_one_label_tab() {
         placement,
         hovered,
         unavailable: None,
+        labels: None,
         side: None,
     };
     // Nothing hovered: the frame and its four cells, and no tab.
@@ -1210,6 +1211,59 @@ fn an_open_menu_draws_one_frame_one_quad_per_cell_and_one_label_tab() {
     }
 }
 
+/// A newly opened menu shows every label in one row: one quad per item, each its own label at the
+/// row's place, the hovered one's included rather than drawn twice; "not now" replaces the row.
+#[test]
+fn a_menu_showing_every_label_draws_one_tab_per_item_where_the_row_puts_it() {
+    let (layout, items, placement) = placed_menu(false);
+    let usable = crate::creature_menu::LocalRect {
+        x: 0.0,
+        y: 0.0,
+        width: DRAWABLE.width as f32,
+        height: DRAWABLE.height as f32,
+    };
+    let row = crate::creature_menu::place_label_row(&layout, placement, usable);
+    for hovered in [None, Some(2)] {
+        let view = MenuView {
+            creature_id: Some(1),
+            items: &items,
+            layout: &layout,
+            placement,
+            hovered,
+            unavailable: None,
+            labels: Some(row),
+            side: None,
+        };
+        let quads = menu_quads(view, DRAWABLE);
+        assert_eq!(
+            quads.len(),
+            6 * (5 + items.len()),
+            "frame, cells, four tabs"
+        );
+        for (offset, (index, tab)) in row.tabs().enumerate() {
+            let quad = &quads[6 * (5 + offset)..6 * (6 + offset)];
+            let (left, top, right, bottom) = quad_pixels(quad);
+            close(left, tab.x, "tab left");
+            close(top, tab.y, "tab top");
+            close(right - left, tab.width, "tab width");
+            close(bottom - top, tab.height, "tab height");
+            close(
+                quad_sprite(quad).0,
+                UiAtlasRenderer::menu_label(items[index]).x as f32,
+                &format!("tab {index} samples the wrong label"),
+            );
+        }
+        let not_now = menu_quads(
+            MenuView {
+                unavailable: Some(0),
+                ..view
+            },
+            DRAWABLE,
+        );
+        assert_eq!(not_now.len(), 6 * 6, "not now in place of the row");
+    }
+}
+
 #[test]
 fn the_label_tab_hangs_under_the_hovered_cell_and_inside_the_strip() {
     let (layout, items, placement) = placed_menu(false);
@@ -1222,6 +1276,7 @@ fn the_label_tab_hangs_under_the_hovered_cell_and_inside_the_strip() {
                 placement,
                 hovered: Some(hovered),
                 unavailable: None,
+                labels: None,
                 side: None,
             },
             DRAWABLE,
@@ -1276,6 +1331,7 @@ fn the_strip_beside_a_menu_draws_its_plain_tray_cells_and_label() {
             placement,
             hovered: None,
             unavailable: None,
+            labels: None,
             side: None,
         },
         DRAWABLE,
@@ -1288,6 +1344,7 @@ fn the_strip_beside_a_menu_draws_its_plain_tray_cells_and_label() {
             placement,
             hovered: None,
             unavailable: None,
+            labels: None,
             side: Some(SideView {
                 layout: &side_layout,
                 placement: side,
@@ -1332,6 +1389,7 @@ fn a_menu_under_a_creature_flips_only_its_frame() {
             placement,
             hovered: Some(0),
             unavailable: None,
+            labels: None,
             side: None,
         },
         DRAWABLE,
