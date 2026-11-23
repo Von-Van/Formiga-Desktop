@@ -756,10 +756,12 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     // stops a creature costing more than a creature should, not what stops it having poses.
     assert!(full_layout_bytes() <= 4_500_000);
     // A full colony of six like this one: 9,676,800 bytes. Even with no two frames alike it
-    // would be 13,547,520, which is why the ceiling was raised from 10 MiB to 15 MiB in 0.62.0.
+    // would be 13,547,520, which is why the ceiling was raised from 10 MiB to 15 MiB in 0.62.0,
+    // and to 16 MiB in 0.68.0, when the animation pass's new clips (climb, mantle, toss, leap,
+    // squeeze, breathing) put the no-two-frames-alike colony just past 15 MiB.
     assert!(
-        full_layout_bytes() * formiga_core::MAX_COLONY_CREATURES < 15 * 1024 * 1024,
-        "a full colony's atlases could exceed 15 MiB"
+        full_layout_bytes() * formiga_core::MAX_COLONY_CREATURES < 16 * 1024 * 1024,
+        "a full colony's atlases could exceed 16 MiB"
     );
     assert!(total_bytes < atlas.body_pixels.len() * 3);
     // The optional outline is baked into the same atlas: no extra texture, no extra frame,
