@@ -3,15 +3,15 @@ use anyhow::{Context, Result};
 use bytemuck::{Pod, Zeroable};
 use formiga_art::{
     AccessoryArt, AnimationSpec, BodyClip, BodyPresentation, COLONY_OBJECT_ATLAS_HEIGHT,
-    COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE, ColonyObjectRenderer, CreatureRenderer,
-    FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement, HELD_CELL, HELD_SHEET_HEIGHT,
-    HELD_SHEET_WIDTH, HeldPlacement, HeldThing, MenuIcon, MenuLayout, MilestoneBubbleRenderer,
-    PixelPoint, PropAnchor, PropSprite, Rgba, SHELTER_SIZE, ShelterRenderer, SpriteRect,
-    TALK_BUBBLE, TALK_DETAIL, TALK_ICON, TALK_ICON_AT, TALK_SHEET_HEIGHT, TALK_SHEET_WIDTH,
-    TRINKET_ATLAS_HEIGHT, TRINKET_ATLAS_WIDTH, TRINKET_CELL, TRINKET_FRAME_GLINT,
-    TRINKET_FRAME_REST, TalkSheet, TrinketAnchor, TrinketAtlasRenderer, UI_ATLAS_HEIGHT,
-    UI_ATLAS_WIDTH, UiAtlasRenderer, VILLAGE_ATLAS_HEIGHT, VILLAGE_ATLAS_WIDTH, VillageCell,
-    VillageLook, WONDER_CELL_HEIGHT, WONDER_CELL_WIDTH, WONDER_GROUND, WONDER_MIDDLE,
+    COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE, ClipBridge, ColonyObjectRenderer,
+    CreatureRenderer, FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement, FrameShape,
+    HELD_CELL, HELD_SHEET_HEIGHT, HELD_SHEET_WIDTH, HeldPlacement, HeldThing, MenuIcon, MenuLayout,
+    MilestoneBubbleRenderer, PixelPoint, PropAnchor, PropSprite, Rgba, SHELTER_SIZE,
+    ShelterRenderer, SpriteRect, TALK_BUBBLE, TALK_DETAIL, TALK_ICON, TALK_ICON_AT,
+    TALK_SHEET_HEIGHT, TALK_SHEET_WIDTH, TRINKET_ATLAS_HEIGHT, TRINKET_ATLAS_WIDTH, TRINKET_CELL,
+    TRINKET_FRAME_GLINT, TRINKET_FRAME_REST, TalkSheet, TrinketAnchor, TrinketAtlasRenderer,
+    UI_ATLAS_HEIGHT, UI_ATLAS_WIDTH, UiAtlasRenderer, VILLAGE_ATLAS_HEIGHT, VILLAGE_ATLAS_WIDTH,
+    VillageCell, VillageLook, WONDER_CELL_HEIGHT, WONDER_CELL_WIDTH, WONDER_GROUND, WONDER_MIDDLE,
     WonderRenderer, wonder_frame, wonder_frames,
 };
 use formiga_art::{
@@ -298,6 +298,10 @@ pub struct OverlayRenderer {
     /// Which size each companion is shown at just now, as the app last worked it out from its
     /// footing (`formiga_art::shown_set_back`), so the overlay and the grab mask agree on it.
     set_back_shown: BTreeMap<CreatureId, bool>,
+    /// Each companion's one-tick bridge between clips, as the app last advanced it
+    /// (`formiga_art::ClipBridge`), so the overlay, its bubbles and the grab mask draw the settle
+    /// on the same tick.
+    clip_bridges: BTreeMap<CreatureId, ClipBridge>,
     shelter: Option<ShelterGpu>,
     ground: Option<GroundGpu>,
     bubble: Option<BubbleGpu>,
@@ -579,6 +583,7 @@ impl OverlayRenderer {
             sprites: BTreeMap::new(),
             set_back_sprites: BTreeMap::new(),
             set_back_shown: BTreeMap::new(),
+            clip_bridges: BTreeMap::new(),
             shelter: None,
             ground: None,
             bubble: None,
@@ -706,6 +711,35 @@ impl OverlayRenderer {
             .get(&creature.id)
             .copied()
             .unwrap_or_else(|| drawn_set_back(creature.state.depth, true))
+    }
+
+    /// Where each companion's one-tick bridge between clips stands, from the app, once a tick.
+    pub fn show_clip_bridges(&mut self, bridges: &BTreeMap<CreatureId, ClipBridge>) {
+        self.clip_bridges.clone_from(bridges);
+    }
+
+    /// What a companion's body is drawn as this tick: [`BodyPresentation::for_creature`], or the
+    /// settle in its place while its clip bridge is on.
+    pub(super) fn presented(&self, creature: &Creature) -> BodyPresentation {
+        let body = BodyPresentation::for_creature(creature);
+        self.clip_bridges
+            .get(&creature.id)
+            .map_or(body, |bridge| bridge.shown(body))
+    }
+
+    /// The outline of `body`'s frame as this display baked it for `creature`, and whether the
+    /// creature has anything in its paws in it, for its clip bridge. `None` until its atlas is
+    /// baked.
+    pub fn frame_shape(&self, creature: &Creature, body: BodyPresentation) -> Option<FrameShape> {
+        let sprite = self.sprite_for(creature)?;
+        let slot = atlas_slot(body.clip, body.frame) as usize;
+        let (top, bottom) = *sprite.silhouette.get(slot)?;
+        Some(FrameShape {
+            top,
+            bottom,
+            holding: formiga_art::held_now(creature, body.clip, sprite.held.get(slot).copied()?)
+                .is_some(),
+        })
     }
 
     fn sprite_at(&self, id: CreatureId, set_back: bool) -> Option<&SpriteGpu> {
@@ -1372,7 +1406,7 @@ impl OverlayRenderer {
             clip,
             frame,
             facing_right,
-        } = BodyPresentation::for_creature(creature);
+        } = self.presented(creature);
         let slot = atlas_slot(clip, frame);
         // However finely the atlas was baked, its frame fills the same quad on the screen.
         let [mut u_left, mut u_right, v_top, v_bottom] = cell_uv(

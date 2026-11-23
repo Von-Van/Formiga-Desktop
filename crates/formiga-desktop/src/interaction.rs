@@ -1,7 +1,7 @@
 use crate::platform;
 use anyhow::{Context, Result};
 use formiga_art::{
-    BodyClip, BodyPresentation, CreatureRenderer, FRAME_SIZE, FramePlacement, Holding,
+    BodyClip, BodyPresentation, ClipBridge, CreatureRenderer, FRAME_SIZE, FramePlacement, Holding,
 };
 use formiga_core::{
     AppearanceGenome, Creature, CreatureId, CursorSnapshot, DesktopRect, MonitorInfo, Settings,
@@ -76,6 +76,9 @@ pub struct ProxyRuntimeState {
     /// Drawn from its set-back atlas, smaller, standing back in the village
     /// (`gpu::drawn_set_back`): the mask and its footing are read from that size too.
     pub set_back: bool,
+    /// Its one-tick bridge between clips (`formiga_art::ClipBridge`): while it is on, the mask is
+    /// the settle's, as the overlay draws it.
+    pub bridge: ClipBridge,
 }
 
 impl InteractionProxy {
@@ -255,7 +258,9 @@ impl InteractionProxy {
             clip,
             frame,
             facing_right,
-        } = BodyPresentation::for_creature(creature);
+        } = runtime
+            .bridge
+            .shown(BodyPresentation::for_creature(creature));
         let face_state =
             CreatureRenderer::resolve_face_state(creature, cursor, settings.cursor_reactions);
         let signature = MaskSignature {

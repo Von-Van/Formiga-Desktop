@@ -276,6 +276,7 @@ cargo run -p formiga-tools -- wonder-sheet
 cargo run -p formiga-tools -- train-sheet
 cargo run -p formiga-tools -- motion-sheet
 cargo run -p formiga-tools -- rest-sheet
+cargo run -p formiga-tools -- bridge-sheet
 cargo run -p formiga-tools -- repertoire-sheet
 cargo run -p formiga-tools -- doings-sheet
 cargo run -p formiga-tools -- accessory-sheet
@@ -294,8 +295,8 @@ cargo run -p formiga-tools -- app-icon
 Without `--output`, each subcommand writes to its own file under `docs/assets/`, except
 `itch-cover` (`packaging/itch/cover.png`) and `app-icon` (the icons in `packaging/shared/`, among
 them `Formiga-tray.png`, the 64-pixel copy the app embeds for its menu bar and tray icon).
-`contact-sheet` and `animation-preview` are the exceptions: they default to a scratch file in the
-repository root, which Git ignores, so pass `--output` to replace the documentation copy. Every
+`contact-sheet`, `animation-preview` and `bridge-sheet` are the exceptions: they default to a scratch
+file in the repository root, which Git ignores, so pass `--output` to replace the documentation copy. Every
 image is deterministic, so regenerating one that nothing has changed gives back identical pixels.
 
 `cuteness-sheet` is for judging the generator rather than illustrating it. It draws 150 freshly
@@ -322,7 +323,10 @@ two, by the reference companions; `motion-sheet` draws every body's walk, run, r
 loops frame by frame, where a loop that hitches or repeats itself shows. `rest-sheet` draws ten
 seconds of every body at rest, a frame every third of a second with its face, once as the action
 alone draws it and once as a companion carries itself on the desktop, holding still, shifting,
-glancing about and blinking. `repertoire-sheet` draws every body washing, shaking and sniffing,
+glancing about and blinking. `bridge-sheet` draws every body walking, startled in mid-stride, walking
+on and coming to rest, a frame every twentieth of a second: in two rows a body, the cut each change
+of clip used to make over what the overlay draws now, with each tick that passes through the plain
+settle on an amber ground and a tick mark under each change of clip. `repertoire-sheet` draws every body washing, shaking and sniffing,
 sleeping curled, sprawled and loafed, and walking plainly, skipping and trudging, and
 `doings-sheet` draws every body watering, picking, tending, holding up what it grew, eating,
 drinking, playing alone and with a friend, saying hello and being petted, at 2x, the size the

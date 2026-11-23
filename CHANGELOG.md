@@ -2,6 +2,19 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Changed
+
+- A change of clip whose outline jumps no longer cuts straight across. Where the next clip sits
+  more than three rows higher or lower at the crown or the feet than the frame on screen — a walk
+  stopping on a high stride, a fright in mid-stride, a step up onto a ledge to sit — the companion
+  passes through its plain settle for one tick on the way. A loop going round, a change from or to
+  the settle, a body held, thrown, landing, climbing, hanging, asleep or seated, and a frame with
+  something in its paws all cut as before, and reduced motion never bridges. No new frames and
+  nothing saved: the overlay keeps what it showed last, and the picture, the bubble and the grab
+  mask show the settle together. `formiga-tools bridge-sheet` draws it tick by tick.
+
 ## [0.68.23] - 2026-11-12
 
 The village on the desktop, wonders put out, visitors among the houses and a run of fixes, released
