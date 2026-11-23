@@ -15,6 +15,7 @@ All notable changes are documented here.
 
 ### Changed
 
+- The test ceiling on a full colony's creature textures, counted as if no two frames were alike, is 16 MiB instead of 15 MiB, so the animation pass's new clips fit. A real colony of six still uses about 11.3 MB.
 - The notebook reads less like a settings window. Apply and Revert are only under Habitat,
   Applications and Preferences, the pages with preferences on them (and under any page while a
   change is waiting to be applied); elsewhere the foot of the page holds only the undo offer and
@@ -76,6 +77,14 @@ All notable changes are documented here.
   presents its find against its chest and a Long body in its raised forepaw, a body standing on
   all four carries things in its mouth, snacks and cups come to the mouth itself, and nothing
   held goes over the eyes. Clips that hold nothing draw exactly as before.
+- A toy, a snack and a cup move with the body that is using them. At keep-up the toy is caught
+  in the paw on the crouch, knocked up as the body springs and at the top of its arc on the
+  stretch, and the paw goes with it: held out to catch, up at the chin, up beside the head and
+  back down, a wing opening for it on a winged body and a Long body lifting one forepaw with the
+  other three down. A body on four legs keeps its toy up back over its shoulders, and no toy ever
+  crosses the face. A snack is held up, carried into the mouth as the head dips to it, and gone
+  while it is chewed, with crumbs at the end; a cup tips back with the head, further on the deepest
+  of the sip. Every other clip draws exactly as before.
 - Watering pours in time with the pour. The can tips over on the frames the companion leans into
   it and comes level when it does, and the water runs out of the spout only while it is tipped,
   rather than appearing beside an upright can for most of the watering whatever the pose. The water

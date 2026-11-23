@@ -360,17 +360,32 @@ front paw, and the end of a sculpted form's near arm. A body with no forepaw fre
 soft quadruped or a Long body standing on all four, a winged body with its wings folded, a
 sculpted form on four legs — reports none, and carries things in its mouth: the hands point is
 then just forward of and under the mouth, so a thing hangs from the jaw with its top at the mouth.
-So a Long body presents a find in its raised forepaw and plays with its toy at its nose; a blob
-holds things on the folded paw at the edge of its mass at chest height; a winged body holds them in
-an opened wing, or in its beak while its wings are folded. `prop_hold` builds the `PropHold` every
-belonging is placed from out of those two points and the body's floor and ground. A toy rests
-against the paw on the side away from the body, by its own edge on the paw's row
-(`Drawn::edge`), and is knocked up from there (back along the body for an original soft
-quadruped, whose head leads over its paws); a snack is held just in front of the mouth, a cup
-tipped with its rim at the mouth and lowered between sips, a meal's bites at the mouth and its
-chewing and gulping in the paw where there is one. Nothing held goes over the eyes: a toy slides on
-past them (`Drawn::covers`), and on the beats it comes back to a paw held up under the eyes
-that is as little as it takes. The atlas keeps each slot's hands point beside its face anchor
+So a Long body presents a find in its raised forepaw; a blob holds things on the folded paw at the
+edge of its mass at chest height; a winged body holds them in an opened wing, or in its beak while
+its wings are folded. `prop_hold` builds the `PropHold` every belonging is placed from out of those
+two points, the face anchor and crown, and the body's floor and ground.
+
+Eating, drinking and play move what is held in time with the body, from per-frame tables beside
+each clip's pose in `renderer/pose.rs`. Keep-up (`KEEP_UP_TOSS`) follows SoloPlay's four frames:
+the toy is caught against the paw on the crouch, knocked up as the body springs, at the top of its
+arc on the stretch and dropping back, each beat measured from that frame's own hands, so a paw
+raised for the stretch carries the arc up with it. The paw moves with it: an original family's near
+paw is held out to catch, a modular body's near paw (or opened wing, or the fox's stub) reaches low,
+out at the chin, up beside the head and back down, and a Long body lifts its near forepaw alone,
+from under its chest to its chin, with the other three down. On the catch the toy is placed
+touching the paw, on the side away from the body, as near to resting against it as the face
+allows; in the air it goes ahead and up. A body on four legs (Long, the original soft quadruped)
+carries its head out ahead of its paws, so its toy is knocked back over its shoulders instead, and
+a body with no paw free keeps it up off its crown. `play_path` keeps the toy off the face as the
+overlay draws it, read from the face itself (`FaceMask`: the Joy and Neutral faces and a pixel
+round them), moving it the least it takes, ahead or up before lower or back, so it stays on one side
+of the face for the whole round; the dashes behind it run from where it was on the frame before.
+Eating (`MOUTHFUL`) holds the snack up in front of the mouth, carries it into the mouth with a bite
+gone as the head dips forward and down to it, and shows nothing in the paws for the two frames it
+is chewed, the crumbs falling on the last. Drinking (`SIP_TILT`) tips the head back with the cup,
+further back for the deepest of the sip, and the cup, held from the mouth, goes back with it; a
+mug or bowl is tipped with its rim at the mouth and lowered between sips. A meal's bites are at the
+mouth and its chewing and gulping in the paw where there is one. The atlas keeps each slot's hands point beside its face anchor
 (`AtlasPixels::hands`), and the overlay centres a held-up find, a watering can or anything picked
 on it through `held_up_at`, which keeps a thing `HELD_UP_REACH` across off the eyes, moving it
 forward, down or back, and up over the head only when nothing else clears them. What the village
@@ -510,8 +525,8 @@ its chores, its pet and the four ways it eats a meal added five rows of cells, 1
 meal stopped repeating frames — and much less under reduced motion, where each clip holds one
 frame. With no two frames alike they would be 2,442,240 bytes, which is what the budgets hold: below a 4,500,000-byte
 test limit per creature, raised deliberately from 1.5 MB so the pose vocabulary has room to grow
-without the budget moving each time, and a full colony of six under 15 MiB, raised from 10 MiB in
-0.62.0 for the new poses and faces.
+without the budget moving each time, and a full colony of six under 16 MiB, raised from 10 MiB in
+0.62.0 for the new poses and faces and from 15 MiB in 0.68.0 for the animation pass's new clips.
 
 Gestures — cheer, gasp, cover, worry, crouch, heave, balance, reach, bop, and watch; the stretch and
 yawn a habit or a yawn going round shows; the huff, swoon, beg, strut, peek and stomp a

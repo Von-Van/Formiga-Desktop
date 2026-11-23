@@ -300,16 +300,15 @@ impl Drawn {
             .map_or(0, |x| x - cx)
     }
 
-    /// Whether the drawing, held with its middle at `x`, `y`, puts any pixel inside the box from
-    /// `(left, top)` to `(right, bottom)`, inclusive.
-    pub(crate) fn covers(
-        &self,
-        (x, y): (i32, i32),
-        (left, top, right, bottom): (i32, i32, i32, i32),
-    ) -> bool {
-        let (ox, oy) = (x - self.middle.0, y - self.middle.1);
-        (top..=bottom)
-            .any(|row| (left..=right).any(|column| self.cell.get(column - ox, row - oy).a > 0))
+    /// Every pixel of the drawing, measured from its middle.
+    pub(crate) fn pixels(&self) -> Vec<(i32, i32)> {
+        let (cx, cy) = self.middle;
+        let size = HELD_CELL as i32;
+        (0..size)
+            .flat_map(|y| (0..size).map(move |x| (x, y)))
+            .filter(|&(x, y)| self.cell.get(x, y).a > 0)
+            .map(|(x, y)| (x - cx, y - cy))
+            .collect()
     }
 }
 
@@ -331,6 +330,15 @@ impl HeldPlacement {
                 x: x - offset.x,
                 y: y - offset.y,
             },
+        }
+    }
+
+    /// Where the thing's own middle is in the frame.
+    pub fn middle(self) -> PixelPoint {
+        let offset = self.thing.offset();
+        PixelPoint {
+            x: self.at.x + offset.x,
+            y: self.at.y + offset.y,
         }
     }
 

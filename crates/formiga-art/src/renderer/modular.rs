@@ -837,6 +837,15 @@ pub(super) fn limbs(clip: BodyClip, frame: u8, body: Body, plan: BodyPlan) -> [L
         BodyClip::Action(
             ActionKind::Greet | ActionKind::SocialPlay | ActionKind::InvestigateCursor,
         ) => front(to(beside_head(1), hy - 2 - tick * 2)),
+        // Keep-up with the near paw (or wing), in time with the toy it keeps up: held out low to
+        // catch it on the crouch, out at the chin to knock it up, up beside the head on the
+        // stretch, and coming back down.
+        BodyClip::Action(ActionKind::SoloPlay) => front(match frame % 4 {
+            0 => to(x + rx + 3, y + 2),
+            1 => to(x + rx + 4, hy + 1),
+            2 => to(beside_head(1), hy - head + 2),
+            _ => to(x + rx + 4, y - 1),
+        }),
         BodyClip::Action(_) => [Limb::Rest; 2],
         BodyClip::Gesture(Gesture::Cheer) => {
             both(&|side| to(beside_head(side), hy - head - 2 - tick))
@@ -1230,6 +1239,14 @@ fn long_limbs(clip: BodyClip, frame: u8, body: Body) -> [Limb; 2] {
         BodyClip::Action(ActionKind::Greet) => [rest, lift(near, 6, room - tick)],
         BodyClip::Action(ActionKind::SocialPlay) => [rest, lift(near, 6 + tick, room - 1)],
         BodyClip::Action(ActionKind::InvestigateCursor) => [rest, lift(near, 8, 1 + tick)],
+        // Keep-up with the near forepaw alone, the other three down: lifted low under the chest to
+        // catch the toy coming back over its shoulders on the crouch, out and up to the chin to
+        // knock it and on the stretch, and coming back down.
+        BodyClip::Action(ActionKind::SoloPlay) => {
+            let beat = usize::from(frame % 4);
+            let up = [1, room - 1, room, room / 2][beat];
+            [rest, lift(near, [0, 5, 6, 3][beat], up)]
+        }
         BodyClip::Action(_) => [rest; 2],
         BodyClip::Gesture(Gesture::Cheer) => [rest, lift(near, 6 + tick, room)],
         BodyClip::Gesture(Gesture::Gasp) => [rest, lift(near, 4, room - tick)],
@@ -1685,6 +1702,7 @@ mod tests {
                             ActionKind::PresentDiscovery => [true, true],
                             ActionKind::Greet
                             | ActionKind::SocialPlay
+                            | ActionKind::SoloPlay
                             | ActionKind::InvestigateCursor => [false, true],
                             _ => [false, false],
                         };
