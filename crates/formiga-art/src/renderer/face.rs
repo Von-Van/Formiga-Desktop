@@ -1490,7 +1490,8 @@ fn looking_at(creature: &Creature, cursor: CursorSnapshot, cursor_reactions: boo
                 },
             ));
         }
-        ActionKind::Dangle => return fixed(GazeDirection::new(0, 1)),
+        // Hanging from a hand or a ledge, it looks down at where it will be put.
+        ActionKind::Dangle | ActionKind::Dragged => return fixed(GazeDirection::new(0, 1)),
         ActionKind::PresentDiscovery => return fixed(GazeDirection::new(0, -1)),
         // A grump under the hand puts its nose in the air and looks away from it.
         ActionKind::PetReaction if creature.grumbles_when_petted() => {

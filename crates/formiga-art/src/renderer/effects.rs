@@ -284,6 +284,7 @@ pub(super) fn draw_gesture_effects(
         // viewer it is interested; the pose has to say that by itself.
         Gesture::Cover
         | Gesture::Crouch
+        | Gesture::Leap
         | Gesture::Balance
         | Gesture::Reach
         | Gesture::Watch

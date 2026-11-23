@@ -125,6 +125,19 @@ All notable changes are documented here.
   including four-pawed bodies, the Echo Fox and sculpted forms — and it costs no texture: the two
   frames fill cells the atlas's last row had spare. Every other clip draws exactly as before.
   `motion-sheet` shows the tumble and the landing after the everyday loops.
+- A hop is drawn as a hop. A companion crouches where it stands for a moment before it springs,
+  is up in the air for the whole flight — stretched out long with its feet drawn up, its paws in
+  and its ears laid back, rising and then coming down, a winged body with its wings spread — and
+  lands on the touch, where it used to wobble through its landing squash the whole way across. The
+  landing is played once: squashed on the touch, back up, a pixel past, and standing on the frame a
+  rest starts from, so whatever comes next starts without a cut, after a toss as well. A hop it
+  meant to take is no longer shaken off afterwards. Gap hops keep their run-up.
+- A carried companion hangs still in the hand instead of bobbing: drawn out a pixel longer, its
+  paws, ears and tail hanging, its head swaying a pixel over and back each second and its eyes
+  down at the desk. A modular body's paws hang down its sides, where they used to stay folded.
+- The leap's two frames cost no texture: being carried now repeats its frames in pairs and gives
+  up two cells, which the leap takes. Every other clip draws exactly as before. `motion-sheet`
+  shows being carried and a hop's crouch, leap and landing.
 
 ### Fixed
 

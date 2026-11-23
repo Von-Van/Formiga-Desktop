@@ -563,14 +563,23 @@ collection; the only durable record is the scrapbook's one first-find row per va
 The renderer caches one gaze-free 48×48 body atlas and one 16×16 layered face texture per creature.
 The face texture holds fifteen expressions — the yawn's, eyes screwed shut and the mouth wide, and
 since 0.62.0 grumpy, smug and pleading for the poses a temperament strikes — each in nine gaze
-directions and three eyelid states. The body atlas holds 220 frames: 96 for actions and 124 for
-thirty-six gesture poses. A toss has two frames of its own, appended after every earlier action clip:
+directions and three eyelid states. The body atlas holds 222 frames: 96 for actions and 126 for
+thirty-seven gesture poses. A toss has two frames of its own, appended after every earlier action clip:
 balled up in the air, legs folded under, head and tail tucked and the eyes shut, and the same ball
 turned a little nose up (`renderer::tumble`), which loops at six frames a second until the landing.
 The turn is drawn the way RotSprite turns pixel art — scaled up eight times by Scale2x and each
 turned pixel taking the colour under its middle, with any coat pixel left on the turned edge given
 the colour of the outline that passed through it — so it invents no colour and keeps the outline
-whole; a sculpted form's fine painting is turned with it. Since 0.62.0 a frame or a
+whole; a sculpted form's fine painting is turned with it. A hop has a two-frame leap, the last
+gesture in the atlas: stretched out long with the feet drawn up under it, the paws in and the ears
+laid back (`Pose::ears_back`), rising with the tail trailing, then a little less stretched with the
+tail up as it comes down; a winged body spreads its wings. The landing is played once and held
+(`PlaybackMode::Hold`): squashed low and wide on the touch with the legs folding, drawn back up, a
+pixel past standing with the ears up, and standing on exactly the frame a rest starts from, so the
+cut to whatever comes next does not show. Being carried hangs still rather than bobbing: drawn out a
+pixel longer, the paws, ears and tail hanging (a modular body's paws down its sides, which used to
+stay folded), the head swaying a pixel over and back each second, and the eyes down at the desk. Its
+four frames repeat in pairs, so it takes two cells, and the leap takes the two it gave up. Since 0.62.0 a frame or a
 face that comes out identical to one already baked — a pose held across frames, a whole clip under
 reduced motion, eyes shut whichever way they would be looking — shares that one's cell, and each
 creature keeps a table of the cell each slot is drawn from; the eight trinket cells the face
@@ -584,7 +593,7 @@ new companion's textures come to about 1.70 MB — 1.24 MB
 before its own repertoire of washing, shaking, sniffing and the other ways it sleeps and walks,
 its chores, its pet and the four ways it eats a meal added five rows of cells, 1.34 MB in 0.66.0 alone, when the walk, the run, the greeting and the
 meal stopped repeating frames — and much less under reduced motion, where each clip holds one
-frame. With no two frames alike they would be 2,442,240 bytes, which is what the budgets hold: below a 4,500,000-byte
+frame. With no two frames alike they would be 2,534,400 bytes, which is what the budgets hold: below a 4,500,000-byte
 test limit per creature, raised deliberately from 1.5 MB so the pose vocabulary has room to grow
 without the budget moving each time, and a full colony of six under 16 MiB, raised from 10 MiB in
 0.62.0 for the new poses and faces and from 15 MiB in 0.68.0 for the animation pass's new clips.
@@ -695,6 +704,24 @@ skipping, sleepy trudging. The spells and walks are drawn at their own clip rate
 adds about 1.5% to the frames a resting colony presents (1,042 to 1,058 a minute, summed over three
 colonies) and nothing to a wandering one, whose companions mostly sleep and walk. Under reduced
 motion a rest keeps to its settle, nobody turns over in a nap, and nobody stretches on waking.
+
+A hop keeps the one `Landing` action from its start to its touchdown, so `Presence` also keeps a
+`HopMoment` for the art: `Gather` while it crouches to spring, `Flight` with how far across it is,
+and `Down` with how long since it touched down. The presence pass reads it, at the end of each tick,
+from whatever is carrying the creature through a hop — its own window journey (a gap only once its
+run-up is done, and only until the far edge is caught), a wonder it is on its way to, or the hop up
+onto a roof or back down — and turns a flight that has stopped into `Down`, which lasts as long as
+it keeps its feet, until something picks it up, throws it, or it sets off on another hop.
+`BodyPresentation::hopping` draws a gather as the crouch, a flight as the leap — its rising frame for
+the first half of the way across and its falling one for the rest — and the first half second down
+as the landing played through to standing while it stands there; a hop it meant to take is not
+shaken off afterwards, as being set down from a hand or a throw still is. A plain hop from standing
+— a route's hop down or along, a hop down to walk home or to a wonder, and the hop up onto a roof
+and back down — crouches where it stands for `HOP_GATHER_SECS` (0.15 s) before it springs, its
+journey starting that far before nought; a hop across a gap has its run-up instead. The first
+twentieth of the way across any hop, still pushing off, is drawn in the crouch it springs from.
+`formiga-tools motion-sheet` ends with being carried, the toss, and a hop's crouch, leap and
+landing.
 `formiga-tools repertoire-sheet` draws every body doing each of them beside the clip it might be
 mistaken for.
 

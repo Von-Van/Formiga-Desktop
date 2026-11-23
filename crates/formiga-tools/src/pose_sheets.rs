@@ -22,7 +22,7 @@ pub(crate) fn gesture_face(gesture: Gesture) -> FaceRenderState {
         Gesture::Gasp => (ExpressionKind::Startled, EyelidPose::Open),
         Gesture::Cover => (ExpressionKind::Worried, EyelidPose::Closed),
         Gesture::Worry | Gesture::Balance => (ExpressionKind::Worried, EyelidPose::Open),
-        Gesture::Crouch | Gesture::Heave | Gesture::Mantle => {
+        Gesture::Crouch | Gesture::Heave | Gesture::Mantle | Gesture::Leap => {
             (ExpressionKind::Determined, EyelidPose::Open)
         }
         Gesture::Reach | Gesture::Watch => (ExpressionKind::Curious, EyelidPose::Open),
@@ -90,25 +90,30 @@ fn gesture_subjects() -> Vec<AppearanceGenome> {
 }
 
 /// The loops a companion is seen in most — walking, running, resting, eating, sleeping — frame by
-/// frame for every body, one row each, at 3x, then a toss: the tumble through the air and the
-/// landing after it. A loop that reads as the same picture twice in a row, or that hitches where
-/// it comes round, shows up here and nowhere else.
+/// frame for every body, one row each, at 3x, then being carried, a toss tumbling through the air,
+/// and a hop: the crouch it springs from, the leap rising and coming down, and the landing, which
+/// is played once from the touch to standing. A loop that reads as the same picture twice in a
+/// row, or that hitches where it comes round, shows up here and nowhere else.
 pub fn motion_sheet(path: PathBuf) -> Result<()> {
+    use formiga_art::BodyClip;
     const SCALE: u32 = 3;
-    const LOOPS: [ActionKind; 7] = [
-        ActionKind::Traverse,
-        ActionKind::Sprint,
-        ActionKind::Idle,
-        ActionKind::Eat,
-        ActionKind::Sleep,
-        ActionKind::Tossed,
-        ActionKind::Landing,
+    const LOOPS: [BodyClip; 10] = [
+        BodyClip::Action(ActionKind::Traverse),
+        BodyClip::Action(ActionKind::Sprint),
+        BodyClip::Action(ActionKind::Idle),
+        BodyClip::Action(ActionKind::Eat),
+        BodyClip::Action(ActionKind::Sleep),
+        BodyClip::Action(ActionKind::Dragged),
+        BodyClip::Action(ActionKind::Tossed),
+        BodyClip::Gesture(Gesture::Crouch),
+        BodyClip::Gesture(Gesture::Leap),
+        BodyClip::Action(ActionKind::Landing),
     ];
     let subjects = gesture_subjects();
     let cell = FRAME_SIZE * SCALE;
     let columns: u32 = LOOPS
         .iter()
-        .map(|action| u32::from(formiga_art::AnimationSpec::for_action(*action).frames))
+        .map(|clip| u32::from(formiga_art::AnimationSpec::for_clip(*clip).frames))
         .sum::<u32>()
         + LOOPS.len() as u32
         - 1;
@@ -120,10 +125,23 @@ pub fn motion_sheet(path: PathBuf) -> Result<()> {
     }
     for (row, genome) in subjects.iter().enumerate() {
         let mut column = 0_u32;
-        for action in LOOPS {
-            let spec = formiga_art::AnimationSpec::for_action(action);
+        for clip in LOOPS {
+            let spec = formiga_art::AnimationSpec::for_clip(clip);
             for frame in 0..spec.frames {
-                let rendered = CreatureRenderer::render_frame(genome, action, frame, true);
+                let rendered = match clip {
+                    BodyClip::Action(action) => {
+                        CreatureRenderer::render_frame(genome, action, frame, true)
+                    }
+                    // A hop's crouch and leap wear the face the hop does.
+                    BodyClip::Gesture(gesture) => CreatureRenderer::render_composited_frame(
+                        genome,
+                        clip,
+                        frame,
+                        true,
+                        false,
+                        gesture_face(gesture),
+                    ),
+                };
                 blit_scaled(
                     &mut pixels,
                     width,
