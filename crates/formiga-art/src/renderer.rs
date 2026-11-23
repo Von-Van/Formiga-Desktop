@@ -176,6 +176,10 @@ pub(crate) struct Figure {
     pub(crate) back: PixelPoint,
     /// The lowest row anything worn may reach: the feet.
     pub(crate) floor: i32,
+    /// The near forepaw as this frame draws it, raised or folded, where anything held in a paw
+    /// goes; `None` when no forepaw is free to hold anything — a body standing on all four, or a
+    /// wing folded to its side — and what it carries goes in its mouth instead.
+    pub(crate) hand: Option<PixelPoint>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -186,15 +190,72 @@ pub struct RenderedBodyFrame {
     /// What the body is holding in this frame and where, drawn apart from it over the body and
     /// face. Not in `canvas` or `alpha_mask`.
     pub held: Option<HeldPlacement>,
+    /// Where this frame holds a thing it carries, in frame pixels facing right: on the near
+    /// forepaw as this frame draws it, or, for a frame with no forepaw free, just under the mouth
+    /// it is carried in. A toy, a found thing held up, a watering can or anything picked is
+    /// centred here. Mirrored with facing as `face_anchor` is.
+    pub hands: PixelPoint,
+    /// The middle of the mouth the face is drawn with, in frame pixels facing right: the face
+    /// anchor and the face layout's own mouth pixel. A mouthful or a sip is carried to it.
+    pub mouth: PixelPoint,
 }
 
 /// Where one frame holds things, in frame pixels facing right: the paw a toy, a cup or a picked
-/// thing is put in, and the mouth a snack is carried to. See [`CreatureRenderer::hold_points`].
+/// thing is put in, and the mouth a snack is carried to. The same two points as a
+/// [`RenderedBodyFrame`]'s `hands` and `mouth`. See [`CreatureRenderer::hold_points`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct HoldPoints {
     pub hands: PixelPoint,
     pub mouth: PixelPoint,
 }
+
+impl HoldPoints {
+    /// A frame's two points: on the paw `hand` if one is free, and otherwise in the mouth.
+    pub(crate) fn of(hand: Option<PixelPoint>, mouth: PixelPoint) -> Self {
+        Self {
+            // Carried in the mouth, a thing hangs from the jaw, a little forward and below, so
+            // its top meets the mouth rather than its middle covering the face.
+            hands: hand.unwrap_or(PixelPoint {
+                x: mouth.x + 2,
+                y: mouth.y + 3,
+            }),
+            mouth,
+        }
+    }
+}
+
+/// Where the middle of something held up in a frame's paw goes — a find being shown, a watering
+/// can, whatever was picked — given the frame's `hands` and face anchor, for a thing reaching about
+/// `half` pixels either side of its middle, in frame pixels facing right. On the paw, unless that
+/// would put it over the eyes: then moved the least it takes to clear them, forward, down or back,
+/// up only if none of those can, and kept inside the frame. Mirrored with facing as `hands` is.
+pub fn held_up_at(hands: PixelPoint, face: PixelPoint, half: i32) -> PixelPoint {
+    let inside = |at: PixelPoint| PixelPoint {
+        x: at.x.clamp(half + 1, FRAME_SIZE as i32 - 2 - half),
+        y: at.y.clamp(half + 1, FRAME_SIZE as i32 - 2 - half),
+    };
+    // The eyes of every face layout, wide and low ones included, lie in this box.
+    let clear = |at: PixelPoint| {
+        (at.x - face.x).abs() > 6 + half || at.y + half < face.y - 4 || at.y - half > face.y + 3
+    };
+    let moved = |(dx, dy): (i32, i32)| {
+        inside(PixelPoint {
+            x: hands.x + dx,
+            y: hands.y + dy,
+        })
+    };
+    // Forward, down or back along the body before up over the head, which reads as balancing it
+    // there rather than holding it.
+    (0..FRAME_SIZE as i32)
+        .flat_map(|step| [(step, 0), (0, step), (-step, 0)].map(moved))
+        .chain((1..FRAME_SIZE as i32).map(|step| moved((0, -step))))
+        .find(|&at| clear(at))
+        .unwrap_or_else(|| inside(hands))
+}
+
+/// How far a find or a village prop held up reaches either side of its middle, in art pixels:
+/// the drawing inside its 16-pixel cell, not the cell.
+pub const HELD_UP_REACH: i32 = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PlaybackMode {
@@ -1030,44 +1091,6 @@ fn turned(elapsed: f32, period: f32) -> bool {
     (elapsed.max(0.0) / period) as u32 % 2 == 1
 }
 
-/// Where a carried thing rides, relative to the creature's own face anchor, in art pixels.
-///
-/// A held object belongs in front of the creature at chest height, on the side it is facing, so
-/// that a prop changing hands reads as one creature passing something to another rather than two
-/// objects swapping places in mid-air. The anchor mirrors with facing for exactly that reason,
-/// and stays inside the frame so a prop is clipped and occluded with its holder.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct PropAnchor {
-    pub dx: f32,
-    pub dy: f32,
-}
-
-impl PropAnchor {
-    /// Forward of the face and the same distance below it, where a companion's forelimbs meet in
-    /// front of its chest — the same place an eaten snack or a played-with toy is drawn inside
-    /// the frame. The prop quad is the only one drawn over the layered face, so it has to clear
-    /// the eyes rather than merely miss the frame edge: lifting it instead of dropping it hangs
-    /// the thing in the air above the crown and pushes its quad out through the top of the frame
-    /// on the taller body plans.
-    const FORWARD: f32 = 8.0;
-    const DROP: f32 = 8.0;
-
-    pub fn for_creature(creature: &Creature) -> Self {
-        Self::facing(creature.state.facing_right)
-    }
-
-    pub fn facing(facing_right: bool) -> Self {
-        Self {
-            dx: if facing_right {
-                Self::FORWARD
-            } else {
-                -Self::FORWARD
-            },
-            dy: Self::DROP,
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FramePlacement {
     /// Top of the 48x48 body frame relative to the simulation contact point, in art pixels.
@@ -1271,15 +1294,20 @@ impl CreatureRenderer {
 
     /// Where a frame of `clip` places what it holds from, in frame pixels facing right: the paw
     /// a toy, a cup or a picked thing is put in, and the mouth a snack is carried to. These are
-    /// the points the frame's own belongings are placed by, read for the hold sheet, which marks
-    /// them over every frame that holds something so a belonging that misses its paw shows.
+    /// the frame's own `hands` and `mouth`, which its belongings are placed by, read for the hold
+    /// sheet, which marks them over every frame that holds something so a belonging that misses
+    /// its paw shows.
     pub fn hold_points(
         genome: &AppearanceGenome,
         clip: impl Into<BodyClip>,
         frame: u8,
         reduce_motion: bool,
     ) -> HoldPoints {
-        Self::dress_body_frame(genome, None, clip.into(), frame, reduce_motion, 1).2
+        let rendered = Self::render_body_frame(genome, clip, frame, reduce_motion);
+        HoldPoints {
+            hands: rendered.hands,
+            mouth: rendered.mouth,
+        }
     }
 
     /// [`Self::render_dressed_body_frame`], and the same frame drawn `detail` pixels to each of
@@ -1296,14 +1324,14 @@ impl CreatureRenderer {
         detail: u32,
     ) -> (RenderedBodyFrame, Canvas) {
         let detail = detail.clamp(1, crate::forms::FINEST_DETAIL);
-        let (rendered, fine, _) =
+        let (rendered, fine) =
             Self::dress_body_frame(genome, dress, clip.into(), frame, reduce_motion, detail);
         let fine = fine.unwrap_or_else(|| crate::forms::blocks(&rendered.canvas, detail));
         (rendered, fine)
     }
 
-    /// A dressed body frame, a sculpted form's painted `detail` pixels to each of its own when
-    /// that is more than one, and where the frame holds things.
+    /// A dressed body frame, with where it holds things, and a sculpted form's painted `detail`
+    /// pixels to each of its own when that is more than one.
     fn dress_body_frame(
         genome: &AppearanceGenome,
         dress: Option<AccessoryArt>,
@@ -1311,7 +1339,7 @@ impl CreatureRenderer {
         frame: u8,
         reduce_motion: bool,
         detail: u32,
-    ) -> (RenderedBodyFrame, Option<Canvas>, HoldPoints) {
+    ) -> (RenderedBodyFrame, Option<Canvas>) {
         let frame = if reduce_motion { 0 } else { frame };
         let clip = clip.body();
         let face_genome;
@@ -1351,16 +1379,29 @@ impl CreatureRenderer {
         if let Some(dress) = dress {
             accessories::draw_accessory(&mut canvas, dress, figure);
         }
-        let held = activity_held(genome, face_anchor, pose, clip, frame, reduce_motion);
-        let hold = prop_hold(genome, pose, face_anchor, clip);
+        // Where this frame holds things: the near paw the body just drew, and the mouth the face
+        // will be drawn with.
+        let mouth_at = if genome.echo_fox {
+            fox::MOUTH_AT
+        } else {
+            mouth_offset(genome)
+        };
+        let hold = HoldPoints::of(
+            figure.hand,
+            PixelPoint {
+                x: face_anchor.x + mouth_at.x,
+                y: face_anchor.y + mouth_at.y,
+            },
+        );
+        let props = prop_hold(genome, pose, clip, hold, figure);
+        let held = activity_held(genome, props, clip, frame, reduce_motion);
         match clip {
             BodyClip::Action(action) => {
                 draw_activity_marks(
                     &mut canvas,
                     genome,
                     palette,
-                    face_anchor,
-                    pose,
+                    props,
                     action,
                     frame,
                     reduce_motion,
@@ -1394,21 +1435,19 @@ impl CreatureRenderer {
             crate::forms::dressed_in_detail(&canvas, &bare, &body, detail)
         });
         let alpha_mask = AlphaMask::from_canvas(&canvas);
+        let moved = |at: PixelPoint| PixelPoint {
+            x: at.x + dx,
+            y: at.y + dy,
+        };
         let rendered = RenderedBodyFrame {
             canvas,
             face_anchor,
             alpha_mask,
             held: held.map(|held| held.translated(dx, dy)),
-        };
-        let moved = |at: PixelPoint| PixelPoint {
-            x: at.x + dx,
-            y: at.y + dy,
-        };
-        let hold = HoldPoints {
             hands: moved(hold.hands),
             mouth: moved(hold.mouth),
         };
-        (rendered, fine, hold)
+        (rendered, fine)
     }
 
     /// A body drawn from its recipe, or from its genes for a look from before recipes.
@@ -1431,7 +1470,7 @@ impl CreatureRenderer {
                 clip,
                 frame,
             );
-            modular::figure(design, pose, scale(genome))
+            modular::figure(design, pose, scale(genome), clip, frame)
         } else {
             match genome.family {
                 BodyFamily::Blob => draw_blob(&mut canvas, genome, palette, pose, clip, frame),

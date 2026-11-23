@@ -13,7 +13,7 @@ use crate::{blit_scaled_square_alpha, write_png};
 use anyhow::Result;
 use formiga_art::{
     COLONY_OBJECT_SIZE, Canvas, ColonyObjectRenderer, CreatureRenderer, FRAME_SIZE, FramePlacement,
-    PropAnchor, PropSprite, SHELTER_SIZE, ShelterRenderer, VillageCell,
+    PropSprite, SHELTER_SIZE, ShelterRenderer, VillageCell,
 };
 use formiga_core::*;
 use std::path::PathBuf;
@@ -540,26 +540,29 @@ pub fn run(path: PathBuf) -> Result<()> {
             let frame_top = contact + placement.origin_y;
             let frame_left = x - FRAME_SIZE as i32 / 2;
             place(&mut pixels, &frame, FRAME_SIZE, frame_left, frame_top);
-            // What it holds, at the anchor the overlay holds things at: in front of the face,
+            // What it holds, where the overlay holds it: on the paw the frame draws, mirrored with
             // the way it is facing.
             if let Some(beat) = creature.state.beat
                 && let Some(prop) = beat.held
             {
-                let anchor_frame = CreatureRenderer::render_body_frame(
+                let frame = CreatureRenderer::render_body_frame(
                     &creature.appearance,
                     body.clip,
                     body.frame,
                     false,
                 );
-                let anchor = anchor_frame.face_anchor;
-                let face_x = if body.facing_right {
-                    anchor.x
+                let hands = formiga_art::held_up_at(
+                    frame.hands,
+                    frame.face_anchor,
+                    formiga_art::HELD_UP_REACH,
+                );
+                let hand_x = if body.facing_right {
+                    hands.x
                 } else {
-                    FRAME_SIZE as i32 - anchor.x
+                    FRAME_SIZE as i32 - hands.x
                 };
-                let hand = PropAnchor::facing(body.facing_right);
-                let centre_x = frame_left + face_x + hand.dx.round() as i32;
-                let centre_y = frame_top + anchor.y + hand.dy.round() as i32;
+                let centre_x = frame_left + hand_x;
+                let centre_y = frame_top + hands.y;
                 held.push((PropSprite::of(prop), !body.facing_right, centre_x, centre_y));
                 if beat.kind == BeatKind::Watering {
                     let ahead = if body.facing_right { 7 } else { -7 };

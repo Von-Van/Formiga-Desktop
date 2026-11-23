@@ -221,6 +221,17 @@ impl HeldThing {
         )
     }
 
+    /// The thing's drawing, measured from the middle it is held by: what placing it against a
+    /// paw or clear of a face reads.
+    pub(crate) fn drawn(self) -> Drawn {
+        let middle = HELD_CELL as i32 / 2;
+        let offset = self.offset();
+        Drawn {
+            cell: self.cell(),
+            middle: (middle + offset.x, middle + offset.y),
+        }
+    }
+
     /// The thing alone in its cell, as the held sheet carries it.
     pub fn cell(self) -> Canvas {
         let mut canvas = Canvas::new(HELD_CELL, HELD_CELL);
@@ -242,6 +253,64 @@ pub fn render_held_sheet() -> Canvas {
         blit_transparent(&mut sheet, &thing.cell(), x0, y0);
     }
     sheet
+}
+
+/// A held thing's drawing in its cell, and the middle it is held by.
+pub(crate) struct Drawn {
+    cell: Canvas,
+    middle: (i32, i32),
+}
+
+impl Drawn {
+    /// How far the drawing reaches from its middle, as left, top, right and bottom offsets:
+    /// negative to the left and above.
+    pub(crate) fn extent(&self) -> (i32, i32, i32, i32) {
+        let (cx, cy) = self.middle;
+        self.cell
+            .alpha_bounds()
+            .map_or((0, 0, 0, 0), |(left, top, right, bottom)| {
+                (
+                    left as i32 - cx,
+                    top as i32 - cy,
+                    right as i32 - cx,
+                    bottom as i32 - cy,
+                )
+            })
+    }
+
+    /// How far from its middle the drawing's edge on one side is, `dy` rows below the middle (or
+    /// on the nearest row it has anything on): the leftmost column for `side` -1, the rightmost
+    /// for 1. A thing held against a paw is placed by this, so whatever its shape it meets the
+    /// paw on the paw's own row.
+    pub(crate) fn edge(&self, dy: i32, side: i32) -> i32 {
+        let (cx, cy) = self.middle;
+        let size = HELD_CELL as i32;
+        let row_edge = |y: i32| {
+            let mut columns = (0..size).filter(|&x| self.cell.get(x, y).a > 0);
+            if side < 0 {
+                columns.next()
+            } else {
+                columns.next_back()
+            }
+        };
+        (0..size)
+            .flat_map(|distance| [cy + dy - distance, cy + dy + distance])
+            .filter(|y| (0..size).contains(y))
+            .find_map(row_edge)
+            .map_or(0, |x| x - cx)
+    }
+
+    /// Whether the drawing, held with its middle at `x`, `y`, puts any pixel inside the box from
+    /// `(left, top)` to `(right, bottom)`, inclusive.
+    pub(crate) fn covers(
+        &self,
+        (x, y): (i32, i32),
+        (left, top, right, bottom): (i32, i32, i32, i32),
+    ) -> bool {
+        let (ox, oy) = (x - self.middle.0, y - self.middle.1);
+        (top..=bottom)
+            .any(|row| (left..=right).any(|column| self.cell.get(column - ox, row - oy).a > 0))
+    }
 }
 
 /// Something held in one body frame: what it is, and where the middle of its cell lands in the

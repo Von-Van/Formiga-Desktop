@@ -9,8 +9,7 @@ All notable changes are documented here.
 - Two review sheets for how a companion meets what it holds and what it climbs.
   `formiga-tools hold-sheet` draws every frame of eating, drinking, play, holding up a find and the
   village chores at 4x for every body at its smallest and largest, with crosshairs on the paw and
-  the mouth each frame holds things by and a cross where the overlay puts a find or a watering
-  can, so a belonging in the wrong place shows at a glance. `formiga-tools climb-sheet` shows a
+  the mouth each frame holds things by, so a belonging in the wrong place shows at a glance. `formiga-tools climb-sheet` shows a
   whole climb onto a window, a tenth of a second a picture, placed exactly as the desktop places a
   companion, and each body dangling from a ledge. Nothing a companion does or looks like changes.
 
@@ -71,6 +70,13 @@ All notable changes are documented here.
   the finder holding up what it found, everyone napping or dancing or at a picnic, a late-night
   sleep pile under stars, a visitor as a shape at the edge. The scrapbook's finds are pasted in
   like snapshots. `formiga-tools vignette-sheet` draws every picture for review.
+- What a companion holds is held by the paw or the mouth it actually draws in that frame. Every
+  body frame now says where its near forepaw is and where its face's mouth is, and toys, snacks,
+  cups, a meal, a find held up, a watering can and anything picked are placed from those instead
+  of from one offset against the face. A find is held up in the paws raised to show it, a cat
+  presents its find against its chest and a Long body in its raised forepaw, a body standing on
+  all four carries things in its mouth, snacks and cups come to the mouth itself, and nothing
+  held goes over the eyes. Clips that hold nothing draw exactly as before.
 
 ### Fixed
 
