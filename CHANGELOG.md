@@ -6,6 +6,60 @@ All notable changes are documented here.
 
 ### Changed
 
+- The notebook reads less like a settings window. Apply and Revert are only under Habitat,
+  Applications and Preferences, the pages with preferences on them (and under any page while a
+  change is waiting to be applied); elsewhere the foot of the page holds only the undo offer and
+  the last notice. Dates are written one way everywhere: "Monday 14 September" over a day,
+  "14 Sep" beside a find or a visitor, "07:00" for a time and "14 Sep · 07:00" for a kept moment,
+  never as 2026-09-14. A companion's page no longer numbers it as a specimen or a figure or names
+  its body type, the colony is "Four of them, all awake." rather than four specimens observed, and
+  what a companion is doing is said in plain words ("playing with a toy", "following a friend")
+  rather than as "solo play" or "follow". The Journal's guest book, scrapbook, souvenirs, cups and
+  wonders are headed in the same pencil capitals as the rest of the notebook, and the guest book
+  shows its latest three visitors with the rest a click away.
+- A companion's page opens on the companion. Everyone's face runs along the top, the chosen one
+  taped, and the arrow keys and ⌘[ ⌘] turn between them. Under it the portrait and the name in
+  the hand come first, with the temperament once, the traits, and one line of what it is doing,
+  naming the friend it is playing with, following or greeting. Its days, pets, finds and climbs
+  are one stamp in the margin instead of four boxes, and a companion that has just arrived says
+  so, with "Still getting to know Mallow. I'll write things here as I see them." At 760 wide and
+  150% text the portrait, name, temperament and traits are all in the first screen.
+- A companion's page writes about it instead of listing it. The newest thing seen of it comes
+  first, dated ("Napped beside Tofu this morning, the ninth time I've seen it."), then what the
+  notebook has noticed about it in the same voice as Today, its friends as small faces with a word
+  under each ("cozy", "playmates") that turn to that friend, its firsts ("Joined 5 Aug · first
+  friend Tofu, 9 Sep · first find a key, 12 Sep"), and its little ways beside a picture of it doing
+  its newest one. The Notes row is gone, since everything it held is on the page. The journal
+  names a first find ("Moss found a key") instead of "found a little treasure".
+- A companion's page is read first and changed second. Everything that changes or shares it is one
+  row at the foot, Care & share: its name, where it likes to be, Formiga Farm, its code, card and
+  sticker, and keeping, removing and starting over. Click its name where it is written to rename
+  it; Enter keeps the new name and Escape leaves it. The collection of everything the colony
+  could find moves to Home & keepsakes, beside the trees its finds hang in. An open section's way
+  back is the page's corner turned up at its foot, "‹ Your colony", as well as Escape, instead of
+  a button above its heading, on every page with sections.
+- Your colony opens on everyone together: the same picture of everyone standing about that Today
+  has, and the pairs who go together as two faces with a word between ("Mallow · cozy · Tofu").
+  Everyone is the first face in the strip, and ⌘[ ⌘] turn from everyone through each companion.
+  Any face in the notebook, on Today's highlight and log, the colony's picture, a pair or a
+  friend, turns to that companion's page, and Today's highlight has a button for it. A
+  companion's portrait on its page plays what it is doing, asleep while it sleeps, and holds
+  still under Reduce motion. "How everyone gets along" is no longer a row on each companion's
+  page, since the colony's own page shows it.
+- The Journal reads as a diary. Each moment is written the way Today's log writes it, with its
+  picture and the faces it is about, each turning to that companion's page. A day with only one
+  moment is a single line with its day beside its time, and in a narrow window at large text the
+  time goes above a moment rather than squeezing it into a column. The search and the filters wait
+  behind a magnifier in the corner (or ⌘F). A pin shows at the end of a moment's line while you
+  point at it, and a kept moment has a strip of tape across its time. A new colony's Journal is
+  everyone on their plate and "Day 1. Nothing written down yet; I'll jot things here as they
+  happen.", and the guest book, scrapbook and wonders appear only once they have something in them.
+- The Journal has pictures. The newest days' best moment — an arrival, two companions growing
+  close, a first find, a ritual or a visitor — is taped in as a little picture with its caption,
+  drawn from the companions' own art: a wave under sparkles, two facing each other with a heart,
+  the finder holding up what it found, everyone napping or dancing or at a picnic, a late-night
+  sleep pile under stars, a visitor as a shape at the edge. The scrapbook's finds are pasted in
+  like snapshots. `formiga-tools vignette-sheet` draws every picture for review.
 - A change of clip whose outline jumps no longer cuts straight across. Where the next clip sits
   more than three rows higher or lower at the crown or the feet than the frame on screen — a walk
   stopping on a high stride, a fright in mid-stride, a step up onto a ledge to sit — the companion
@@ -14,6 +68,11 @@ All notable changes are documented here.
   something in its paws all cut as before, and reduced motion never bridges. No new frames and
   nothing saved: the overlay keeps what it showed last, and the picture, the bubble and the grab
   mask show the settle together. `formiga-tools bridge-sheet` draws it tick by tick.
+
+### Fixed
+
+- Today's tally no longer runs off the edge of its card on a day with a long count in it, such as
+  "1 shared moment" beside "2 new keepsakes": it goes to one count a row when two don't fit.
 
 ## [0.68.23] - 2026-11-12
 
