@@ -116,7 +116,7 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Continuous upward traverse/climb/mantle, downward hops, and route interruption | CI | CI |
 | Raised dangling GPU/proxy handhold placement contract | CI | CI |
 | A hundred and sixty deterministic keepsakes, each its own object with a glint, readable inside its own cell and clear of the eyes; the original sixteen keep their numbers, names and circumstances | CI | CI |
-| Exactly 147 body frames (92 action, 55 gesture) with a slot each; frames and faces that come out alike share a cell, and every slot is drawn from a cell holding exactly its frame, with and without reduced motion; the same atlas byte for byte on every bake; 1,797,120 bytes a companion at most and a full colony under 15 MiB; the layered atlas at or below 4,500,000 bytes | CI | CI |
+| Exactly 147 body frames (92 action, 55 gesture) with a slot each; frames and faces that come out alike share a cell, and every slot is drawn from a cell holding exactly its frame, with and without reduced motion; the same atlas byte for byte on every bake; 1,797,120 bytes a companion at most and a full colony under 16 MiB; the layered atlas at or below 4,500,000 bytes | CI | CI |
 | One limb per side: a raised paw or wing leaves no resting nub or folded wing behind, and winged bodies reach with their wings | CI | CI |
 | Every action and gesture keeps one connected body and the reserved face on every body plan at extreme sizes | CI | CI |
 | Eighteen gestures are distinct, moving, in-frame poses on every body, the yawn among them; only an attention gesture replaces the action clip; covering the face closes the eyes | CI | CI |
