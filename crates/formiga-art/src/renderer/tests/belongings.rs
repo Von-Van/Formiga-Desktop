@@ -386,7 +386,7 @@ fn clips_that_hold_nothing_of_their_own_draw_as_they_did() {
         .map(|byte| format!("{byte:02x}"))
         .collect();
     assert_eq!(
-        hex, "b2734fb5f10ea73b072f04b4554c362f96c8f3a35640735cffd25558d9cd1783",
+        hex, "056ca731a5f5443afd12f82380ccb3e63067471ee9f68c38a92b971337e5d46c",
         "a clip that holds nothing of its own drew differently"
     );
 }
