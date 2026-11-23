@@ -398,7 +398,7 @@ impl OverlayRenderer {
                 continue;
             };
             let (centre_x, head_top, foot_bottom) =
-                self.creature_extent(creature, sprite, display_scale);
+                self.bubble_extent(creature, sprite, display_scale);
             let extent = (head_top, foot_bottom);
             // The room a whole bubble takes, kept from its first growing step to its last.
             let whole = talk_origin(centre_x, extent, scale, self.layout, full);
@@ -470,6 +470,29 @@ impl OverlayRenderer {
             frame_top + f32::from(top) * scale,
             frame_top + f32::from(bottom) * scale,
         )
+    }
+
+    /// [`Self::creature_extent`] as a bubble hangs off it: the crown is the highest any frame of
+    /// the clip being shown reaches, not this frame's own. A bubble over a bobbing, bouncing or
+    /// hopping clip then holds still while the body moves under it, and its tail never comes down
+    /// onto the head at the top of a bob. It moves only when the clip itself changes.
+    pub(super) fn bubble_extent(
+        &self,
+        creature: &Creature,
+        sprite: &SpriteGpu,
+        display_scale: u8,
+    ) -> (f32, f32, f32) {
+        let (centre_x, head_top, foot_bottom) =
+            self.creature_extent(creature, sprite, display_scale);
+        let BodyPresentation { clip, .. } = BodyPresentation::for_creature(creature);
+        let Some(crown) = clip_crown(&sprite.silhouette, clip) else {
+            return (centre_x, head_top, foot_bottom);
+        };
+        let scale = f32::from(display_scale);
+        let (_, contact_y) = self.drawn_contact(creature, display_scale);
+        let placement = FramePlacement::for_creature(creature, sprite.resting_baseline);
+        let frame_top = contact_y + placement.origin_y as f32 * scale;
+        (centre_x, frame_top + f32::from(crown) * scale, foot_bottom)
     }
 
     /// Where a menu for this creature would go, for `creature_menu` to place a strip against.
@@ -606,4 +629,14 @@ impl OverlayRenderer {
         }
         vertices
     }
+}
+
+/// The highest row any frame of `clip` draws on, in art pixels from the frame's top edge, read
+/// from the baked `silhouette` of every frame: the crown a bubble hangs off while the clip plays.
+/// `None` when the silhouette has none of the clip's frames.
+pub(super) fn clip_crown(silhouette: &[(u8, u8)], clip: BodyClip) -> Option<u8> {
+    (0..AnimationSpec::for_clip(clip).frames)
+        .filter_map(|frame| silhouette.get(atlas_slot(clip, frame) as usize))
+        .map(|(top, _)| *top)
+        .min()
 }

@@ -862,6 +862,18 @@ impl BodyPresentation {
                     state.action_elapsed * WRIGGLE_RATE,
                 );
             }
+            // Startled by a window: drawn down into a crouch for a moment, the anticipation,
+            // before the scramble. The crouch is the gesture's own frame, so it costs no frame.
+            if state.action == ActionKind::ReactToWindow
+                && !state.presence.reduced
+                && state.action_elapsed < STARTLE_GATHER_SECS
+            {
+                return Self {
+                    clip: BodyClip::Gesture(Gesture::Crouch),
+                    frame: STARTLE_CROUCH_FRAME,
+                    facing_right: state.facing_right,
+                };
+            }
             // Getting down to sleep rather than dropping into it: a crouch for a moment first.
             if state.action == ActionKind::Sleep
                 && !state.walking_to_sleep()
@@ -1175,6 +1187,12 @@ impl MotionSignature {
         }
     }
 }
+
+/// How long a companion startled by a window is drawn down into a crouch before it scrambles.
+const STARTLE_GATHER_SECS: f32 = 0.15;
+
+/// The frame of `Gesture::Crouch` a startled companion gathers itself in: the lower of the two.
+const STARTLE_CROUCH_FRAME: u8 = 1;
 
 /// How long a companion crouches as it gets down to sleep.
 const LIE_DOWN_SECS: f32 = 0.45;
@@ -1553,6 +1571,7 @@ impl CreatureRenderer {
                     genome,
                     palette,
                     face_anchor,
+                    props,
                     action,
                     frame,
                     reduce_motion,

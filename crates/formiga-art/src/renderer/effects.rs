@@ -2,11 +2,13 @@
 //! or a find held up, and the ones that go with a cheer, a gasp, a worry, a heave or a bop.
 use super::*;
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn draw_effects(
     canvas: &mut Canvas,
     genome: &AppearanceGenome,
     palette: Palette,
     face: PixelPoint,
+    hold: PropHold,
     action: ActionKind,
     frame: u8,
     reduce_motion: bool,
@@ -33,10 +35,13 @@ pub(super) fn draw_effects(
             (face.y + pulse - 7).max(3),
             palette.accent,
         ),
+        // A mouthful: crumbs knocked off by the bite falling to the ground, and a cheek filled
+        // out by the chew. Each is drawn on frames of its own (see `CRUMB_FRAMES` and
+        // `FULL_CHEEK_FRAME`), so a meal re-timed frame by frame only has to move those.
         ActionKind::Eat => {
-            if frame % 4 == 3 {
-                canvas.set((face.x + 6).min(44), face.y + 2, palette.accent);
-                canvas.set((face.x + 8).min(45), face.y + 4, palette.highlight);
+            draw_falling_crumbs(canvas, genome, palette, hold, frame);
+            if frame % 4 == FULL_CHEEK_FRAME {
+                draw_full_cheek(canvas, face);
             }
         }
         ActionKind::Drink => {
@@ -51,19 +56,17 @@ pub(super) fn draw_effects(
                 canvas.line(face.x - 12, y, face.x - 8, y, 1, palette.highlight);
             }
         }
-        ActionKind::Greet | ActionKind::SocialPlay => {
-            draw_motif(
-                canvas,
-                if genome.effect_motif == EffectMotif::None {
-                    EffectMotif::Spark
-                } else {
-                    genome.effect_motif
-                },
-                (face.x + 8).min(44),
-                (face.y - 7 - pulse).max(3),
-                palette.accent,
-            );
-        }
+        ActionKind::Greet | ActionKind::SocialPlay => draw_drifting_motif(
+            canvas,
+            if genome.effect_motif == EffectMotif::None {
+                EffectMotif::Spark
+            } else {
+                genome.effect_motif
+            },
+            (face.x + 8, face.y - 7),
+            frame,
+            palette.accent,
+        ),
         ActionKind::AvoidCursor | ActionKind::ReactToWindow => {
             let y = (face.y - 7).max(3);
             canvas.line(face.x - 7, y + 2, face.x - 9, y, 1, palette.accent);
@@ -171,15 +174,15 @@ pub(super) fn draw_gesture_effects(
                 );
             }
         }
-        Gesture::Cheer => draw_motif(
+        Gesture::Cheer => draw_drifting_motif(
             canvas,
             if genome.effect_motif == EffectMotif::None {
                 EffectMotif::Spark
             } else {
                 genome.effect_motif
             },
-            face.x,
-            (face.y - 15 - pulse).max(3),
+            (face.x, face.y - 15),
+            frame,
             palette.highlight,
         ),
         Gesture::Gasp => {
@@ -286,6 +289,102 @@ pub(super) fn draw_gesture_effects(
         | Gesture::Yawn
         | Gesture::Beg
         | Gesture::Peek => {}
+    }
+}
+
+/// How far a greeting's, a game's or a cheer's motif has drifted on each frame of its four-frame
+/// clip, up and out from where it starts beside the head, in art pixels: it rises off the head
+/// and away from it as a spark does, rather than hovering in one place.
+const MOTIF_DRIFT: [(i32, i32); 4] = [(0, 0), (1, -2), (2, -4), (3, -5)];
+
+/// How opaque a drifting motif is on its last frame, where it fades out before the next one
+/// starts beside the head again.
+const MOTIF_FADE_ALPHA: u8 = 120;
+
+/// A motif drifting up and out from `start` over the four frames of its clip and fading on the
+/// last. Reduced motion holds the first frame, which is where the motif always sat.
+pub(super) fn draw_drifting_motif(
+    canvas: &mut Canvas,
+    motif: EffectMotif,
+    start: (i32, i32),
+    frame: u8,
+    color: Rgba,
+) {
+    let step = usize::from(frame % 4);
+    let (dx, dy) = MOTIF_DRIFT[step];
+    // Kept two pixels in from the frame's edges, where a motif's arms reach, so it never pushes
+    // the body over in the frame.
+    let x = (start.0 + dx).min(44);
+    let y = (start.1 + dy).max(3);
+    if step + 1 < MOTIF_DRIFT.len() {
+        draw_motif(canvas, motif, x, y, color);
+        return;
+    }
+    let mut faded = Canvas::new(canvas.width(), canvas.height());
+    draw_motif(&mut faded, motif, x, y, color);
+    for py in 0..faded.height() as i32 {
+        for px in 0..faded.width() as i32 {
+            let pixel = faded.get(px, py);
+            if pixel.a > 0 {
+                crate::paint::put(canvas, px, py, crate::paint::faded(pixel, MOTIF_FADE_ALPHA));
+            }
+        }
+    }
+}
+
+/// The frames of `ActionKind::Eat` whose crumbs fall: knocked off by the bite on the first, and
+/// on the ground on the second.
+pub(super) const CRUMB_FRAMES: [u8; 2] = [2, 3];
+
+/// The frame of `ActionKind::Eat` whose cheek is filled out by the chew.
+pub(super) const FULL_CHEEK_FRAME: u8 = 3;
+
+/// Two crumbs off a mouthful: just under the mouth on the first of [`CRUMB_FRAMES`] and down on
+/// the ground row the body stands on, `hold.ground`, on the second. Coloured against the
+/// creature, as the snack is, so they read on its coat.
+pub(super) fn draw_falling_crumbs(
+    canvas: &mut Canvas,
+    genome: &AppearanceGenome,
+    palette: Palette,
+    hold: PropHold,
+    frame: u8,
+) {
+    let Some(fallen) = CRUMB_FRAMES.iter().position(|at| *at == frame % 4) else {
+        return;
+    };
+    let palette = crate::prop_palette(palette, prop_signature(genome));
+    let mouth = hold.mouth;
+    let ground = hold.ground.min(FRAME_SIZE as i32 - 2);
+    // One falls a little behind the other, so the pair lands as two crumbs rather than a dash.
+    let rows = if fallen == 0 {
+        [mouth.y + 3, mouth.y + 4]
+    } else {
+        [ground, ground]
+    };
+    canvas.set(mouth.x - 2, rows[0].min(ground), palette.shadow);
+    canvas.set(mouth.x + 1, rows[1].min(ground), palette.highlight);
+}
+
+/// A cheek filled out by a chew: the outline of the head pushed out a pixel beside the mouth, two
+/// rows deep, on the side the face looks toward. Found by walking out from the face along the
+/// cheek's rows to the edge of whatever is drawn there, so it sits on the head each body plan
+/// actually drew. A row with no edge within reach is left as it is.
+pub(super) fn draw_full_cheek(canvas: &mut Canvas, face: PixelPoint) {
+    const REACH: i32 = 12;
+    for y in [face.y + 2, face.y + 3] {
+        if canvas.get(face.x, y).a == 0 {
+            continue;
+        }
+        let Some(edge) = (face.x..face.x + REACH)
+            .find(|x| canvas.get(x + 1, y).a == 0)
+            .filter(|x| *x > face.x + 1 && *x + 1 < FRAME_SIZE as i32 - 2)
+        else {
+            continue;
+        };
+        let outline = canvas.get(edge, y);
+        let fill = canvas.get(edge - 1, y);
+        canvas.set(edge + 1, y, outline);
+        canvas.set(edge, y, fill);
     }
 }
 
