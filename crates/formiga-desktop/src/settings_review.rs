@@ -785,7 +785,7 @@ fn the_sticker_and_colony_portrait_controls_ask_the_app_for_an_export() {
 
     h.tab = SettingsTab::Colony;
     let creature = h.save.creatures[0].id;
-    h.click("Share Mallow");
+    h.click("Care & share");
     // The clip is chosen right beside the button, and carried with the request.
     h.clubhouse.colony.sticker_clip = StickerClip::Dance;
     assert_eq!(
@@ -839,8 +839,17 @@ fn a_kept_moment_outlives_the_journal_entry_it_was_taken_from() {
         "a kept moment must still be shown: {:?}",
         h.labels.iter().map(|x| &x.0).collect::<Vec<_>>()
     );
-    // And it can still be given up, so a slot is never lost to something invisible.
-    let outcome = h.click("Unpin");
+    // And it can still be given up, so a slot is never lost to something invisible: its pin
+    // stays drawn on a kept moment.
+    let spot = h
+        .clubhouse
+        .journal
+        .pin_spots
+        .iter()
+        .find(|(at, _)| *at == first.at)
+        .map(|(_, rect)| rect.center())
+        .expect("the kept moment's pin");
+    let outcome = h.click_at(spot);
     assert!(
         outcome.unpin_moment.is_some_and(|entry| entry == first),
         "a kept moment stays removable once its entry is gone"
@@ -1043,8 +1052,9 @@ fn opening_and_closing_the_menu_over_and_over_rebuilds_the_same_artwork_and_keep
     // Four portraits, four candidate strips and the tree the large preview stands beside, the
     // village atlas, the ground it stands on, the object atlas, one sheet holding every trinket,
     // and the last companion looked at trying something on in four poses, with everything to
-    // wear pictured on it.
-    assert_eq!(textures, 4 + 4 + 1 + 1 + 1 + 1 + 1 + 4 + 1);
+    // wear pictured on it, caught in its newest habit on its page, and its portrait there playing
+    // what it is doing.
+    assert_eq!(textures, 4 + 4 + 1 + 1 + 1 + 1 + 1 + 4 + 1 + 1 + 1);
 }
 
 #[test]
@@ -1070,7 +1080,7 @@ fn all_ui_artwork_together_fits_the_budget() {
     }
     let mut output = h.context.run_ui(egui::RawInput::default(), |ui| {
         for c in &h.save.creatures {
-            h.clubhouse.shell.portrait(ui, c, 48.0);
+            let _ = h.clubhouse.shell.portrait_texture(ui.ctx(), c);
         }
         h.clubhouse.home.show(
             ui,
@@ -1078,6 +1088,7 @@ fn all_ui_artwork_together_fits_the_budget() {
             &h.save,
             &h.monitors,
             crate::clubhouse::FormigaHomeView::default(),
+            &mut h.clubhouse.colony,
             &mut SettingsOutcome::default(),
         );
     });
@@ -1227,12 +1238,12 @@ fn a_companions_own_ways_are_on_its_page_and_in_the_journal() {
     assert!(
         h.labels
             .iter()
-            .any(|(text, _)| *text == format!("Habits: {celebration}")),
+            .any(|(text, _)| *text == format!("{celebration}.")),
         "a companion with no habits yet still has its own celebration"
     );
     h.save.creatures[0].memory.habits = vec![Habit::CirclesBeforeNaps, Habit::WavesHello];
     h.frame(Vec::new());
-    let wanted = format!("Habits: {celebration} · Turns in circles before a nap · Waves hello");
+    let wanted = format!("{celebration}. Turns in circles before a nap. Waves hello.");
     assert!(
         h.labels.iter().any(|(text, _)| *text == wanted),
         "{:?}",
@@ -1584,7 +1595,7 @@ fn the_ruling_is_where_the_writing_is_however_far_the_page_is_scrolled() {
         }
         // A section open, as it reads on its own.
         for (tab, section) in [
-            (SettingsTab::Colony, "share"),
+            (SettingsTab::Colony, "care"),
             (SettingsTab::General, "desktop"),
         ] {
             let mut h = Harness::new(tab);
@@ -1602,7 +1613,12 @@ fn the_ruling_is_where_the_writing_is_however_far_the_page_is_scrolled() {
             ("wardrobe", ThemeChoice::Dark),
             ("collection", ThemeChoice::Light),
         ] {
-            let mut h = Harness::new(SettingsTab::Colony);
+            // The collection is kept with the village's keepsakes.
+            let mut h = Harness::new(if section == "wardrobe" {
+                SettingsTab::Colony
+            } else {
+                SettingsTab::Home
+            });
             // Tall enough for the page's list of sections to be on it.
             h.screen = egui::vec2(940.0, 1400.0);
             configure_style(
@@ -1639,7 +1655,7 @@ fn the_ruling_is_where_the_writing_is_however_far_the_page_is_scrolled() {
             }
             h.frame(Vec::new());
             h.picture()
-                .save(path.join(format!("Colony-940-{theme:?}-100-{section}.png")))
+                .save(path.join(format!("{:?}-940-{theme:?}-100-{section}.png", h.tab)))
                 .unwrap();
             configure_style(&h.context, AppearancePreferences::default());
         }
@@ -1688,28 +1704,28 @@ fn first_text(shape: &egui::Shape) -> Option<String> {
 #[test]
 fn a_section_opens_on_its_own_and_goes_back_to_where_the_page_was_left() {
     let mut h = Harness::new(SettingsTab::Colony);
-    h.screen = egui::vec2(940.0, 720.0);
+    h.screen = egui::vec2(940.0, 1000.0);
     h.frame(Vec::new());
     h.frame(Vec::new());
     // The page opens on who the companion is, with a line for each of the rest.
     assert!(shown(&h, "Mallow"));
-    assert!(shown(&h, "Notes on Mallow"));
+    assert!(shown(&h, "Something to wear"));
     assert!(!shown(&h, "Save name"), "the name is in its own section");
     h.scroll_page(400.0);
-    let list = h.text_top("Share Mallow");
+    let list = h.text_top("Care & share");
     // Opened, the section stands alone under a way back, and the companion's summary is gone.
-    h.click("Share Mallow");
+    h.click("Care & share");
     h.frame(Vec::new());
     assert!(shown(&h, "Copy seed"));
     assert!(shown(&h, "\u{2039} Your colony"));
-    assert!(!shown(&h, "Notes on Mallow"));
+    assert!(!shown(&h, "Something to wear"));
     // Back finds the list where it was left.
     h.click("\u{2039} Your colony");
     h.frame(Vec::new());
     assert!(!shown(&h, "Copy seed"));
-    assert!((h.text_top("Share Mallow") - list).abs() < 1.0);
+    assert!((h.text_top("Care & share") - list).abs() < 1.0);
     // Escape goes back the same way, but not while something is being typed.
-    h.click("Name and where they like to be");
+    h.click("Care & share");
     h.frame(Vec::new());
     assert!(shown(&h, "Save name"));
     h.frame(key(egui::Key::Escape, egui::Modifiers::NONE));
@@ -1723,7 +1739,7 @@ fn a_section_opens_on_its_own_and_goes_back_to_where_the_page_was_left() {
     h.tab = SettingsTab::Colony;
     h.frame(Vec::new());
     assert!(
-        shown(&h, "Notes on Mallow"),
+        shown(&h, "Something to wear"),
         "Your colony is still on its list"
     );
     // A step of the tour pointing into a section opens it.
@@ -1739,17 +1755,8 @@ fn a_section_opens_on_its_own_and_goes_back_to_where_the_page_was_left() {
 /// The sections each page keeps beyond its first view, by the keys the page opens them by.
 fn sections_of(page: SettingsTab) -> &'static [&'static str] {
     match page {
-        SettingsTab::Colony => &[
-            "notes",
-            "name",
-            "wardrobe",
-            "farm",
-            "share",
-            "care",
-            "together",
-            "collection",
-        ],
-        SettingsTab::Home => &["ground", "where", "pictures", "belongings"],
+        SettingsTab::Colony => &["wardrobe", "together", "care"],
+        SettingsTab::Home => &["ground", "where", "pictures", "collection", "belongings"],
         SettingsTab::General => &["desktop", "routines", "notebook"],
         SettingsTab::About => &["backups", "apps", "updates", "privacy", "kept"],
         _ => &[],
@@ -1891,8 +1898,8 @@ const TOURED: [SettingsTab; 19] = [
     SettingsTab::Colony,
     SettingsTab::Colony,
     SettingsTab::Colony,
-    SettingsTab::Colony,
     SettingsTab::Studio,
+    SettingsTab::Home,
     SettingsTab::Home,
     SettingsTab::Home,
     SettingsTab::Journal,
@@ -1938,16 +1945,16 @@ fn a_new_colony_is_shown_round_every_page_and_can_finish_the_tour() {
 fn the_tour_goes_back_a_step_and_can_be_skipped_from_any() {
     let mut h = Harness::new(SettingsTab::Colony);
     h.save.companion.onboarding_complete = false;
-    for _ in 0..10 {
+    for _ in 0..9 {
         h.click("Next");
     }
     h.frame(Vec::new());
     assert_eq!(h.tab, SettingsTab::Studio);
-    assert_eq!(tour_header(&h).as_deref(), Some("TOUR · 11 OF 19"));
+    assert_eq!(tour_header(&h).as_deref(), Some("TOUR · 10 OF 19"));
     h.click("Back");
     h.frame(Vec::new());
     assert_eq!(h.tab, SettingsTab::Colony);
-    assert_eq!(tour_header(&h).as_deref(), Some("TOUR · 10 OF 19"));
+    assert_eq!(tour_header(&h).as_deref(), Some("TOUR · 9 OF 19"));
     assert!(h.click("Skip the tour").complete_onboarding);
     h.frame(Vec::new());
     assert_eq!(tour_header(&h), None);
@@ -2379,6 +2386,12 @@ fn the_journal_is_searched_filtered_and_cleared() {
     assert!(shown(&h, "MILESTONES"));
     let dance = "The colony shared a dance";
     assert!(shown(&h, dance));
+    // The search and the filters wait behind the magnifier, and ⌘F brings them out.
+    assert!(!shown(&h, "Every kind"));
+    h.frame(key(egui::Key::F, egui::Modifiers::COMMAND));
+    h.frame(Vec::new());
+    assert!(shown(&h, "Every kind"));
+    assert!(h.clubhouse.journal.searching);
     h.clubhouse.journal.search = "treasure".into();
     h.frame(Vec::new());
     h.frame(Vec::new());
@@ -2399,7 +2412,7 @@ fn the_journal_is_searched_filtered_and_cleared() {
     assert!(!shown(&h, &format!("{name} found a little treasure")));
 }
 
-/// Empty journals and guest books say what will appear there and how, instead of nothing.
+/// An empty journal is the colony on its plate and one line, with no empty boxes.
 #[test]
 fn an_empty_journal_and_guest_book_explain_themselves() {
     let mut h = Harness::new(SettingsTab::Journal);
@@ -2408,8 +2421,16 @@ fn an_empty_journal_and_guest_book_explain_themselves() {
     h.save.visitors = VisitorState::default();
     h.frame(Vec::new());
     h.frame(Vec::new());
-    assert!(shown(&h, "The story is just beginning"));
-    assert!(shown(&h, "No visitors yet"));
+    assert!(
+        h.labels.iter().any(|(text, _)| text.starts_with("Day ")
+            && text.ends_with("Nothing written down yet; I'll jot things here as they happen.")),
+        "{:?}",
+        h.labels.iter().map(|x| &x.0).collect::<Vec<_>>()
+    );
+    assert!(shown(&h, "RIGHT NOW"), "the colony on its plate");
+    for empty in ["THE GUEST BOOK", "No visitors yet", "Nothing found yet"] {
+        assert!(!shown(&h, empty), "{empty} on an empty journal");
+    }
 }
 
 /// Formiga Home is offered for the house picked out on the Home page only while it is installed:
@@ -2470,7 +2491,7 @@ fn formiga_farm_is_offered_only_while_it_is_installed() {
     };
     h.clubhouse.formiga_farm = installed;
     let id = h.selected.expect("a companion's page");
-    h.click("A new look");
+    h.click("Care & share");
     assert_eq!(
         h.click("Reshape in Formiga Farm").open_farm,
         Some(FarmRequest::Reshape(id))
@@ -2561,7 +2582,7 @@ fn souvenirs_appear_in_the_journal_only_once_one_has_come_home() {
     ];
     h.frame(Vec::new());
     h.frame(Vec::new());
-    assert!(shown(&h, "SOUVENIRS · 2 from Formiga Hill"));
+    assert!(shown(&h, "SOUVENIRS · 2 FROM FORMIGA HILL"));
     let top = |name: &str| {
         h.labels
             .iter()
@@ -2613,7 +2634,7 @@ fn battle_cups_appear_in_the_journal_only_once_one_has_come_home() {
     h.save.battle.record.circuit_points = 15;
     h.frame(Vec::new());
     h.frame(Vec::new());
-    assert!(shown(&h, "CUPS · 2 from Formiga Battle"));
+    assert!(shown(&h, "CUPS · 2 FROM FORMIGA BATTLE"));
     assert!(shown(&h, "1 cup won · 15 circuit points"));
     let top = |h: &Harness, name: &str| {
         h.labels
@@ -2680,16 +2701,29 @@ fn save_trouble_is_shown_with_ways_to_act_on_it() {
 #[test]
 fn the_guest_book_remembers_how_often_a_visitor_has_come() {
     let mut h = Harness::new(SettingsTab::Journal);
+    h.screen = egui::vec2(1000.0, 4000.0);
     let again = h.save.visitors.guest_book[5].clone();
     h.save.visitors.guest_book.push(GuestBookEntry {
         visited_at_utc: again.visited_at_utc + time::Duration::days(1),
         ..again.clone()
     });
-    h.click(&format!(
-        "Visitors before this · {}",
-        h.save.visitors.guest_book.len()
-    ));
+    // The latest few are shown under the book's heading, and the rest when asked for.
     h.frame(Vec::new());
+    assert!(shown(
+        &h,
+        &format!(
+            "VISITORS BEFORE THIS · {}",
+            h.save.visitors.guest_book.len()
+        )
+    ));
+    let codes = |h: &Harness| h.labels.iter().filter(|(t, _)| t == "Copy code").count();
+    let before = codes(&h);
+    h.click(&format!("Show all {}", h.save.visitors.guest_book.len()));
+    h.frame(Vec::new());
+    assert!(
+        codes(&h) > before,
+        "the rest of the book is shown once asked for"
+    );
     assert!(
         h.labels
             .iter()
@@ -3178,4 +3212,691 @@ fn wonders_are_put_out_and_put_away_from_the_journal() {
         out(WonderKind::Seesaw),
     ];
     assert_eq!(h.click("Put it out").put_out_wonder, None);
+}
+
+/// A colony `day` days old, for picturing the notebook through a colony's life: on day 1 nothing
+/// but the founders' arrival; by day 10 a first friendship, a find, a habit and a few shared
+/// moments; by day 110 a colony with a history. Everything in it is something the colony would
+/// have recorded itself.
+fn aged_fixture(day: i64) -> SaveFile {
+    use time::Duration;
+    // Dated from the real clock, as the notebook reads it, so day 1 is today.
+    let now = time::OffsetDateTime::now_utc();
+    let (_, monitors) = fixture();
+    let desktop = DesktopSnapshot {
+        monitors,
+        ..Default::default()
+    };
+    let founded = now - Duration::days(day - 1) - Duration::minutes(1);
+    let mut world = World::new([25; 32], founded, &desktop);
+    world.tick(now, 0.05, &desktop);
+    let save = &mut world.save;
+    save.companion.onboarding_complete = true;
+    for (creature, name) in save
+        .creatures
+        .iter_mut()
+        .zip(["Mallow", "Tofu", "Pebble", "Poppy"])
+    {
+        creature.name = name.into();
+    }
+    if day < 10 {
+        return world.save;
+    }
+    let ids: Vec<CreatureId> = save.creatures.iter().map(|c| c.id).collect();
+    let (a, b, c) = (ids[0], ids[1], ids[2 % ids.len()]);
+    let on = |days: i64, hour: i64| founded + Duration::days(days) + Duration::hours(hour);
+    let scale = |n: i64| (n * day / 10) as u32;
+    let mallow = &mut save.creatures[0];
+    mallow.memory.times_petted = scale(4);
+    mallow.memory.discoveries_found = scale(1);
+    mallow.memory.window_climbs = scale(2);
+    mallow.memory.habits = vec![Habit::LooksFoodOver];
+    let mut moments = vec![
+        (on(2, 4), Some(a), JournalMoment::Friendship(b)),
+        (on(3, 2), Some(c), JournalMoment::Discovery),
+        (
+            on(4, 6),
+            Some(a),
+            JournalMoment::Habit(Habit::LooksFoodOver),
+        ),
+        (on(6, 1), None, JournalMoment::Ritual(RitualKind::GroupNap)),
+        (on(8, 5), Some(b), JournalMoment::Discovery),
+    ];
+    save.companion.scrapbook.push(ScrapbookRecord {
+        variant: 9,
+        first_at: on(3, 2),
+        finder: Some(c),
+        finder_name: save.creatures[2 % save.creatures.len()].name.clone(),
+    });
+    if day >= 100 {
+        moments.extend([
+            (on(14, 3), None, JournalMoment::Visit("Pip".into())),
+            (on(21, 2), Some(c), JournalMoment::Friendship(a)),
+            (
+                on(30, 4),
+                Some(a),
+                JournalMoment::Preference(ProfileDescriptor::LovesHighPlaces),
+            ),
+            (on(41, 1), Some(b), JournalMoment::Wonder(WonderKind::Chair)),
+            (on(55, 7), None, JournalMoment::Trip),
+            (on(70, 2), Some(a), JournalMoment::Discovery),
+            (on(90, 5), None, JournalMoment::Revisit("Pip".into(), 2)),
+            (
+                on(day - 2, 6),
+                Some(a),
+                JournalMoment::Habit(Habit::WavesHello),
+            ),
+            (
+                on(day - 1, 2),
+                None,
+                JournalMoment::Ritual(RitualKind::Picnic),
+            ),
+        ]);
+        save.creatures[0].memory.habits.push(Habit::WavesHello);
+        save.companion.scrapbook.push(ScrapbookRecord {
+            variant: 3,
+            first_at: on(70, 2),
+            finder: Some(a),
+            finder_name: "Mallow".into(),
+        });
+    }
+    for (at, creature, moment) in moments {
+        save.companion.journal.push(JournalEntry {
+            at,
+            creature,
+            moment,
+        });
+    }
+    save.companion.journal.sort_by_key(|entry| entry.at);
+    save.companion.journal_seen_until = save.companion.journal.last().map(|entry| entry.at);
+    let (low, high) = (a.min(b), a.max(b));
+    match save
+        .relationships
+        .iter_mut()
+        .find(|r| (r.a, r.b) == (low, high))
+    {
+        Some(bond) => bond.affinity = 140,
+        None => save.relationships.push(CreatureRelationship {
+            a: low,
+            b: high,
+            affinity: 140,
+            familiarity: 160,
+            playfulness: 40,
+            avoidance: 0,
+        }),
+    }
+    if let Some(pair) = tally_mut_or_insert(&mut save.tallies, a, b) {
+        pair.tally.shared_rests = scale(1) as u16;
+        pair.tally.greetings = scale(3) as u16;
+        pair.tally.sought = [scale(2) as u16, scale(1) as u16];
+        pair.tally.memory = Some(PairMemory {
+            at: now - Duration::hours(4),
+            kind: SharedMomentKind::Rest,
+        });
+    }
+    world.save
+}
+
+impl Harness {
+    /// The notebook open on `tab` over a colony of its own rather than the usual fixture.
+    fn over(tab: SettingsTab, save: SaveFile) -> Self {
+        let mut h = Self::new(tab);
+        h.selected = Some(save.creatures[0].id);
+        h.draft = save.settings.clone();
+        h.save = save;
+        h
+    }
+}
+
+/// Today, Your colony and the Journal of a colony on its first day, its tenth and its hundred
+/// and tenth, in both themes, at both text sizes, in the widest and narrowest windows: what the
+/// notebook is judged on. Each is drawn whole, and pictured when `FORMIGA_UI_REVIEW_DIR` is set.
+#[test]
+fn the_notebook_through_a_colonys_life() {
+    let output = std::env::var_os("FORMIGA_UI_REVIEW_DIR").map(std::path::PathBuf::from);
+    let mut cut = Vec::new();
+    for day in [1, 10, 110] {
+        let save = aged_fixture(day);
+        // Your colony both as it opens, on everyone, and turned to the first companion.
+        for (tab, everyone) in [
+            (SettingsTab::Today, false),
+            (SettingsTab::Colony, true),
+            (SettingsTab::Colony, false),
+            (SettingsTab::Journal, false),
+        ] {
+            let name = if everyone {
+                "Everyone".to_owned()
+            } else {
+                format!("{tab:?}")
+            };
+            for (theme, text_scale, width) in [
+                (ThemeChoice::Light, 100, 940.0),
+                (ThemeChoice::Light, 150, 760.0),
+                (ThemeChoice::Dark, 100, 940.0),
+                (ThemeChoice::Dark, 150, 760.0),
+            ] {
+                let mut h = Harness::over(tab, save.clone());
+                if everyone {
+                    h.selected = None;
+                }
+                configure_style(
+                    &h.context,
+                    AppearancePreferences {
+                        theme,
+                        text_scale,
+                        sprite_outline: false,
+                    },
+                );
+                h.screen = egui::vec2(width, 720.0);
+                h.frame(Vec::new());
+                h.frame(Vec::new());
+                if !h.cut.is_empty() {
+                    cut.push(format!(
+                        "day {day}, {name} at {width} and {text_scale}%: {:?}",
+                        h.cut
+                    ));
+                }
+                for unwanted in ["Apply changes", "Revert", "Preferences are saved"] {
+                    assert!(!shown(&h, unwanted), "{unwanted} under {tab:?}");
+                }
+                if let Some(path) = &output {
+                    std::fs::create_dir_all(path).unwrap();
+                    h.picture()
+                        .save(path.join(format!(
+                            "life-day{day}-{name}-{width}-{}-{text_scale}.png",
+                            if theme == ThemeChoice::Dark {
+                                "charcoal"
+                            } else {
+                                "cream"
+                            },
+                        )))
+                        .unwrap();
+                }
+            }
+        }
+    }
+    assert!(cut.is_empty(), "{cut:#?}");
+}
+
+/// Apply and Revert are under the pages with preferences on them, and nowhere else unless a
+/// preference is waiting to be applied.
+#[test]
+fn apply_and_revert_are_only_under_the_preferences() {
+    for tab in crate::clubhouse::journal::PAGES {
+        let mut h = Harness::new(tab);
+        h.frame(Vec::new());
+        h.frame(Vec::new());
+        let preference_page = matches!(
+            tab,
+            SettingsTab::General | SettingsTab::Habitat | SettingsTab::Applications
+        );
+        assert_eq!(shown(&h, "Apply changes"), preference_page, "{tab:?}");
+        // A preference changed and not yet applied follows the reader to every page.
+        h.draft.reduce_motion = !h.draft.reduce_motion;
+        h.frame(Vec::new());
+        h.frame(Vec::new());
+        assert!(shown(&h, "Apply changes"), "{tab:?} with a change waiting");
+    }
+}
+
+/// A companion's page and the colony's are written as a notebook, not a register: no specimen
+/// numbers, no figure numbers, no body type, and what it is doing in the notebook's own words.
+#[test]
+fn a_companion_is_not_a_specimen() {
+    let mut h = Harness::new(SettingsTab::Colony);
+    h.save.creatures[0].state.action = ActionKind::SoloPlay;
+    h.save.creatures[0].state.surface.window_key = None;
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    for unwanted in [
+        "Specimen Nº",
+        "Fig. Nº",
+        "Body:",
+        "specimens observed",
+        "SPECIMEN Nº",
+    ] {
+        assert!(
+            !h.labels.iter().any(|(text, _)| text.contains(unwanted)),
+            "{unwanted} on the page"
+        );
+    }
+    assert!(shown(&h, "Playing with a toy."));
+    for action in ActionKind::ALL {
+        let label = activity_label(action);
+        assert!(
+            label.starts_with(|c: char| c.is_lowercase()),
+            "{action:?} reads {label:?}"
+        );
+        assert_ne!(
+            label,
+            crate::clubhouse::words(&format!("{action:?}")).to_lowercase(),
+            "{action:?} is named as the code names it"
+        );
+    }
+    let mut colony = h.save.creatures.clone();
+    for creature in &mut colony {
+        creature.state.action = ActionKind::Traverse;
+    }
+    let count = crate::clubhouse::today::count_word(colony.len());
+    assert_eq!(
+        crate::clubhouse::journal::colony_observation(&colony),
+        format!("{count} of them, all awake.")
+    );
+    colony[0].state.action = ActionKind::Sleep;
+    assert_eq!(
+        crate::clubhouse::journal::colony_observation(&colony),
+        format!("{count} of them, one of them napping.")
+    );
+}
+
+/// No date in the notebook is written as an ISO date.
+#[test]
+fn every_date_on_the_journal_is_written_one_way() {
+    let mut h = Harness::over(SettingsTab::Journal, aged_fixture(110));
+    h.screen = egui::vec2(940.0, 6000.0);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    let iso = |text: &str| {
+        text.as_bytes()
+            .windows(10)
+            .any(|w| w[4] == b'-' && w[7] == b'-' && w[..4].iter().all(u8::is_ascii_digit))
+    };
+    let dated: Vec<&String> = h
+        .labels
+        .iter()
+        .map(|(text, _)| text)
+        .filter(|text| iso(text))
+        .collect();
+    assert!(dated.is_empty(), "{dated:?}");
+}
+
+/// The companion is the first thing on its page, at every size: its portrait and its name in the
+/// first screen, beside its temperament and traits, at the widest window and smallest text and at
+/// the narrowest and largest.
+#[test]
+fn the_companion_is_above_the_fold() {
+    for (text_scale, width) in [(100, 940.0), (150, 760.0)] {
+        let mut h = Harness::new(SettingsTab::Colony);
+        configure_style(
+            &h.context,
+            AppearancePreferences {
+                text_scale,
+                ..Default::default()
+            },
+        );
+        h.screen = egui::vec2(width, 560.0);
+        h.frame(Vec::new());
+        h.frame(Vec::new());
+        let phrase = h.save.creatures[0].temperament_phrase();
+        assert!(shown(&h, &phrase), "{phrase} at {width} and {text_scale}%");
+        let fold = h.screen.y - 60.0;
+        let top = h.text_top(&phrase);
+        assert!(
+            top < fold,
+            "the phrase is at {top}, under the fold at {fold}"
+        );
+        for gone in ["TALLY · LIFE HERE", "days together"] {
+            assert!(!shown(&h, gone), "{gone} is still on the page");
+        }
+    }
+}
+
+/// A companion is chosen by its face, and the arrow keys and ⌘[ ⌘] turn between companions;
+/// past the last one, ⌘] turns the page.
+#[test]
+fn companions_are_chosen_by_face_and_turned_from_the_keyboard() {
+    let mut h = Harness::new(SettingsTab::Colony);
+    h.screen = egui::vec2(940.0, 720.0);
+    let ids: Vec<CreatureId> = h.save.creatures.iter().map(|c| c.id).collect();
+    assert!(ids.len() >= 2, "the fixture has company");
+    let second = h.save.creatures[1].name.clone();
+    // The face's name sits under it; clicking the name's face turns to it.
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    let at = h
+        .labels
+        .iter()
+        .find(|(text, _)| *text == second)
+        .expect("a face in the strip")
+        .1;
+    h.click_at(at.center() - egui::vec2(0.0, 20.0));
+    h.frame(Vec::new());
+    assert_eq!(h.selected, Some(ids[1]));
+    h.frame(key(egui::Key::ArrowLeft, egui::Modifiers::NONE));
+    assert_eq!(h.selected, Some(ids[0]), "left turns back");
+    h.frame(key(egui::Key::CloseBracket, egui::Modifiers::COMMAND));
+    assert_eq!(h.selected, Some(ids[1]), "⌘] turns on");
+    h.selected = ids.last().copied();
+    h.frame(key(egui::Key::CloseBracket, egui::Modifiers::COMMAND));
+    assert_eq!(h.selected, ids.last().copied());
+    assert_eq!(h.tab, SettingsTab::Studio, "past the last, the page turns");
+    // Before the first companion is everyone together, and before that the page turns back.
+    h.tab = SettingsTab::Colony;
+    h.selected = Some(ids[0]);
+    h.frame(key(egui::Key::OpenBracket, egui::Modifiers::COMMAND));
+    assert_eq!(h.selected, None, "⌘[ from the first turns to everyone");
+    h.frame(key(egui::Key::OpenBracket, egui::Modifiers::COMMAND));
+    assert_eq!(h.tab, SettingsTab::Today);
+}
+
+/// A companion that has just arrived still has a page: its portrait, who it is, that it arrived
+/// today, and a line saying more will be written — no empty boxes.
+#[test]
+fn a_new_companion_still_has_a_page() {
+    let save = aged_fixture(1);
+    let name = save.creatures[0].name.clone();
+    let mut h = Harness::over(SettingsTab::Colony, save);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(shown(&h, "Arrived today"));
+    assert!(shown(
+        &h,
+        &format!("Still getting to know {name}. I'll write things here as I see them.")
+    ));
+}
+
+/// A companion's page writes about it in the notebook's voice: the latest thing seen, dated,
+/// first; its friends as faces with a word under each, which turn to that friend; its firsts;
+/// and its little ways. Nothing is written as a field name.
+#[test]
+fn a_companions_page_speaks() {
+    let save = aged_fixture(110);
+    let mallow = save.creatures[0].id;
+    let mut h = Harness::over(SettingsTab::Colony, save);
+    h.screen = egui::vec2(940.0, 1400.0);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    let texts: Vec<&String> = h.labels.iter().map(|(text, _)| text).collect();
+    assert!(
+        texts.iter().any(|t| t.starts_with("Napped beside Tofu ")),
+        "the newest shared moment comes first: {texts:?}"
+    );
+    assert!(texts.iter().any(|t| t.starts_with("Joined ")), "{texts:?}");
+    assert!(
+        texts
+            .iter()
+            .any(|t| t.contains("first friend Tofu") && t.contains("first find")),
+        "{texts:?}"
+    );
+    for field in ["Favorite region:", "Bond:", "Closest friend:", "Habits:"] {
+        assert!(
+            !texts.iter().any(|t| t.starts_with(field)),
+            "{field} on the page"
+        );
+    }
+    assert!(shown(&h, "Friends"));
+    assert!(shown(&h, "cozy"), "Tofu's word: {texts:?}");
+    let word = h.labels.iter().find(|(t, _)| t == "cozy").unwrap().1;
+    h.click_at(word.center() - egui::vec2(0.0, 24.0));
+    h.frame(Vec::new());
+    assert!(
+        h.selected.is_some_and(|id| id != mallow),
+        "a friend's face turns to that friend"
+    );
+}
+
+/// A find the journal wrote down is named where the scrapbook kept it as the same companion's
+/// first of its kind, within a minute.
+#[test]
+fn a_find_is_named_in_the_journal() {
+    let mut h = Harness::new(SettingsTab::Journal);
+    let finder = h.save.creatures[0].id;
+    let at = h.save.maximum_seen_utc;
+    let entry = JournalEntry {
+        at,
+        creature: Some(finder),
+        moment: JournalMoment::Discovery,
+    };
+    let key = (0..=u8::MAX)
+        .find(|v| trinket_info(*v).is_some_and(|info| info.name == "Key"))
+        .unwrap();
+    assert_eq!(
+        clubhouse::moment_text(&h.save, &entry),
+        "Mallow found a little treasure"
+    );
+    h.save.companion.scrapbook.push(ScrapbookRecord {
+        variant: key,
+        first_at: at + time::Duration::seconds(20),
+        finder: Some(finder),
+        finder_name: "Mallow".into(),
+    });
+    assert_eq!(
+        clubhouse::moment_text(&h.save, &entry),
+        "Mallow found a key"
+    );
+}
+
+/// Everything that changes or shares a companion is in one place at the foot of its page, and the
+/// collection is with the village's keepsakes; the page itself is for reading.
+#[test]
+fn the_controls_step_back_to_the_foot_of_the_page() {
+    let mut h = Harness::new(SettingsTab::Colony);
+    h.screen = egui::vec2(940.0, 3000.0);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(shown(&h, "Something to wear"));
+    assert!(shown(&h, "Care & share"));
+    for gone in [
+        "Name and where they like to be",
+        "Share Mallow",
+        "Keeping and starting over",
+        "The collection",
+        "Save name",
+    ] {
+        assert!(!shown(&h, gone), "{gone} is still on the companion's page");
+    }
+    assert!(
+        h.text_top("Care & share") > h.text_top("Something to wear"),
+        "Care & share is at the foot"
+    );
+    h.click("Care & share");
+    h.frame(Vec::new());
+    for there in ["Save name", "Copy seed", "Export creature card…"] {
+        assert!(shown(&h, there), "{there} is under Care & share");
+    }
+    h.tab = SettingsTab::Home;
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(shown(&h, "The collection"), "the collection is on Home");
+}
+
+/// A companion is renamed where its name is written: click the name, type, and Enter keeps it;
+/// Escape leaves it as it was.
+#[test]
+fn a_companion_is_renamed_where_its_name_is_written() {
+    let mut h = Harness::new(SettingsTab::Colony);
+    h.screen = egui::vec2(940.0, 1200.0);
+    let id = h.save.creatures[0].id;
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    let heading = |h: &Harness| {
+        h.labels
+            .iter()
+            .filter(|(text, _)| text == "Mallow")
+            .max_by(|a, b| a.1.height().total_cmp(&b.1.height()))
+            .expect("the name heading")
+            .1
+    };
+    h.click_at(heading(&h).center());
+    h.frame(Vec::new());
+    assert!(shown(
+        &h,
+        "Enter keeps the new name; Esc leaves it as it was."
+    ));
+    let select_all = egui::Event::Key {
+        key: egui::Key::A,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::COMMAND,
+    };
+    h.frame(vec![
+        select_all.clone(),
+        egui::Event::Text("Biscuit".into()),
+    ]);
+    let outcome = h.frame(key(egui::Key::Enter, egui::Modifiers::NONE));
+    assert_eq!(outcome.rename_creature, Some((id, "Biscuit".into())));
+    // Escape leaves the name as it was.
+    h.frame(Vec::new());
+    h.click_at(heading(&h).center());
+    h.frame(vec![select_all, egui::Event::Text("Nope".into())]);
+    let outcome = h.frame(key(egui::Key::Escape, egui::Modifiers::NONE));
+    h.frame(Vec::new());
+    assert_eq!(outcome.rename_creature, None);
+    assert!(h.clubhouse.colony.renaming.is_none());
+}
+
+/// Your colony opens on everyone together: what each is doing, and the pairs who go together as
+/// faces with a word between. Any face there, or on Today, turns to that companion's page.
+#[test]
+fn the_colony_opens_on_everyone_and_every_face_turns_to_its_page() {
+    let save = aged_fixture(110);
+    let mallow = save.creatures[0].id;
+    let mut h = Harness::over(SettingsTab::Colony, save);
+    h.selected = None;
+    h.screen = egui::vec2(940.0, 1600.0);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(shown(&h, "Your colony"));
+    assert!(shown(&h, "RIGHT NOW"));
+    assert!(shown(&h, "WHO GOES WITH WHOM"));
+    assert!(
+        h.labels
+            .iter()
+            .any(|(t, _)| t.starts_with("· ") && t.ends_with(" ·")),
+        "a pair with a word between"
+    );
+    assert!(
+        !shown(&h, "Care & share"),
+        "no companion's controls on the spread"
+    );
+    // A face on the plate turns to that companion.
+    // Mallow's name is in the strip at the top, then on the plate, then among the pairs.
+    let mut names: Vec<egui::Rect> = h
+        .labels
+        .iter()
+        .filter(|(t, _)| t == "Mallow")
+        .map(|(_, rect)| *rect)
+        .collect();
+    names.sort_by(|a, b| a.top().total_cmp(&b.top()));
+    let name = names[1];
+    h.click_at(name.center() - egui::vec2(0.0, 30.0));
+    h.frame(Vec::new());
+    assert_eq!(h.selected, Some(mallow));
+    // On Today, a face in the log or the highlight turns to the companion's page too.
+    h.tab = SettingsTab::Today;
+    h.selected = None;
+    let outcome_before = h.tab;
+    h.clubhouse.shell.open_companion = Some(mallow);
+    h.frame(Vec::new());
+    assert_eq!(outcome_before, SettingsTab::Today);
+    assert_eq!(h.tab, SettingsTab::Colony);
+    assert_eq!(h.selected, Some(mallow));
+}
+
+/// Turning away from the Journal and back finds it where it was left.
+#[test]
+fn the_journal_reopens_where_it_was_left() {
+    let mut h = Harness::over(SettingsTab::Journal, aged_fixture(110));
+    h.screen = egui::vec2(940.0, 720.0);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    h.scroll_page(300.0);
+    let first = |h: &Harness| {
+        h.labels
+            .iter()
+            .filter(|(_, rect)| rect.top() > 60.0)
+            .min_by(|a, b| a.1.top().total_cmp(&b.1.top()))
+            .map(|(text, rect)| (text.clone(), rect.top()))
+    };
+    let left_at = first(&h);
+    h.tab = SettingsTab::Today;
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    h.tab = SettingsTab::Journal;
+    for _ in 0..30 {
+        h.frame(Vec::new());
+    }
+    assert_eq!(first(&h), left_at);
+}
+
+/// The Journal reads as days: a day with one moment is one line with its day where the time would
+/// be, a moment is pinned from the glyph at its line's end, and in a narrow window at large text
+/// the time goes above a moment that would otherwise wrap in beside it.
+#[test]
+fn the_journal_reads_as_a_diary() {
+    let save = aged_fixture(110);
+    let mut h = Harness::over(SettingsTab::Journal, save);
+    h.screen = egui::vec2(940.0, 4000.0);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    let texts: Vec<&String> = h.labels.iter().map(|(t, _)| t).collect();
+    assert!(
+        texts
+            .iter()
+            .any(|t| t.contains(" · ") && t.split(" · ").nth(1).is_some_and(|c| c.len() == 5)),
+        "a folded day writes its day beside its time: {texts:?}"
+    );
+    // Pinning, from the glyph at the end of a moment's line.
+    let (at, spot) = h.clubhouse.journal.pin_spots[0];
+    let outcome = h.click_at(spot.center());
+    assert!(
+        outcome.pin_moment.is_some_and(|entry| entry.at == at),
+        "the glyph pins its moment"
+    );
+    // Narrow and large: the time over the moment, not beside it.
+    let mut h = Harness::over(SettingsTab::Journal, aged_fixture(110));
+    configure_style(
+        &h.context,
+        AppearancePreferences {
+            text_scale: 150,
+            ..Default::default()
+        },
+    );
+    h.screen = egui::vec2(760.0, 4000.0);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    let line = "The colony took the train to Formiga Hill and came home";
+    let text = h.labels.iter().find(|(t, _)| t == line).expect(line).1;
+    assert!(
+        !h.labels.iter().any(|(t, rect)| t.len() <= 20
+            && t.contains(':')
+            && (rect.center().y - text.center().y).abs() < 4.0
+            && rect.right() < text.left()),
+        "no time beside a moment that would wrap"
+    );
+}
+
+/// The newest days' best moments are taped into the Journal as pictures with their caption, and
+/// the scrapbook's finds are pasted in like snapshots.
+#[test]
+fn the_journal_has_pictures_taped_in() {
+    let mut save = aged_fixture(110);
+    let now = time::OffsetDateTime::now_utc();
+    let (a, b) = (save.creatures[0].id, save.creatures[1].id);
+    save.companion.journal.push(JournalEntry {
+        at: now - time::Duration::minutes(5),
+        creature: Some(a),
+        moment: JournalMoment::Friendship(b),
+    });
+    let caption = clubhouse::moment_text(&save, save.companion.journal.last().unwrap());
+    let mut h = Harness::over(SettingsTab::Journal, save);
+    h.screen = egui::vec2(940.0, 4000.0);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    let written = h.labels.iter().filter(|(t, _)| *t == caption).count();
+    assert!(
+        written >= 2,
+        "the moment and its picture's caption: {written}"
+    );
+    assert!(shown(&h, "THE SCRAPBOOK · 2 FOUND"));
+    let before = h.artwork_bytes();
+    h.clubhouse.release_images();
+    assert!(h.clubhouse.texture_ids().is_empty());
+    assert!(before > 0);
+    if let Some(path) = std::env::var_os("FORMIGA_UI_REVIEW_DIR").map(std::path::PathBuf::from) {
+        std::fs::create_dir_all(&path).unwrap();
+        h.screen = egui::vec2(940.0, 1600.0);
+        h.picture().save(path.join("Journal-pictures.png")).unwrap();
+    }
 }
