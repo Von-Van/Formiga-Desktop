@@ -90,16 +90,19 @@ fn gesture_subjects() -> Vec<AppearanceGenome> {
 }
 
 /// The loops a companion is seen in most — walking, running, resting, eating, sleeping — frame by
-/// frame for every body, one row each, at 3x. A loop that reads as the same picture twice in a
-/// row, or that hitches where it comes round, shows up here and nowhere else.
+/// frame for every body, one row each, at 3x, then a toss: the tumble through the air and the
+/// landing after it. A loop that reads as the same picture twice in a row, or that hitches where
+/// it comes round, shows up here and nowhere else.
 pub fn motion_sheet(path: PathBuf) -> Result<()> {
     const SCALE: u32 = 3;
-    const LOOPS: [ActionKind; 5] = [
+    const LOOPS: [ActionKind; 7] = [
         ActionKind::Traverse,
         ActionKind::Sprint,
         ActionKind::Idle,
         ActionKind::Eat,
         ActionKind::Sleep,
+        ActionKind::Tossed,
+        ActionKind::Landing,
     ];
     let subjects = gesture_subjects();
     let cell = FRAME_SIZE * SCALE;

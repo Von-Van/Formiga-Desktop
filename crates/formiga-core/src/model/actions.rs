@@ -62,9 +62,9 @@ impl ActionKind {
         Self::PetReaction,
     ];
 
-    /// Unique body clips baked into the creature atlas. Tossing deliberately reuses the dragged
-    /// body clip, so it remains expressive without consuming another four 48x48 texture slots.
-    pub const BODY_CLIPS: [Self; 22] = [
+    /// Unique body clips baked into the creature atlas. Tossing has two frames of its own, balled
+    /// up in the air, added last so every clip before it keeps its place in the atlas.
+    pub const BODY_CLIPS: [Self; 23] = [
         Self::Idle,
         Self::Traverse,
         Self::Perch,
@@ -87,6 +87,7 @@ impl ActionKind {
         Self::Dangle,
         Self::InspectScreen,
         Self::PresentDiscovery,
+        Self::Tossed,
     ];
 
     pub const AUTONOMOUS: [Self; 15] = [

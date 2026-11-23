@@ -563,8 +563,14 @@ collection; the only durable record is the scrapbook's one first-find row per va
 The renderer caches one gaze-free 48×48 body atlas and one 16×16 layered face texture per creature.
 The face texture holds fifteen expressions — the yawn's, eyes screwed shut and the mouth wide, and
 since 0.62.0 grumpy, smug and pleading for the poses a temperament strikes — each in nine gaze
-directions and three eyelid states. The body atlas holds 218 frames: 94 for actions, because
-`Tossed` reuses the dragged body clip, and 124 for thirty-six gesture poses. Since 0.62.0 a frame or a
+directions and three eyelid states. The body atlas holds 220 frames: 96 for actions and 124 for
+thirty-six gesture poses. A toss has two frames of its own, appended after every earlier action clip:
+balled up in the air, legs folded under, head and tail tucked and the eyes shut, and the same ball
+turned a little nose up (`renderer::tumble`), which loops at six frames a second until the landing.
+The turn is drawn the way RotSprite turns pixel art — scaled up eight times by Scale2x and each
+turned pixel taking the colour under its middle, with any coat pixel left on the turned edge given
+the colour of the outline that passed through it — so it invents no colour and keeps the outline
+whole; a sculpted form's fine painting is turned with it. Since 0.62.0 a frame or a
 face that comes out identical to one already baked — a pose held across frames, a whole clip under
 reduced motion, eyes shut whichever way they would be looking — shares that one's cell, and each
 creature keeps a table of the cell each slot is drawn from; the eight trinket cells the face
@@ -864,7 +870,8 @@ release. A companion takes one pet a second (`PET_INTERVAL_SECS`): a click withi
 last pet, while its `PetReaction` is still under way, is let go without another bubble,
 `CreaturePetted` or count, so a burst of clicks is one pet. Slow releases use precise placement. Fast releases enter a runtime-only `Tossed` state with gravity,
 horizontal drag, swept downward support tests, at most one soft bounce, and a three-second recovery
-limit. There is no rotation, wall ricochet, creature collision, or general physics dependency.
+limit. There is no physical rotation, wall ricochet, creature collision, or general physics
+dependency: the tumble is the toss's own two-frame body clip, drawn in the atlas.
 
 None of these windows is one to switch to, so the notebook is Formiga's only entry in the Windows
 taskbar and Alt-Tab. Each overlay, creature proxy, menu proxy and house proxy is a tool window and

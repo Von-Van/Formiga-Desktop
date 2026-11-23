@@ -792,11 +792,8 @@ pub(super) fn limb_targets(
         ActionKind::PresentDiscovery => {
             offset_pair(left, right, ((-2, -length - 4), (2, -length - 4)))
         }
-        ActionKind::Tossed => offset_pair(
-            left,
-            right,
-            ((-1 + pulse, length + 2), (1 - pulse, length + 2)),
-        ),
+        // Hugged in to the chest, as a ball in the air.
+        ActionKind::Tossed => offset_pair(left, right, ((2, 2), (-2, 2))),
     }
 }
 
