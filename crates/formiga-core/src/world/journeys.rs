@@ -201,7 +201,7 @@ impl WindowJourney {
                 let flown = journey.elapsed - journey.preparation;
                 (!journey.catch || flown < journey.hop.duration).then(|| journey.hop.moment(flown))
             }
-            Self::Gap(_) | Self::Climb(_) | Self::Squeeze(_) => None,
+            Self::Gap(_) | Self::Climb(_) | Self::Squeeze(_) | Self::Entrance(_) => None,
         }
     }
 
@@ -469,6 +469,7 @@ impl WindowJourney {
                     position: lerp_point(journey.start, journey.target, progress),
                     action: ActionKind::Traverse,
                     complete: progress >= 1.0,
+                    pose: None,
                 }
             }
         }
