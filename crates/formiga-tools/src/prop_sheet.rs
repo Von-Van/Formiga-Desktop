@@ -13,9 +13,8 @@
 
 use anyhow::Result;
 use formiga_art::{
-    Canvas, CreatureRenderer, FACE_FRAME_SIZE, FRAME_SIZE, FramePlacement, PropAnchor,
-    TRINKET_ATLAS_COLUMNS, TRINKET_CELL, TRINKET_FRAME_GLINT, TRINKET_FRAME_REST,
-    TRINKET_KIND_ROWS, TrinketAtlasRenderer,
+    Canvas, CreatureRenderer, FACE_FRAME_SIZE, FRAME_SIZE, FramePlacement, TRINKET_ATLAS_COLUMNS,
+    TRINKET_CELL, TRINKET_FRAME_GLINT, TRINKET_FRAME_REST, TRINKET_KIND_ROWS, TrinketAtlasRenderer,
 };
 use formiga_core::{ActionKind, AppearanceGenome, Creature, TrinketCondition, all_trinkets};
 use std::path::PathBuf;
@@ -271,7 +270,7 @@ pub fn run(path: PathBuf) -> Result<()> {
     }
 
     // Held up, exactly as the overlay stacks it: body frame, layered face, then the prop quad
-    // placed from `PropAnchor` against the face anchor.
+    // centred on the paw the frame holds it up in.
     sheet.ground(Ground::Pale, y, held_band);
     sheet.text(
         "HELD UP IN THE PRESENTATION POSE",
@@ -388,13 +387,13 @@ fn held(sheet: &mut Sheet, atlas: &Canvas, creature: &Creature, variant: u8, x: 
         top + anchor.y * ZOOM - half,
         ZOOM,
     );
-    let prop = PropAnchor::for_creature(&creature);
+    let held_up = formiga_art::held_up_at(body.hands, anchor, formiga_art::HELD_UP_REACH);
     sheet.stamp_cell(
         atlas,
         variant,
         TRINKET_FRAME_GLINT,
-        left + anchor.x * ZOOM + (prop.dx * ZOOM as f32) as i32 - half,
-        top + anchor.y * ZOOM + (prop.dy * ZOOM as f32) as i32 - half,
+        left + held_up.x * ZOOM - half,
+        top + held_up.y * ZOOM - half,
         ZOOM,
     );
 }

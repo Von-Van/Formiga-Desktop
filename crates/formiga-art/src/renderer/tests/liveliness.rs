@@ -1,7 +1,7 @@
 //! How a companion carries itself between the big moments: feet that agree with where it is
 //! going, a rest that holds still and shifts at its own pace, and eyes that blink and look about.
 use super::*;
-use formiga_core::{DesktopSnapshot, Presence, PresenceMark, World};
+use formiga_core::{DesktopSnapshot, HopMoment, Presence, PresenceMark, World};
 
 /// A companion as the world has it after a tick or two: measured, standing, on the floor.
 fn measured(seed: u8) -> Creature {
@@ -738,6 +738,62 @@ fn the_village_size_changes_on_a_planted_step() {
     }
 }
 
+/// A hop is one action from the crouch to the touchdown, and how far through it the world says it
+/// is decides what is drawn: the crouch it springs from, the leap rising and then coming down,
+/// and, once down, the landing played from the touch to standing, with no shake after it. A toss
+/// still lands on the landing clip by the time it has spent landing.
+#[test]
+fn a_hop_shows_the_crouch_then_the_leap_then_the_landing() {
+    let mut creature = measured(83);
+    creature.state.action = ActionKind::Landing;
+    creature.state.action_elapsed = 0.1;
+    let shown = |creature: &Creature| {
+        let body = BodyPresentation::for_creature(creature);
+        (body.clip, body.frame)
+    };
+    creature.state.presence.hop = Some(HopMoment::Gather(0.1));
+    assert_eq!(shown(&creature).0, BodyClip::Gesture(Gesture::Crouch));
+    creature.state.presence.hop = Some(HopMoment::Flight(0.3));
+    assert_eq!(shown(&creature), (BodyClip::Gesture(Gesture::Leap), 0));
+    creature.state.presence.hop = Some(HopMoment::Flight(0.7));
+    assert_eq!(shown(&creature), (BodyClip::Gesture(Gesture::Leap), 1));
+
+    // Touched down and standing: squashed on the touch, standing at the end, then resting.
+    creature.state.action = ActionKind::Idle;
+    creature.state.action_elapsed = 0.0;
+    creature.state.presence.since = 0.0;
+    creature.state.presence.after = Some((ActionKind::Landing, 0.0));
+    creature.state.presence.hop = Some(HopMoment::Down(0.0));
+    assert_eq!(shown(&creature), (BodyClip::Action(ActionKind::Landing), 0));
+    creature.state.presence.hop = Some(HopMoment::Down(0.45));
+    assert_eq!(shown(&creature), (BodyClip::Action(ActionKind::Landing), 3));
+    creature.state.action_elapsed = 0.6;
+    creature.state.presence.since = 0.6;
+    creature.state.presence.after = Some((ActionKind::Landing, 0.6));
+    creature.state.presence.hop = Some(HopMoment::Down(0.6));
+    assert_eq!(
+        shown(&creature).0,
+        BodyClip::Action(ActionKind::Idle),
+        "a hop it meant to take is not shaken off"
+    );
+
+    // Set down after a toss: the landing by the time spent landing, then the shake.
+    creature.state.presence.hop = None;
+    creature.state.action = ActionKind::Landing;
+    creature.state.action_elapsed = 0.2;
+    assert_eq!(shown(&creature), (BodyClip::Action(ActionKind::Landing), 1));
+    creature.state.action = ActionKind::Idle;
+    creature.state.action_elapsed = 0.1;
+    creature.state.presence.since = 0.1;
+    creature.state.presence.after = Some((ActionKind::Landing, 0.1));
+    assert_eq!(shown(&creature).0, BodyClip::Gesture(Gesture::Shake));
+
+    // Picked up out of the air, it is drawn carried.
+    creature.state.action = ActionKind::Dragged;
+    creature.state.presence.hop = Some(HopMoment::Flight(0.5));
+    assert_eq!(shown(&creature).0, BodyClip::Action(ActionKind::Dragged));
+}
+
 /// The three original families and every modular plan, with and without limbs, and the fox.
 fn every_body() -> Vec<(String, AppearanceGenome)> {
     let preview = measured(29).appearance;
@@ -907,15 +963,16 @@ fn a_sleepers_z_rises_three_pixels_and_fades() {
     assert_eq!(canvas.alpha_bounds().expect("a z").1, 1);
 }
 
-/// A tail on the shared bob — investigating the cursor, riding a window, carried — and a tail
-/// hanging from a ledge swing at half the clip's rate: the same swing stepped every other frame.
+/// A tail on the shared bob — investigating the cursor, riding a window — and a tail hanging
+/// from a ledge swing at half the clip's rate: the same swing stepped every other frame. Carried,
+/// a body hangs still, its tail with it (see
+/// `landing_holds_standing_a_leap_has_its_own_frames_and_a_carry_hangs_still`).
 #[test]
 fn tails_on_the_shared_bob_and_hanging_swing_at_half_rate() {
     let genome = genome(BodyFamily::SoftQuadruped);
     for action in [
         ActionKind::InvestigateCursor,
         ActionKind::RideWindow,
-        ActionKind::Dragged,
         ActionKind::Dangle,
     ] {
         let sway: Vec<i32> = (0..8)
