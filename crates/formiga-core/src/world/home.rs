@@ -2556,7 +2556,14 @@ impl World {
             onlookers: &scene.onlookers,
             taken: &busy,
             may_go_in: doings.indoors < village_life::max_indoors(residents),
-            roof_free: house.is_some_and(|house| !scene.roofs_taken.contains(&house.slot)),
+            // Asked of the plans as they stand now, not as the tick began: a mini shares its big
+            // version's roof, and both may have a turn in the one tick.
+            roof_free: house.is_some_and(|house| {
+                !scene.roofs_taken.contains(&house.slot)
+                    && !self.village_life.values().any(|activity| {
+                        matches!(activity.plan, village_life::Plan::Roof { slot, .. } if slot == house.slot)
+                    })
+            }),
             moment_free,
             plan_free,
             mishap_free: !doings.mishap,

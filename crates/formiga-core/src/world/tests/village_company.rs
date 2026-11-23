@@ -314,6 +314,20 @@ fn afternoon(seed: u8, members: usize, minutes: f32, prepare: impl Fn(&mut Creat
             .filter(|activity| activity.plan.mishap())
             .count();
         seen.most_mishaps = seen.most_mishaps.max(mishaps);
+        // One to a roof, a mini and its big version sharing a house included.
+        let mut roofs: Vec<usize> = world
+            .village_life
+            .values()
+            .filter_map(|activity| match activity.plan {
+                Plan::Roof { slot, .. } => Some(slot),
+                _ => None,
+            })
+            .collect();
+        roofs.sort_unstable();
+        assert!(
+            roofs.windows(2).all(|pair| pair[0] != pair[1]),
+            "two are up on one roof"
+        );
         had.retain(|id, _| world.village_life.contains_key(id));
         for (id, activity) in &world.village_life {
             let kind = std::mem::discriminant(&activity.plan);
