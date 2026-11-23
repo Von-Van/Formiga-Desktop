@@ -2601,7 +2601,16 @@ run over with a highlighter and one line of what it is doing ("Up on a window, p
 Tofu.", naming a companion only for a greeting, a follow or a game within reach); its figures
 stamped in the margin ("109 days · 42 pets · 7 finds · 18 climbs"); and, for a companion with
 nothing yet to say about it, "Still getting to know Mallow. I'll write things here as I see
-them." Then a line for each of its notes, its
+them." Under that the page writes about it on its own lines (`clubhouse/story.rs`, every sentence
+a tested template filled from a record): the newest thing seen of it, dated, first — the last
+moment it shared with a friend ("Napped beside Tofu this morning, the ninth time I've seen it.")
+or the last moment the journal wrote down about it, whichever is newer, within a fortnight; what
+the notebook has noticed about it, as the Today page words it; its friends as small faces with one
+word under each ("cozy", "playmates", "squabbles"), closest first, each turning to that companion;
+its firsts ("Joined 5 Aug · first friend Tofu, 9 Sep · first find a key, 12 Sep"); and its little
+ways beside a 48-point frame of it doing its newest habit, drawn as the habit sheet draws it. A
+journal line about a find names it ("Moss found a key") where the scrapbook kept the same
+companion's first find of its kind within a minute of the moment. Then a line for each of its
 name and leaning, what it wears, Formiga Farm while Farm is installed, sharing, keeping and starting
 over, how everyone gets along, and the collection; Home & keepsakes keeps the village and the house
 picked out in it above lines for the ground's gardens, spots and ornaments, where the village

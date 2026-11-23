@@ -315,6 +315,156 @@ pub(crate) fn header(
     });
 }
 
+/// A companion caught in the middle of its newest little habit, or of its celebration while it
+/// has none yet: the frame the habit sheet draws for it, through the same presentation and face
+/// the desktop resolves.
+pub(crate) fn habit_frame(creature: &Creature) -> Canvas {
+    let mut posed = creature.clone();
+    let state = &mut posed.state;
+    state.facing_right = true;
+    state.attention = None;
+    state.flourish = None;
+    state.beat = None;
+    state.velocity = Point::default();
+    match creature.memory.habits.last() {
+        Some(&habit) => {
+            let (action, at) = match habit {
+                Habit::StretchesBeforeNaps => (ActionKind::Sleep, 0.45),
+                Habit::CirclesBeforeNaps => (ActionKind::Sleep, 0.5),
+                Habit::LooksFoodOver => (ActionKind::Eat, 0.8),
+                Habit::WavesHello => (ActionKind::Greet, 0.4),
+                Habit::PlayBows => (ActionKind::SoloPlay, 0.5),
+            };
+            state.action = action;
+            state.action_elapsed = at;
+            state.flourish = Some(Flourish {
+                habit,
+                action,
+                started_at: Some(0.0),
+            });
+        }
+        None => {
+            state.action = ActionKind::InspectScreen;
+            state.action_elapsed = 0.3;
+            state.attention = Some(AttentionPose {
+                target: state.position,
+                emotion: AttentionEmotion::Enjoying,
+                hanging: 0.0,
+                gesture: Some(Gesture::Cheer),
+            });
+        }
+    }
+    let body = formiga_art::BodyPresentation::for_creature(&posed);
+    let face = CreatureRenderer::resolve_face_state(&posed, CursorSnapshot::default(), false);
+    CreatureRenderer::render_composited_frame(
+        &posed.appearance,
+        body.clip,
+        body.frame,
+        body.facing_right,
+        false,
+        face,
+    )
+}
+
+/// What a companion's page writes about it, on the page's own lines, under its stamp: the
+/// latest thing seen, what has been noticed, its friends as faces with a word under each, its
+/// firsts, and its little ways beside the frame of it doing one. Returns the friend whose face
+/// was clicked.
+pub(crate) fn write_story(
+    ui: &mut Ui,
+    shell: &mut Shell,
+    save: &SaveFile,
+    creature: &Creature,
+    story: &story::Story,
+    habit: &TextureHandle,
+) -> Option<CreatureId> {
+    let scale = journal::text_scale(ui);
+    let mut turned = None;
+    if story.is_sparse() {
+        journal::write(
+            ui,
+            format!(
+                "Still getting to know {}. I'll write things here as I see them.",
+                creature.name
+            ),
+        );
+    }
+    if let Some(lately) = &story.lately {
+        journal::write(ui, RichText::new(lately).color(ink()));
+    }
+    if !story.noticed.is_empty() {
+        journal::write(ui, story.noticed.join(" "));
+    }
+    if !story.friends.is_empty() {
+        let side = (32.0 * scale.min(1.2)).round();
+        let word_font = formiga_pencil::hand(14.0 * scale);
+        ui.add_space(8.0);
+        journal::to_next_rule(ui);
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 14.0;
+            ui.label(RichText::new("Friends").color(muted()));
+            for friend in &story.friends {
+                let Some(other) = save.creatures.iter().find(|c| c.id == friend.id) else {
+                    continue;
+                };
+                let word =
+                    ui.painter()
+                        .layout_no_wrap(friend.word.to_owned(), word_font.clone(), muted());
+                let width = side.max(word.size().x) + 4.0;
+                let (_, rect) = ui.allocate_space(egui::vec2(width, side + 4.0 + word.size().y));
+                let response = ui.interact(
+                    rect,
+                    egui::Id::new(("friend-face", creature.id, other.id)),
+                    egui::Sense::click(),
+                );
+                let face = egui::Rect::from_min_size(
+                    rect.center_top() - egui::vec2(side / 2.0, 0.0),
+                    egui::vec2(side, side),
+                );
+                let texture = shell.portrait_texture(ui.ctx(), other);
+                paper::face(ui.painter(), face, &texture, true);
+                ui.painter().galley(
+                    egui::pos2(rect.center().x - word.size().x / 2.0, face.bottom() + 4.0),
+                    word,
+                    muted(),
+                );
+                if response.has_focus() {
+                    ui.painter().rect_stroke(
+                        rect.expand(2.0),
+                        0.0,
+                        egui::Stroke::new(2.0, forest()),
+                        egui::StrokeKind::Outside,
+                    );
+                }
+                if response.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
+                let label = format!("{}, {}", other.name, friend.word);
+                response.widget_info(|| {
+                    egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &label)
+                });
+                if response.on_hover_text(&other.name).clicked() {
+                    turned = Some(other.id);
+                }
+            }
+        });
+        journal::to_next_rule(ui);
+    }
+    if !story.firsts.is_empty() {
+        journal::write(ui, RichText::new(&story.firsts).color(muted()));
+    }
+    let side = 48.0;
+    journal::ruled_row(ui, |ui| {
+        ui.add(
+            egui::Image::new(habit)
+                .maintain_aspect_ratio(false)
+                .fit_to_exact_size(egui::vec2(side, side)),
+        );
+        journal::write(ui, &story.ways);
+    });
+    turned
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

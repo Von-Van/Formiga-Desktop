@@ -20,6 +20,7 @@ pub(crate) mod paper;
 pub(crate) mod recovery;
 pub(crate) mod sections;
 pub(crate) mod shell;
+pub(crate) mod story;
 pub(crate) mod studio;
 pub(crate) mod today;
 pub(crate) mod tour;
@@ -455,7 +456,11 @@ pub fn moment_text(save: &SaveFile, entry: &JournalEntry) -> String {
                 .find(|c| c.id == friend_id)
                 .map_or("a past companion", |c| c.name.as_str())
         ),
-        JournalMoment::Discovery => format!("{name} found a little treasure"),
+        // Named where the scrapbook kept it as the same companion's first find of its kind.
+        JournalMoment::Discovery => match story::find_of(save, entry) {
+            Some(find) => format!("{name} found {find}"),
+            None => format!("{name} found a little treasure"),
+        },
         JournalMoment::Preference(descriptor) => format!(
             "{name} is becoming known for: {}",
             descriptor.label().to_lowercase()

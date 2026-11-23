@@ -24,6 +24,13 @@ All notable changes are documented here.
   are one stamp in the margin instead of four boxes, and a companion that has just arrived says
   so, with "Still getting to know Mallow. I'll write things here as I see them." At 760 wide and
   150% text the portrait, name, temperament and traits are all in the first screen.
+- A companion's page writes about it instead of listing it. The newest thing seen of it comes
+  first, dated ("Napped beside Tofu this morning, the ninth time I've seen it."), then what the
+  notebook has noticed about it in the same voice as Today, its friends as small faces with a word
+  under each ("cozy", "playmates") that turn to that friend, its firsts ("Joined 5 Aug · first
+  friend Tofu, 9 Sep · first find a key, 12 Sep"), and its little ways beside a picture of it doing
+  its newest one. The Notes row is gone, since everything it held is on the page. The journal
+  names a first find ("Moss found a key") instead of "found a little treasure".
 
 ### Fixed
 
