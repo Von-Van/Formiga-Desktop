@@ -433,6 +433,8 @@ struct Harness {
     /// The last frame as a picture, when one was asked for with `picture`.
     pictured: Option<image::RgbaImage>,
     picture_next: bool,
+    /// What the last frame told screen readers, once `context.enable_accesskit()` asks it to.
+    access: Option<egui::accesskit::TreeUpdate>,
 }
 impl Harness {
     fn new(tab: SettingsTab) -> Self {
@@ -459,6 +461,7 @@ impl Harness {
             time: 0.0,
             pictured: None,
             picture_next: false,
+            access: None,
         }
     }
 
@@ -525,6 +528,7 @@ impl Harness {
                 &mut outcome,
             );
         });
+        self.access = output.platform_output.accesskit_update.take();
         self.labels.clear();
         self.rects.clear();
         self.cut = cut_off(&output.shapes);
@@ -1999,6 +2003,95 @@ fn the_tour_notices_a_companion_petted_carried_and_asked_for_something() {
 }
 
 #[test]
+fn creature_size_is_chosen_by_its_word_or_its_picture_and_keeps_its_words() {
+    let open = |h: &mut Harness| {
+        h.clubhouse
+            .shell
+            .sections
+            .open_section(SettingsTab::General, "desktop");
+        h.frame(Vec::new());
+        h.frame(Vec::new());
+    };
+    let mut h = Harness::new(SettingsTab::General);
+    h.context.enable_accesskit();
+    open(&mut h);
+    // Each word chooses its size, and a screen reader hears the three words, one chosen.
+    for (scale, name) in [(2, "Small"), (4, "Large"), (3, "Medium")] {
+        h.click(name);
+        h.frame(Vec::new());
+        assert_eq!(h.draft.display_scale, scale, "{name}");
+        let access = h.access.as_ref().expect("accesskit is on");
+        for (other, label) in [(2, "Small"), (3, "Medium"), (4, "Large")] {
+            let node = access
+                .nodes
+                .iter()
+                .map(|(_, node)| node)
+                .find(|node| node.label() == Some(label))
+                .unwrap_or_else(|| panic!("no {label} for screen readers"));
+            assert_eq!(node.role(), egui::accesskit::Role::Button, "{label}");
+            assert_eq!(
+                node.toggled(),
+                Some(if other == scale {
+                    egui::accesskit::Toggled::True
+                } else {
+                    egui::accesskit::Toggled::False
+                }),
+                "{label}"
+            );
+        }
+    }
+    // The companion beside a word is part of its choice: Small's, just left of the word.
+    let small = h
+        .labels
+        .iter()
+        .find(|(text, _)| text == "Small")
+        .expect("Small is shown")
+        .1;
+    h.click_at(egui::pos2(small.left() - 6.0, small.bottom() - 4.0));
+    h.frame(Vec::new());
+    assert_eq!(h.draft.display_scale, 2);
+    // The portrait is the one the notebook keeps: choosing again draws nothing new.
+    let artwork = h.artwork_bytes();
+    let textures = h.clubhouse.texture_ids().len();
+    h.click("Large");
+    h.frame(Vec::new());
+    assert_eq!(h.draft.display_scale, 4);
+    assert_eq!(h.artwork_bytes(), artwork);
+    assert_eq!(h.clubhouse.texture_ids().len(), textures);
+    // With nobody in the colony yet, the words alone still choose.
+    let mut empty = Harness::new(SettingsTab::General);
+    empty.save.creatures.clear();
+    open(&mut empty);
+    empty.click("Small");
+    empty.frame(Vec::new());
+    assert_eq!(empty.draft.display_scale, 2);
+    assert!(empty.clubhouse.texture_ids().is_empty());
+    // Pictures of the row for review, in both themes and at the largest text.
+    if let Some(path) = std::env::var_os("FORMIGA_UI_REVIEW_DIR").map(std::path::PathBuf::from) {
+        std::fs::create_dir_all(&path).unwrap();
+        for appearance in [
+            AppearancePreferences::default(),
+            AppearancePreferences {
+                theme: ThemeChoice::Dark,
+                text_scale: 150,
+                sprite_outline: false,
+            },
+        ] {
+            let mut h = Harness::new(SettingsTab::General);
+            h.screen = egui::vec2(940.0, 1200.0);
+            configure_style(&h.context, appearance);
+            open(&mut h);
+            h.picture()
+                .save(path.join(format!(
+                    "General-940-{:?}-{}-creature-size.png",
+                    appearance.theme, appearance.text_scale
+                )))
+                .unwrap();
+        }
+    }
+}
+
+#[test]
 fn preferences_offers_the_tour_again() {
     let mut h = Harness::new(SettingsTab::General);
     h.frame(Vec::new());
@@ -2669,7 +2762,7 @@ fn battle_cups_appear_in_the_journal_only_once_one_has_come_home() {
     assert!(shown(&h, "Handler Jo · 1 cup won · 15 circuit points"));
     if let Some(path) = std::env::var_os("FORMIGA_UI_REVIEW_DIR").map(std::path::PathBuf::from) {
         std::fs::create_dir_all(&path).unwrap();
-        h.screen = egui::vec2(940.0, 900.0);
+        h.screen = egui::vec2(940.0, 1200.0);
         h.frame(Vec::new());
         h.picture()
             .save(path.join("Journal-940-cream-100-cups.png"))

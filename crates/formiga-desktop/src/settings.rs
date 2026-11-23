@@ -1505,11 +1505,12 @@ fn general_tab(
             clubhouse::journal::kicker(ui, "Creature size").on_hover_text(
                 "How large companions are drawn. It changes nothing about what they do.",
             );
-            clubhouse::journal::on_the_line(ui, |ui| {
-                for (scale, name) in [(2, "Small"), (3, "Medium"), (4, "Large")] {
-                    ui.selectable_value(&mut settings.display_scale, scale, name);
-                }
-            });
+            creature_size_choices(
+                ui,
+                &mut settings.display_scale,
+                save.creatures.first(),
+                shell,
+            );
         }
         Some("routines") => {
             clubhouse::card(ui, |ui| {
@@ -1550,6 +1551,101 @@ fn general_tab(
             }
         }
     }
+}
+
+/// Small, Medium and Large, each with the colony's first companion drawn beside its word at that
+/// size, every one standing on the line the words rest on, so the choice is seen as well as read.
+/// The picture is part of the option it shows, clicked or focused with it; the word stays the
+/// option's name for keyboards and screen readers. The companions are its portrait, the texture
+/// the notebook already keeps, drawn at a half, three quarters and the whole of a point to each of
+/// its pixels. With no one in the colony yet, the words alone.
+fn creature_size_choices(
+    ui: &mut egui::Ui,
+    display_scale: &mut u8,
+    model: Option<&Creature>,
+    shell: &mut clubhouse::shell::Shell,
+) {
+    const SIZES: [(u8, &str); 3] = [(2, "Small"), (3, "Medium"), (4, "Large")];
+    let Some(model) = model else {
+        clubhouse::journal::on_the_line(ui, |ui| {
+            for (scale, name) in SIZES {
+                ui.selectable_value(display_scale, scale, name);
+            }
+        });
+        return;
+    };
+    let (texture, covered) = shell.portrait(ui.ctx(), model);
+    let grid = formiga_pencil::ruled::RuleGrid::of(ui.ctx());
+    // A point to each of the portrait's pixels at Large on a page ruled at the usual text size,
+    // growing with the text.
+    let point = grid.map_or(1.0, |grid| grid.pitch / 24.0) / 4.0;
+    // How far the words' letters reach below where they rest, so the companions stand there too.
+    let words = ui.painter().layout_no_wrap(
+        "Medium".to_owned(),
+        egui::TextStyle::Button.resolve(ui.style()),
+        egui::Color32::PLACEHOLDER,
+    );
+    let descent =
+        words.size().y - formiga_pencil::ruled::baseline_of(&words).unwrap_or(words.size().y);
+    let tallest = covered.height() * 4.0 * point + descent;
+    let margin = ui.spacing().button_padding.y;
+    let row = |ui: &mut egui::Ui| {
+        for (scale, name) in SIZES {
+            let id = ui.id().with(("creature-size", scale));
+            let drawn = covered.size() * f32::from(scale) * point;
+            let shown = egui::Button::selectable(
+                *display_scale == scale,
+                (
+                    egui::Atom::custom(id, egui::vec2(drawn.x, tallest)),
+                    egui::AtomExt::atom_align(name, egui::Align2::LEFT_BOTTOM),
+                ),
+            )
+            .atom_ui(ui);
+            if let Some(cell) = shown.rect(id) {
+                let feet = cell.bottom() - descent;
+                let tile = texture.size_vec2();
+                ui.painter().image(
+                    texture.id(),
+                    egui::Rect::from_min_max(
+                        egui::pos2(cell.left(), feet - drawn.y),
+                        egui::pos2(cell.left() + drawn.x, feet),
+                    ),
+                    egui::Rect::from_min_max(
+                        (covered.min.to_vec2() / tile).to_pos2(),
+                        (covered.max.to_vec2() / tile).to_pos2(),
+                    ),
+                    egui::Color32::WHITE,
+                );
+            }
+            let mut response = shown.response;
+            if response.clicked() && *display_scale != scale {
+                *display_scale = scale;
+                response.mark_changed();
+            }
+        }
+    };
+    let Some(grid) = grid else {
+        ui.with_layout(egui::Layout::left_to_right(egui::Align::Max), row);
+        return;
+    };
+    // The row takes as many of the page's lines as the tallest companion needs, and its words
+    // rest on the last of them, as written words do.
+    clubhouse::journal::to_next_rule(ui);
+    let band = ui.cursor().top();
+    let lines = ((tallest + margin) / grid.pitch).ceil().max(1.0);
+    let rule = band + lines * grid.pitch;
+    let bottom = rule - formiga_pencil::ruled::LIFT + descent + margin;
+    let rect = egui::Rect::from_min_max(
+        egui::pos2(ui.cursor().left(), bottom - tallest - 2.0 * margin),
+        egui::pos2(ui.cursor().left() + ui.available_width(), bottom),
+    );
+    ui.scope_builder(
+        egui::UiBuilder::new()
+            .max_rect(rect)
+            .layout(egui::Layout::left_to_right(egui::Align::Max)),
+        row,
+    );
+    ui.add_space(rule + ui.spacing().item_spacing.y - ui.cursor().top());
 }
 
 /// The way into Formiga Farm for one companion, while Farm is installed: reshape it there, or
