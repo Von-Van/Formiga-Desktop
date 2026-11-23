@@ -6,6 +6,16 @@ All notable changes are documented here.
 
 ### Changed
 
+- A mini rests, naps and gestures a little quicker and lighter than its grown-up self, at 1.15
+  times the adult's pace, the way its walk already patters. Its walk and everything else keep
+  their timing, and adults look exactly as they did. `formiga-tools rest-sheet` ends with a mini
+  beside its adult.
+- The village breathes: every few seconds a breath of wind bends the tops of both keepsake trees a
+  pixel the same way and blows each tent's pennant out, and a few seconds later it drops again,
+  each colony on its own rhythm. It rides on frames the village is drawn on anyway, adds nothing to
+  the village texture, and is off with Reduce motion. `formiga-tools home-yard-sheet` shows the
+  still and the gusting village side by side.
+
 - The notebook reads less like a settings window. Apply and Revert are only under Habitat,
   Applications and Preferences, the pages with preferences on them (and under any page while a
   change is waiting to be applied); elsewhere the foot of the page holds only the undo offer and

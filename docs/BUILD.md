@@ -323,7 +323,8 @@ two, by the reference companions; `motion-sheet` draws every body's walk, run, r
 loops frame by frame, where a loop that hitches or repeats itself shows. `rest-sheet` draws ten
 seconds of every body at rest, a frame every third of a second with its face, once as the action
 alone draws it and once as a companion carries itself on the desktop, holding still, shifting,
-glancing about and blinking. `repertoire-sheet` draws every body washing, shaking and sniffing,
+glancing about and blinking, and ends with a mini beside the adult of the same identity, so its
+quicker pace shows beat for beat. `repertoire-sheet` draws every body washing, shaking and sniffing,
 sleeping curled, sprawled and loafed, and walking plainly, skipping and trudging, and
 `doings-sheet` draws every body watering, picking, tending, holding up what it grew, eating,
 drinking, playing alone and with a friend, saying hello and being petted, at 2x, the size the

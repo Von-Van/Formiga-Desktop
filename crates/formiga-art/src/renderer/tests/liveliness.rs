@@ -737,3 +737,74 @@ fn the_village_size_changes_on_a_planted_step() {
         assert!(!shown_set_back(&creature, false, Some(true)));
     }
 }
+
+/// A mini rests and gestures a little quicker and lighter than the adult it would be — the same
+/// identity and temperament, only smaller — while its walk is left to its own shorter stride and
+/// everything else keeps the adult's rate.
+#[test]
+fn a_mini_rests_and_gestures_quicker_than_its_adult() {
+    for seed in [3_u8, 41, 97] {
+        let adult = measured(seed);
+        let mut mini = adult.clone();
+        mini.role = formiga_core::CreatureRole::Mini {
+            parent_id: adult.id,
+        };
+        let (grown, small) = (
+            MotionSignature::for_creature(&adult),
+            MotionSignature::for_creature(&mini),
+        );
+        let quicker = [
+            BodyClip::Action(ActionKind::Idle),
+            BodyClip::Action(ActionKind::Sleep),
+            BodyClip::Action(ActionKind::Perch),
+            BodyClip::Action(ActionKind::Greet),
+            BodyClip::Gesture(Gesture::Bop),
+            BodyClip::Gesture(Gesture::Groom),
+            BodyClip::Gesture(Gesture::Watch),
+            BodyClip::Gesture(Gesture::Loaf),
+        ];
+        for clip in quicker {
+            let ratio = small.rate(clip) / grown.rate(clip);
+            assert!(
+                (ratio - MINI_PACE).abs() < 1e-4,
+                "seed {seed}: {clip:?} plays {ratio}x the adult's rate"
+            );
+        }
+        let same = [
+            BodyClip::Action(ActionKind::Traverse),
+            BodyClip::Action(ActionKind::Sprint),
+            BodyClip::Action(ActionKind::Eat),
+            BodyClip::Action(ActionKind::ClimbWindow),
+        ];
+        for clip in same {
+            assert_eq!(
+                small.rate(clip),
+                grown.rate(clip),
+                "seed {seed}: {clip:?} should keep the adult's rate"
+            );
+        }
+        // The walk's steps are counted from the ground covered, the same for both.
+        for stride in [0.0, 2.5, 7.0, 13.0] {
+            assert_eq!(small.stride_frame(stride), grown.stride_frame(stride));
+        }
+        // Over the same ten seconds the mini goes round its bop and its rest beats more often.
+        let changes = |motion: MotionSignature, clip: BodyClip| {
+            (1..1000)
+                .filter(|step| {
+                    let (was, now) = ((step - 1) as f32 / 100.0, *step as f32 / 100.0);
+                    motion.frame(clip, was) != motion.frame(clip, now)
+                })
+                .count()
+        };
+        let bop = BodyClip::Gesture(Gesture::Bop);
+        assert!(changes(small, bop) > changes(grown, bop));
+        // A one-shot gesture reaches its held last frame sooner.
+        let held = |motion: MotionSignature| {
+            (0..400)
+                .map(|step| step as f32 / 100.0)
+                .find(|at| motion.frame(Gesture::Stretch, *at) == 3)
+                .expect("the stretch reaches the top")
+        };
+        assert!(held(small) < held(grown));
+    }
+}

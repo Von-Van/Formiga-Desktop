@@ -546,6 +546,16 @@ walks at the ten frames a second it always did, a slow stroller steps slowly, a 
 and a mini patters, kept between 7 and 15 frames a second (9 and 18 running) so a step never sticks
 or blurs. Walking speeds differ 2.4 times across companions; before, their steps differed 1.5 times.
 
+A mini rests and gestures a little quicker and lighter than the adult it would be: every rest, nap,
+perch, greeting and gesture plays at `MINI_PACE` (1.15) times the rate the same identity would play
+it at as an adult (`MotionSignature::rate`), a one-shot gesture reaches its held frame sooner, and
+its spells of washing or shaking take as many loops in less time. Its walk is left to its stride,
+which already patters, and climbing, eating and the other clips keep the adult's rate. It is read
+from the creature's role, so nothing is stored, no frame or cell is added, and an adult's frames
+are exactly what they were. The last band of `formiga-tools rest-sheet` is a mini beside the adult
+of the same identity, resting a frame every third of a second and bopping and washing a frame every
+tenth.
+
 **A rest that holds still.** The six authored beats of resting are no longer played round and
 round every two seconds. `MotionSignature::rest_frame` comes to rest on a settle onto one foot,
 holds the plain settle for a third of a second to about three and a half — longer the calmer and
@@ -1082,7 +1092,24 @@ cell of its own because each is hung with its own resident's curtain and wears i
 decorations, so a village needs one cell per house rather than one per kind. A house somebody is
 inside has the curtain drawn right across its door, hanging in folds with lamplight under the hem,
 and a window glowing by day; its silhouette is the same pixel for pixel, so nothing about the house
-moves when somebody goes in. Each cell is drawn into its own cell-sized tile so art that would
+moves when somebody goes in. Under the tree, its column holds the village in a breath of wind: the
+tree with the top of its crown pushed a pixel right, the same pushed left, and the tents' pennants
+blown out. A tree in the wind bends rather than slides — the upper crown moves, the tufts on the
+low limbs, the trunk and every keepsake's cord stay where they are (`render_in_wind`). A pennant
+streams a pixel further on all but its last row, over everything it covered still, so a gust is
+only ever drawn on top: the pennants' cell keeps a 16-pixel square per slot, by day and lit after
+dark (`pennant_patch`), holding only the pixels a gust changes, faded as far back as its house is.
+`village_gust` says whether the village is in a gust from the app's clock and the colony seed:
+each round of `WIND_ROUND_SECS` (eight seconds) is still for three to five seconds and gusting for
+the rest, both spells' lengths and where the colony starts in the round taken from the seed, so
+nothing is stored and two colonies never sway in step. In a gust the outward tree samples the cell
+leaning right and the inward tree, read mirrored, the one leaning left, so both lean the way the
+pennants fly, and each tent not being seen to by its keeper gets one more quad, its pennant's
+square laid at `pennant_origin` over its own house and drawn as far back as it. With motion
+reduced it never blows. The wind is only looked up on frames already being drawn — a visible
+village is redrawn at the colony's own cadence whatever it shows — so it never asks for a frame or
+a wakeup of its own, and the cells were the tree column's spare ones, so the texture is the same
+1,032,192 bytes. Each cell is drawn into its own cell-sized tile so art that would
 overrun a cell is clipped exactly as it is for a lone shelter. The first colony member shares the
 colony house and each later one adds a single quad sampling its slot's cell — by day or after dark,
 with somebody at home or not — and the two trees add one quad each, so a full village is eight
@@ -1820,7 +1847,9 @@ a tick to 1, and `tick_homebound_creatures` from roughly 76 to 8.
 `home-yard-sheet.png` shows fourteen cases at both corners: four shelter styles with a full colony
 of six and the trees filling up as the scrapbook does — nothing found, five, eleven, all sixteen —
 then colonies of one to six with their residents on the commons, ending on the widest village there
-is, and last the four styles after dark, each door hung with its resident's curtain. Along the
+is, and the four styles after dark, each door hung with its resident's curtain; last, three
+villages still on the left and in a gust on the right — tents by day, tents after dark and a mixed
+village — so the trees and the pennants can be judged frame against frame. Along the
 way the spots and the garden patches are spread out, bunched up, and mixed together, and three
 villages are painted in a named palette. `shelter-sheet.png` gives each style a lane — plain house,
 decorated house, a cottage with its resident's curtain, the same cottage lit after dark, the tree,
@@ -2914,10 +2943,10 @@ alternative may be planned — once, recorded on the plan itself, and only at th
 second disruption cancels rather than repairs again.
 
 `formiga-art`'s `MotionSignature` gives every creature a stable cadence and phase for walking,
-resting, greeting, and recovery, derived from its identity and personality. The overlay, the
-interaction hit proxy, and the review sheets all take their frame from it, so a creature's timing
-is the same everywhere. One-shot clips keep their exact timing, no frame is added, and reduced
-motion is unaffected.
+resting, greeting, and recovery, derived from its identity and personality, with a mini's rests
+and gestures a little quicker (`MINI_PACE`). The overlay, the interaction hit proxy, and the review
+sheets all take their frame from it, so a creature's timing is the same everywhere. An adult's
+one-shot clips keep their exact timing, no frame is added, and reduced motion is unaffected.
 
 `world/attention/play.rs` adds one transient encounter and one scene with at most four members.
 A sustained visible gesture or mutual gaze can become an invitation; there is no random game-start

@@ -216,20 +216,39 @@ pub struct KeepsakeTreeRenderer;
 impl KeepsakeTreeRenderer {
     /// One tree in its own cell, for the review sheets and for anything that wants it alone.
     pub fn render(genome: &ShelterGenome) -> Canvas {
+        Self::render_in_wind(genome, 0)
+    }
+
+    /// The tree with its crown pushed `sway` pixels sideways by the wind, right for a positive
+    /// sway: the leaves, their light and shade and their specks move, and the trunk, the limbs
+    /// and the cords every keepsake hangs from stay exactly where they are, so a find never
+    /// comes off its cord. A sway of 0 is the tree as it stands on a still day.
+    pub fn render_in_wind(genome: &ShelterGenome, sway: i32) -> Canvas {
         let mut canvas = Canvas::new(TREE_CELL, TREE_CELL);
-        draw_tree(&mut canvas, genome, CENTRE_X, GROUND_Y);
+        draw_tree(&mut canvas, genome, CENTRE_X, GROUND_Y, sway);
         canvas
     }
 }
 
-/// Draws the tree into `canvas`, centred on `cx` and standing on `bottom`.
-pub(crate) fn draw_tree(canvas: &mut Canvas, genome: &ShelterGenome, cx: i32, bottom: i32) {
+/// Draws the tree into `canvas`, centred on `cx` and standing on `bottom`, its crown pushed
+/// `sway` pixels sideways by the wind.
+pub(crate) fn draw_tree(
+    canvas: &mut Canvas,
+    genome: &ShelterGenome,
+    cx: i32,
+    bottom: i32,
+    sway: i32,
+) {
     let palette = PALETTES[genome.palette_index as usize % PALETTES.len()];
     let accent = PALETTES[genome.accent_index as usize % PALETTES.len()];
     // Two pixels of deterministic character: which way the trunk leans, and how far the crown
     // sits off the middle. Both are small enough that every anchor stays under leaves.
     let lean = ((genome.detail_seed >> 3) % 3) as i32 - 1;
     let tilt = ((genome.detail_seed >> 11) % 3) as i32 - 1;
+    // Where the leaves are drawn across. In the wind the top of the crown is pushed over and the
+    // tufts out on the low limbs stay with their limbs, so the tree bends rather than slides.
+    let crown_x = cx + sway;
+    let swaying = |oy: i32| if oy <= -34 { crown_x } else { cx };
 
     // A soft ground shadow, matching the one every dwelling stands on. The colony's belongings
     // are drawn over it, so the yard reads as ground the tree is standing on.
@@ -282,11 +301,17 @@ pub(crate) fn draw_tree(canvas: &mut Canvas, genome: &ShelterGenome, cx: i32, bo
         (18, -26, 8, 7),
     ];
     for (ox, oy, rx, ry) in crown {
-        canvas.fill_ellipse(cx + ox + tilt, bottom + oy + tilt, rx, ry, palette.outline);
+        canvas.fill_ellipse(
+            swaying(oy) + ox + tilt,
+            bottom + oy + tilt,
+            rx,
+            ry,
+            palette.outline,
+        );
     }
     for (ox, oy, rx, ry) in crown {
         canvas.fill_ellipse(
-            cx + ox + tilt,
+            swaying(oy) + ox + tilt,
             bottom + oy + tilt,
             rx - 1,
             ry - 1,
@@ -294,11 +319,23 @@ pub(crate) fn draw_tree(canvas: &mut Canvas, genome: &ShelterGenome, cx: i32, bo
         );
     }
     // Flat shading: lit along the top left of the crown, in shadow under each mass below it.
-    canvas.fill_ellipse(cx - 6 + tilt, bottom - 53 + tilt, 8, 3, accent.highlight);
-    canvas.fill_ellipse(cx - 14 + tilt, bottom - 44 + tilt, 6, 2, accent.highlight);
+    canvas.fill_ellipse(
+        crown_x - 6 + tilt,
+        bottom - 53 + tilt,
+        8,
+        3,
+        accent.highlight,
+    );
+    canvas.fill_ellipse(
+        crown_x - 14 + tilt,
+        bottom - 44 + tilt,
+        6,
+        2,
+        accent.highlight,
+    );
     for side in [-1, 1] {
         canvas.fill_ellipse(
-            cx + side * 14 + tilt,
+            crown_x + side * 14 + tilt,
             bottom - 31 + tilt,
             7,
             3,
@@ -316,8 +353,8 @@ pub(crate) fn draw_tree(canvas: &mut Canvas, genome: &ShelterGenome, cx: i32, bo
     // A handful of leaf specks, in the accent the houses use for their own details.
     for index in 0..7_u32 {
         let byte = ((genome.detail_seed >> (index * 7)) & 0x3f) as i32;
-        let x = cx - 20 + byte.rem_euclid(41);
         let y = bottom - 56 + (byte / 5).rem_euclid(32);
+        let x = swaying(y - bottom) - 20 + byte.rem_euclid(41);
         if canvas.get(x, y).a > 0 {
             canvas.set(x, y, accent.accent);
         }
