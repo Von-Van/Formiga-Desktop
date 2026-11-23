@@ -8,6 +8,7 @@ use crate::{
 use anyhow::Result;
 use formiga_art::{
     CreatureRenderer, ExpressionKind, EyelidPose, FRAME_SIZE, FaceRenderState, GazeDirection,
+    PixelPoint,
 };
 use formiga_core::*;
 use std::path::PathBuf;
@@ -674,6 +675,354 @@ pub fn ambient_sheet(path: PathBuf) -> Result<()> {
     Ok(())
 }
 
+/// The colours the hold sheet marks with: the paw a frame holds things in, the mouth it eats with,
+/// and where the overlay puts a find or a village prop. No palette has any of them, so a mark is
+/// never mistaken for a pixel of the art; the sheet's test holds every subject to that.
+pub(crate) const HANDS_MARK: [u8; 4] = [255, 0, 255, 255];
+pub(crate) const MOUTH_MARK: [u8; 4] = [0, 0, 255, 255];
+pub(crate) const ANCHOR_MARK: [u8; 4] = [0, 200, 0, 255];
+
+/// The clips that put something in a body's paws or mouth, with the face each is shown with:
+/// eating, drinking, keeping a toy up, holding up a find, and the three village chores.
+fn hold_clips() -> [(formiga_art::BodyClip, &'static str, FaceRenderState); 7] {
+    use formiga_art::BodyClip::{Action, Gesture as G};
+    let face = |expression, eyelids| FaceRenderState {
+        expression,
+        eyelids,
+        gaze: GazeDirection::default(),
+    };
+    [
+        (
+            Action(ActionKind::Eat),
+            "EAT",
+            face(ExpressionKind::Content, EyelidPose::Open),
+        ),
+        (
+            Action(ActionKind::Drink),
+            "DRINK",
+            face(ExpressionKind::Content, EyelidPose::Half),
+        ),
+        (
+            Action(ActionKind::SoloPlay),
+            "SOLO PLAY",
+            face(ExpressionKind::Joy, EyelidPose::Open),
+        ),
+        (
+            Action(ActionKind::PresentDiscovery),
+            "PRESENT FIND",
+            face(ExpressionKind::Joy, EyelidPose::Open),
+        ),
+        (G(Gesture::Pour), "POUR", gesture_face(Gesture::Pour)),
+        (G(Gesture::Pluck), "PLUCK", gesture_face(Gesture::Pluck)),
+        (G(Gesture::Tend), "TEND", gesture_face(Gesture::Tend)),
+    ]
+}
+
+/// Every body the hold sheet shows, named, at the smallest and the largest a companion stands:
+/// the sheets' usual subjects — a modular body from each original family, then one of each body
+/// plan — and the three original families as a look from before recipes draws them, whose
+/// belongings are placed by the classic rule.
+pub(crate) fn hold_subjects() -> Vec<(String, AppearanceGenome)> {
+    let references = reference_creatures().len();
+    let mut named: Vec<(String, AppearanceGenome)> = gesture_subjects()
+        .into_iter()
+        .enumerate()
+        .map(|(index, genome)| {
+            let plan = genome.design.map(|design| design.body);
+            let name = match plan {
+                Some(plan) if index < references => {
+                    format!("{:?} FAMILY {:?}", genome.family, plan)
+                }
+                Some(plan) => format!("PLAN {plan:?}"),
+                None => format!("{:?}", genome.family),
+            };
+            (name.to_uppercase(), genome)
+        })
+        .collect();
+    named.extend(reference_creatures().into_iter().map(|creature| {
+        let mut genome = creature.appearance;
+        genome.design = None;
+        (
+            format!("ORIGINAL {:?}", genome.family).to_uppercase(),
+            genome,
+        )
+    }));
+    named
+        .into_iter()
+        .flat_map(|(name, genome)| {
+            [STATURE_MIN, STATURE_MAX].map(|stature| {
+                let mut sized = genome.clone();
+                sized.logical_size = size_for(stature, 100);
+                (format!("{name} {stature}"), sized)
+            })
+        })
+        .collect()
+}
+
+/// A sheet pixel of a frame's mark, kept inside the frame drawn `scale` times over from
+/// `(left, top)`.
+fn mark_dot(
+    pixels: &mut [u8],
+    width: u32,
+    (left, top): (u32, u32),
+    scale: u32,
+    (x, y): (i32, i32),
+    color: [u8; 4],
+) {
+    let side = (FRAME_SIZE * scale) as i32;
+    let (dx, dy) = (x - left as i32, y - top as i32);
+    if (0..side).contains(&dx) && (0..side).contains(&dy) {
+        crate::blend_pixel(pixels, width, x as u32, y as u32, color);
+    }
+}
+
+/// A crosshair one art pixel wide at most on art pixel `at` of a frame drawn `scale` times over
+/// from `origin`: a box round that pixel, so the pixel itself shows through, and arms out from it,
+/// two sheet pixels thick so it is seen at a glance.
+fn crosshair(
+    pixels: &mut [u8],
+    width: u32,
+    origin: (u32, u32),
+    at: PixelPoint,
+    scale: u32,
+    color: [u8; 4],
+) {
+    const ARM: i32 = 12;
+    const THICK: i32 = 2;
+    let scale = scale as i32;
+    // The box's inside is the art pixel itself.
+    let (x0, y0) = (
+        origin.0 as i32 + at.x * scale - THICK,
+        origin.1 as i32 + at.y * scale - THICK,
+    );
+    let outer = scale + 2 * THICK;
+    let mut dot = |x: i32, y: i32| mark_dot(pixels, width, origin, scale as u32, (x, y), color);
+    for along in 0..outer {
+        for across in 0..THICK {
+            dot(x0 + along, y0 + across);
+            dot(x0 + along, y0 + outer - 1 - across);
+            dot(x0 + across, y0 + along);
+            dot(x0 + outer - 1 - across, y0 + along);
+        }
+    }
+    let middle = outer / 2 - THICK / 2;
+    for step in 1..=ARM {
+        for across in 0..THICK {
+            dot(x0 - step, y0 + middle + across);
+            dot(x0 + outer - 1 + step, y0 + middle + across);
+            dot(x0 + middle + across, y0 - step);
+            dot(x0 + middle + across, y0 + outer - 1 + step);
+        }
+    }
+}
+
+/// A diagonal cross centred on the corner `(x, y)` of a frame's art pixels, which is where the
+/// overlay centres a held find or village prop.
+fn corner_cross(
+    pixels: &mut [u8],
+    width: u32,
+    origin: (u32, u32),
+    (x, y): (i32, i32),
+    scale: u32,
+    color: [u8; 4],
+) {
+    const ARM: i32 = 10;
+    let (cx, cy) = (
+        origin.0 as i32 + x * scale as i32,
+        origin.1 as i32 + y * scale as i32,
+    );
+    for step in 0..ARM {
+        for (dx, dy) in [
+            (step, step),
+            (-1 - step, step),
+            (step, -1 - step),
+            (-1 - step, -1 - step),
+        ] {
+            for thick in 0..2 {
+                mark_dot(
+                    pixels,
+                    width,
+                    origin,
+                    scale,
+                    (cx + dx + thick, cy + dy),
+                    color,
+                );
+            }
+        }
+    }
+}
+
+/// A cell `size` pixels square cut from an atlas at `origin`.
+fn atlas_cell(atlas: &formiga_art::Canvas, (x0, y0): (u32, u32), size: u32) -> formiga_art::Canvas {
+    let mut cell = formiga_art::Canvas::new(size, size);
+    for y in 0..size {
+        for x in 0..size {
+            cell.set(
+                x as i32,
+                y as i32,
+                atlas.get((x0 + x) as i32, (y0 + y) as i32),
+            );
+        }
+    }
+    cell
+}
+
+/// Where every belonging is held, frame by frame, at 4x. One row per body at the smallest and
+/// largest a companion stands, every frame of eating, drinking, play, holding up a find, and the
+/// three chores, each with the face it is drawn with and what it holds as the overlay draws it:
+/// the snack, cup or toy the frame holds, a find held up, and the watering can or what was picked.
+/// Over each frame, a magenta crosshair on the paw the frame holds things in, a blue one on its
+/// mouth, and a green cross where the overlay centres a find or a village prop. A crosshair off
+/// the limb or the mouth is a belonging drawn in the wrong place.
+pub fn hold_sheet(path: PathBuf) -> Result<()> {
+    use formiga_art::{
+        AnimationSpec, COLONY_OBJECT_SIZE, ColonyObjectRenderer, PropAnchor, PropSprite,
+        TRINKET_CELL, TRINKET_FRAME_GLINT, TrinketAtlasRenderer,
+    };
+    const SCALE: u32 = 4;
+    const LABEL: u32 = 150;
+    const HEADER: u32 = 12;
+    const GAP: u32 = 12;
+    const LEGEND: u32 = 24;
+    const INK: [u8; 4] = [60, 64, 62, 255];
+    let subjects = hold_subjects();
+    let clips = hold_clips();
+    let cell = FRAME_SIZE * SCALE;
+    let frames: u32 = clips
+        .iter()
+        .map(|(clip, _, _)| u32::from(AnimationSpec::for_clip(*clip).frames))
+        .sum();
+    let width = LABEL + frames * cell + (clips.len() as u32 - 1) * GAP;
+    let row_height = HEADER + cell;
+    let height = LEGEND + subjects.len() as u32 * row_height;
+    let mut pixels = vec![0_u8; (width * height * 4) as usize];
+    for chunk in pixels.chunks_exact_mut(4) {
+        chunk.copy_from_slice(&[236, 234, 228, 255]);
+    }
+    let text = |pixels: &mut Vec<u8>, x: u32, y: u32, words: &str, color: [u8; 4]| {
+        crate::social_preview::draw_text(
+            pixels,
+            width as i32,
+            height as i32,
+            x as i32,
+            y as i32,
+            words,
+            1,
+            color,
+        );
+    };
+    // The key.
+    let mut x = 8;
+    for (color, words) in [
+        (HANDS_MARK, "HANDS"),
+        (MOUTH_MARK, "MOUTH"),
+        (
+            ANCHOR_MARK,
+            "PROP ANCHOR, WHERE THE OVERLAY CENTRES A FIND OR VILLAGE PROP",
+        ),
+    ] {
+        crate::fill_rect(&mut pixels, width, x, 8, 8, 8, color);
+        text(&mut pixels, x + 12, 8, words, INK);
+        x += 12 + words.len() as u32 * 6 + 24;
+    }
+    let creatures = reference_creatures();
+    let members: Vec<formiga_art::Palette> = creatures
+        .iter()
+        .map(|creature| formiga_art::palette_for(&creature.appearance))
+        .collect();
+    let colony_seed = [61_u8; 32];
+    let finds = TrinketAtlasRenderer::render(colony_seed, &members);
+    let objects = ColonyObjectRenderer::render_atlas(colony_seed);
+    let find = {
+        let (x0, y0, size, _) = TrinketAtlasRenderer::cell_rect(3, TRINKET_FRAME_GLINT);
+        atlas_cell(&finds, (x0, y0), size.min(TRINKET_CELL))
+    };
+    let prop = |sprite: PropSprite| {
+        atlas_cell(
+            &objects,
+            ColonyObjectRenderer::cell_origin(ColonyObjectRenderer::prop_cell(sprite)),
+            COLONY_OBJECT_SIZE,
+        )
+    };
+    let anchor = PropAnchor::facing(true);
+    for (row, (name, genome)) in subjects.iter().enumerate() {
+        let top = LEGEND + row as u32 * row_height;
+        if row % 2 == 1 {
+            crate::fill_rect(
+                &mut pixels,
+                width,
+                0,
+                top,
+                width,
+                row_height,
+                [226, 224, 216, 255],
+            );
+        }
+        let mut words = name.split(' ').collect::<Vec<_>>();
+        let size = words.pop().unwrap_or_default();
+        text(&mut pixels, 6, top + HEADER + 4, &words.join(" "), INK);
+        text(
+            &mut pixels,
+            6,
+            top + HEADER + 14,
+            &format!("SIZE {size}"),
+            INK,
+        );
+        let mut left = LABEL;
+        for (clip, label, face) in clips {
+            text(&mut pixels, left + 2, top + 2, label, INK);
+            for frame in 0..AnimationSpec::for_clip(clip).frames {
+                let rendered = CreatureRenderer::render_composited_frame(
+                    genome, clip, frame, true, false, face,
+                );
+                let mut picture = rendered;
+                // What the overlay draws over the body in its own quad: the find held up, the
+                // watering can and its water, what was picked.
+                let body = CreatureRenderer::render_body_frame(genome, clip, frame, false);
+                let centre = (
+                    body.face_anchor.x + anchor.dx.round() as i32,
+                    body.face_anchor.y + anchor.dy.round() as i32,
+                );
+                let mut overlay = |thing: &formiga_art::Canvas, (cx, cy): (i32, i32)| {
+                    let half = thing.width() as i32 / 2;
+                    for y in 0..thing.height() as i32 {
+                        for x in 0..thing.width() as i32 {
+                            let pixel = thing.get(x, y);
+                            if pixel.a > 0 {
+                                picture.set(cx - half + x, cy - half + y, pixel);
+                            }
+                        }
+                    }
+                };
+                match clip {
+                    formiga_art::BodyClip::Action(ActionKind::PresentDiscovery) => {
+                        overlay(&find, centre);
+                    }
+                    formiga_art::BodyClip::Gesture(Gesture::Pour) => {
+                        overlay(&prop(PropSprite::WateringCan), centre);
+                        overlay(&prop(PropSprite::Water), (centre.0 + 7, centre.1 + 7));
+                    }
+                    formiga_art::BodyClip::Gesture(Gesture::Pluck) => {
+                        overlay(&prop(PropSprite::Carrot), centre);
+                    }
+                    _ => {}
+                }
+                let origin = (left, top + HEADER);
+                crate::blit_canvas_scaled(&mut pixels, width, origin.0, origin.1, &picture, SCALE);
+                let hold = CreatureRenderer::hold_points(genome, clip, frame, false);
+                corner_cross(&mut pixels, width, origin, centre, SCALE, ANCHOR_MARK);
+                crosshair(&mut pixels, width, origin, hold.mouth, SCALE, MOUTH_MARK);
+                crosshair(&mut pixels, width, origin, hold.hands, SCALE, HANDS_MARK);
+                left += cell;
+            }
+            left += GAP;
+        }
+    }
+    write_png(&path, width, height, &pixels)?;
+    println!("wrote {}", path.display());
+    Ok(())
+}
+
 /// Every food, eaten through a whole meal: a row for each, twelve moments from the first look to
 /// the finish, on a different body each row, with its face and what is in its paws as the
 /// overlay draws them. The meals are laid out from a fixed seed, so the sheet is the same every
@@ -1041,4 +1390,43 @@ pub fn talk_sheet(path: PathBuf) -> Result<()> {
     write_png(&path, width * SCALE, height * SCALE, &pixels)?;
     println!("wrote {}", path.display());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The hold sheet's marks are only worth anything if they can never be a pixel of the art:
+    /// no frame of any body it shows has a mark's colour in it, and every point it marks is inside
+    /// the frame it is drawn over.
+    #[test]
+    fn the_hold_sheet_marks_are_no_colour_the_art_uses_and_land_in_the_frame() {
+        let marks = [HANDS_MARK, MOUTH_MARK, ANCHOR_MARK].map(|[r, g, b, _]| (r, g, b));
+        let inside = |at: PixelPoint| {
+            (0..FRAME_SIZE as i32).contains(&at.x) && (0..FRAME_SIZE as i32).contains(&at.y)
+        };
+        for (name, genome) in hold_subjects() {
+            for (clip, label, face) in hold_clips() {
+                for frame in 0..formiga_art::AnimationSpec::for_clip(clip).frames {
+                    let picture = CreatureRenderer::render_composited_frame(
+                        &genome, clip, frame, true, false, face,
+                    );
+                    for y in 0..FRAME_SIZE as i32 {
+                        for x in 0..FRAME_SIZE as i32 {
+                            let pixel = picture.get(x, y);
+                            assert!(
+                                pixel.a == 0 || !marks.contains(&(pixel.r, pixel.g, pixel.b)),
+                                "{name} {label} frame {frame} draws a mark's colour at {x},{y}"
+                            );
+                        }
+                    }
+                    let hold = CreatureRenderer::hold_points(&genome, clip, frame, false);
+                    assert!(
+                        inside(hold.hands) && inside(hold.mouth),
+                        "{name} {label} frame {frame}"
+                    );
+                }
+            }
+        }
+    }
 }

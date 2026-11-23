@@ -924,3 +924,77 @@ pub(super) fn find_drop_support(
         })
         .min_by(|a, b| cursor.distance(a.0).total_cmp(&cursor.distance(b.0)))
 }
+
+impl World {
+    /// Starts one companion up onto the ledge of a window the way it climbs one by itself: a look
+    /// at the window first, as a staircase step takes, a walk to the nearer of its sides, the
+    /// climb, the haul and the step in, and then a perch. The climb sheet uses it to show a whole
+    /// climb on demand; the colony itself never calls it. Returns whether the climb began, which
+    /// needs the companion and the window both there and the window's top above the companion.
+    pub fn begin_window_climb(
+        &mut self,
+        creature_id: CreatureId,
+        window_key: WindowKey,
+        desktop: &DesktopSnapshot,
+    ) -> bool {
+        let Some(window) = desktop
+            .windows
+            .iter()
+            .find(|window| window.key == window_key && window.visible && !window.minimized)
+        else {
+            return false;
+        };
+        let top_middle = Point {
+            x: window.bounds.x + window.bounds.width / 2.0,
+            y: window.bounds.y,
+        };
+        let Some(monitor_id) = desktop
+            .monitors
+            .iter()
+            .find(|monitor| monitor.bounds.contains(top_middle))
+            .map(|monitor| monitor.id)
+        else {
+            return false;
+        };
+        let Some(creature) = self
+            .save
+            .creatures
+            .iter_mut()
+            .find(|creature| creature.id == creature_id)
+        else {
+            return false;
+        };
+        if window.bounds.y >= creature.state.position.y {
+            return false;
+        }
+        let surface = SurfaceAttachment {
+            kind: SurfaceKind::WindowLedge,
+            monitor_id,
+            window_key: Some(window_key),
+            relative_x: 0.5,
+        };
+        let target = Point {
+            x: creature.state.position.x,
+            y: window.bounds.y,
+        };
+        let mut journey = build_window_journey(creature, target, surface, desktop);
+        if let WindowJourney::Climb(climb) = &mut journey {
+            climb.elapsed = -0.3;
+        }
+        let action = journey.initial_action();
+        creature.state.action = action;
+        creature.state.action_elapsed = 0.0;
+        creature.state.action_duration = f32::MAX;
+        creature.state.velocity = Point::default();
+        self.window_routes.remove(&creature_id);
+        self.window_journeys.insert(creature_id, journey);
+        Self::emit(
+            &mut self.events,
+            WorldEvent::ActionStarted {
+                creature_id,
+                action,
+            },
+        );
+        true
+    }
+}

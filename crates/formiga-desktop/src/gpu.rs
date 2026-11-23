@@ -1352,15 +1352,21 @@ impl OverlayRenderer {
     ) {
         // Creature scale is expressed in physical pixels. Applying the monitor scale factor a
         // second time made a 3x creature twice the intended size on Retina displays.
-        let sprite_size = FRAME_SIZE as f32 * display_scale as f32;
         let (local_x, contact_y) = self.drawn_contact(creature, display_scale);
-        let placement = FramePlacement::for_creature(creature, sprite.resting_baseline);
-        let frame_top = contact_y + placement.origin_y as f32 * display_scale as f32;
-        let frame_bottom = frame_top + sprite_size;
         // Gap traversal reuses the normal walk atlas and briefly narrows both body and layered face
         // quads. The source texture and hit mask remain unchanged and no runtime art is generated.
         let horizontal_scale = creature_horizontal_scale(creature.state.action);
-        let sprite_width = sprite_size * horizontal_scale;
+        // Placed the way the climb sheet places it, from the one shared rule.
+        let drawn = FramePlacement::for_creature(creature, sprite.resting_baseline).frame_rect(
+            local_x,
+            contact_y,
+            display_scale as f32,
+            horizontal_scale,
+        );
+        let sprite_size = drawn.height;
+        let frame_top = drawn.top;
+        let frame_bottom = frame_top + sprite_size;
+        let sprite_width = drawn.width;
         let left = (local_x - sprite_width / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
         let right = (local_x + sprite_width / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
         let top = 1.0 - frame_top / self.layout.height as f32 * 2.0;

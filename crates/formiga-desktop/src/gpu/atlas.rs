@@ -257,11 +257,7 @@ pub(super) fn total_animation_frames() -> u32 {
 }
 
 pub(crate) fn creature_horizontal_scale(action: ActionKind) -> f32 {
-    if action == ActionKind::SqueezeWindow {
-        0.72
-    } else {
-        1.0
-    }
+    formiga_art::FramePlacement::horizontal_scale(action)
 }
 
 pub(super) fn atlas_slot(clip: impl Into<BodyClip>, frame: u8) -> u32 {

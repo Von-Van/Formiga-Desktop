@@ -4,6 +4,16 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Two review sheets for how a companion meets what it holds and what it climbs.
+  `formiga-tools hold-sheet` draws every frame of eating, drinking, play, holding up a find and the
+  village chores at 4x for every body at its smallest and largest, with crosshairs on the paw and
+  the mouth each frame holds things by and a cross where the overlay puts a find or a watering
+  can, so a belonging in the wrong place shows at a glance. `formiga-tools climb-sheet` shows a
+  whole climb onto a window, a tenth of a second a picture, placed exactly as the desktop places a
+  companion, and each body dangling from a ledge. Nothing a companion does or looks like changes.
+
 ### Changed
 
 - The test ceiling on a full colony's creature textures, counted as if no two frames were alike, is 16 MiB instead of 15 MiB, so the animation pass's new clips fit. A real colony of six still uses about 11.3 MB.

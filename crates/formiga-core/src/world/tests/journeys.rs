@@ -552,3 +552,71 @@ fn topping_out_hauls_straight_up_before_stepping_onto_the_ledge() {
     }
     assert_eq!(stepping.last().unwrap().y, bounds.y);
 }
+
+/// The climb sheet's climb is the colony's own: a look, the walk to the window's side, the
+/// climb, the step in, and a perch on the ledge.
+#[test]
+fn a_climb_begun_on_demand_runs_every_stage_and_perches() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let mut desktop = desktop();
+    let world = World::new([41; 32], created, &desktop);
+    let floor = world.save.creatures[0].state.position.y;
+    desktop.windows.push(DesktopWindow {
+        key: 96,
+        bounds: DesktopRect {
+            x: 600.0,
+            y: floor - 120.0,
+            width: 320.0,
+            height: 120.0,
+        },
+        z_order: 0,
+        visible: true,
+        minimized: false,
+        application: None,
+        application_name: None,
+    });
+    let mut world = World::new([41; 32], created, &desktop);
+    let mut now = created;
+    for _ in 0..60 {
+        now += Duration::milliseconds(50);
+        world.tick(now, 0.05, &desktop);
+    }
+    let_colony_wander(&mut world, now);
+    world.clear_attention();
+    let id = world.save.creatures[0].id;
+    let creature = &mut world.save.creatures[0];
+    creature.state.position = Point { x: 560.0, y: floor };
+    creature.state.surface = SurfaceAttachment {
+        kind: SurfaceKind::ScreenFloor,
+        monitor_id: 1,
+        window_key: None,
+        relative_x: 0.5,
+    };
+    assert!(!world.begin_window_climb(id, 7, &desktop), "no such window");
+    assert!(world.begin_window_climb(id, 96, &desktop));
+    let mut stages = vec![world.save.creatures[0].state.action];
+    for _ in 0..200 {
+        now += Duration::milliseconds(50);
+        world.tick(now, 0.05, &desktop);
+        let action = world.save.creatures[0].state.action;
+        if stages.last() != Some(&action) {
+            stages.push(action);
+        }
+        if action == ActionKind::Perch {
+            break;
+        }
+    }
+    assert_eq!(
+        stages,
+        vec![
+            ActionKind::InspectScreen,
+            ActionKind::Traverse,
+            ActionKind::ClimbWindow,
+            ActionKind::Landing,
+            ActionKind::Perch,
+        ]
+    );
+    let creature = &world.save.creatures[0];
+    assert_eq!(creature.state.position.y, floor - 120.0);
+    assert_eq!(creature.state.surface.window_key, Some(96));
+}
