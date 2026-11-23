@@ -470,11 +470,12 @@ companion wears is drawn onto every body frame as the atlas is baked, so it cost
 texture of its own. Runtime work normally selects two slots and draws two nearest-filtered quads;
 discovery alone adds one temporary quad, and something the village has put in a companion's hands
 adds one or two from the object sheet, and what it eats or plays with one from the held sheet. A
-new companion's textures come to about 1.70 MB — 1.24 MB
+new companion's textures come to about 1.80 MB — 1.24 MB
 before its own repertoire of washing, shaking, sniffing and the other ways it sleeps and walks,
-its chores, its pet and the four ways it eats a meal added five rows of cells, 1.34 MB in 0.66.0 alone, when the walk, the run, the greeting and the
+its chores, its pet, the four ways it eats a meal and its breathing as it sits and sleeps added six
+rows of cells, 1.34 MB in 0.66.0 alone, when the walk, the run, the greeting and the
 meal stopped repeating frames — and much less under reduced motion, where each clip holds one
-frame. With no two frames alike they would be 2,442,240 bytes, which is what the budgets hold: below a 4,500,000-byte
+frame. With no two frames alike they would be 2,534,400 bytes, which is what the budgets hold: below a 4,500,000-byte
 test limit per creature, raised deliberately from 1.5 MB so the pose vocabulary has room to grow
 without the budget moving each time, and a full colony of six under 15 MiB, raised from 10 MiB in
 0.62.0 for the new poses and faces.
@@ -519,10 +520,10 @@ starts the cooldown.
 ### Between the big moments
 
 Most of what a companion is drawn doing is walking about, resting and sleeping, so how those look
-sets how alive it feels more than any single clip. Six things keep them, and everything else it
-does, from reading as loops or as one another; none adds a saved field, only the repertoire and
-the chores add frames to the atlas, and only they and the bridge between clips add to the frames
-presented.
+sets how alive it feels more than any single clip. Seven things keep them, and everything else it
+does, from reading as loops or as one another; none adds a saved field, only the repertoire, the
+chores and the breathing add frames to the atlas, and only the repertoire, the chores and the bridge
+between clips add to the frames presented.
 
 **Feet that agree with where it is going.** An action says what a creature is about, not always
 whether it is moving: a walk to a friend reaches its mark with time left on the walk, and a
@@ -585,6 +586,24 @@ motion a rest keeps to its settle, nobody turns over in a nap, and nobody stretc
 `formiga-tools repertoire-sheet` draws every body doing each of them beside the clip it might be
 mistaken for.
 
+**Stillness that breathes.** Sat up on a window (`Perch`) or on its doorstep (`Homebound`), a
+companion used to hold one picture, its four or two frames all alike, and asleep it toggled between
+two. Now it breathes. Sitting is eight frames at two a second: drawn up a pixel taller and narrower
+as a breath comes in, filling out with the ears lifting at the top of it, let out a pixel wider
+and lower, and the ears settling a frame behind the chest; the second breath repeats the first but
+ends on a flick of the tail, so of the eight frames only five are drawn and the rest share their
+cells. Asleep curled, sprawled or loafed, it takes one slow breath across four frames at two a
+second, each frame moving one thing a pixel (`BREATH` in `renderer/pose.rs`), and the little z
+over its head rises three pixels and fades across the breath, a new one with each
+(`draw_sleep_z`); a stir before a nap turns over plays the same breath four times as fast. Sat on a
+window, a companion's own glances go mostly down over the edge, at the desk below. A tail on the
+body's shared bob — investigating the cursor, riding a window, carried — and a tail hanging from a
+ledge swing on a counter half the clip's rate, the same swing stepped every other frame, so they
+read as weight rather than ticking with the body. The frames presented are unchanged, since the
+overlay draws every tick a companion is on screen whatever its frame; the atlas grows by one row of
+cells, to 1,797,120 bytes. Under reduced motion each of these holds its first frame, still, as
+before. `formiga-tools repertoire-sheet` draws both ways of sitting beside the ways of sleeping.
+
 **Doings that can be told apart.** Behaviours that meant different things shared one body: six
 chores all reached up, eating and drinking bobbed the same way, playing alone and with a friend was
 one bounce, and a pet was answered with a wave. Each now has a shape of its own, judged at 2x, the
@@ -641,9 +660,20 @@ overlay draws it. It hands the bridges to every overlay and to the grab proxies,
 the bubble over the crown and the grab mask show the settle on the same tick. A bridge that starts
 or ends asks for a frame at once, so the settle is on the desktop for exactly its tick whatever
 cadence the colony is drawn at. Every reason a change passes through the settle is one arm of
-`bridge_reason`, named by a `BridgeReason`. `formiga-tools bridge-sheet` draws every body walking,
-startled in mid-stride, walking on and coming to rest, a frame every twentieth of a second, the
-old cut over what the overlay draws now with each bridged tick on an amber ground.
+`bridge_reason`, named by a `BridgeReason`. Two more reasons pass through it whatever the outline
+does. A wash, a shake or a sniff of its own (`fidget`) begins and ends on the settle: resting where
+it stands, the rest already holds the settle either side of one, so only a moment started from a
+resident's sit at home, or from a beat of the rest, is bridged (`BridgeReason::Fidget`). And a body
+resting or walking that turns round — the rest and its beats, sat at home or on a window, a walk,
+a run, a skip or a trudge — passes through the settle on the tick it faces the other way, within
+one clip or across two (`BridgeReason::Turn`), so a turn is a turn rather than a mirror; a turn
+that lands on the settle needs none, a turn straight back on the next tick cuts, as every change
+after a bridge does, and a twirl, a turn done on purpose in a cheer, stays as quick as it is.
+Circling before a nap turns round on its walk, so each of its turns now passes through the settle
+too. `formiga-tools bridge-sheet` draws every body walking, startled in mid-stride, walking on and
+turning round, coming to rest, and sat on its doorstep as a wash starts and as it ends, a frame
+every twentieth of a second, the old cut over what the overlay draws now with each bridged tick on
+an amber ground.
 
 ## Lived-experience projection
 

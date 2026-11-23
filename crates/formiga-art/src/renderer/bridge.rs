@@ -1,7 +1,8 @@
 //! The one-tick bridge between clips: where the body changes from one clip to another whose
 //! outline sits markedly higher or lower — a walk stopping on a high stride, a rest breaking into
-//! a cheer — it passes through the plain settle for one presentation tick on the way, so the
-//! change reads as a movement rather than a cut.
+//! a cheer — where one of its own moments at rest starts or ends away from the settle, or where
+//! it turns round while resting or walking, it passes through the plain settle for one
+//! presentation tick on the way, so the change reads as a movement rather than a cut.
 //!
 //! This is presentation only. [`BodyPresentation::for_creature`] stays a pure function of the
 //! creature; the memory of what was shown last is a [`ClipBridge`] the overlay keeps beside each
@@ -42,6 +43,15 @@ pub enum BridgeReason {
     /// The next clip's outline is more than [`BRIDGE_ROWS`] higher or lower at the crown or the
     /// feet than the frame shown last.
     Silhouette,
+    /// One of a companion's own moments at rest — a wash, a shake, a sniff of the air — starts
+    /// from, or goes back to, a resting body that is not the settle: sat on its doorstep, or on
+    /// a beat of the rest. However little the outline moves, the moment begins and ends on the
+    /// settle, as it does where it is taken from the settle itself.
+    Fidget,
+    /// The body turns round, resting or walking: it faces the other way on this tick from the
+    /// last. It passes through the screen-facing settle on the way, so a turn is a turn rather
+    /// than a mirror.
+    Turn,
 }
 
 /// One companion's memory of the body it was last shown in, advanced once a presentation tick.
@@ -98,16 +108,17 @@ impl ClipBridge {
 /// Why going from `from`, the body shown last, to `to` passes through the settle, if it does,
 /// each with its frame's outline.
 ///
-/// Never within one clip, so a loop going round or a clip holding its last frame cuts as it
-/// always has; never from or to the settle itself, which would only hold it a tick longer;
-/// never from or to a body that is off its feet or asleep (see [`stands`]); never from or to a
-/// frame holding something; and never where either frame's outline is not known.
+/// Never from or to the settle itself, which would only hold it a tick longer; never from or to
+/// a body that is off its feet or asleep (see [`stands`]); never from or to a frame holding
+/// something; and never where either frame's outline is not known. Within one clip only a turn
+/// does (see [`turns`]), so a loop going round or a clip holding its last frame cuts as it always
+/// has. Between two clips, a jump in the outline does, and so does one of its own moments at
+/// rest starting or ending (see [`fidget`]) or a turn.
 pub fn bridge_reason(
     (from, before): (BodyPresentation, Option<FrameShape>),
     (to, after): (BodyPresentation, Option<FrameShape>),
 ) -> Option<BridgeReason> {
-    if from.clip == to.clip
-        || (from.clip, from.frame) == SETTLE_FRAME
+    if (from.clip, from.frame) == SETTLE_FRAME
         || (to.clip, to.frame) == SETTLE_FRAME
         || !stands(from.clip)
         || !stands(to.clip)
@@ -118,11 +129,51 @@ pub fn bridge_reason(
     if before.holding || after.holding {
         return None;
     }
+    let turned = from.facing_right != to.facing_right && turns(from.clip) && turns(to.clip);
+    if from.clip == to.clip {
+        return turned.then_some(BridgeReason::Turn);
+    }
     let moved = before
         .top
         .abs_diff(after.top)
         .max(before.bottom.abs_diff(after.bottom));
-    (moved > BRIDGE_ROWS).then_some(BridgeReason::Silhouette)
+    if moved > BRIDGE_ROWS {
+        Some(BridgeReason::Silhouette)
+    } else if (fidget(from.clip) && rests(to.clip)) || (rests(from.clip) && fidget(to.clip)) {
+        Some(BridgeReason::Fidget)
+    } else {
+        turned.then_some(BridgeReason::Turn)
+    }
+}
+
+/// Whether a clip is one of the things a companion does with itself at rest: a wash, a shake or
+/// a sniff of the air (see [`super::MotionSignature::rest_moment`]).
+pub fn fidget(clip: BodyClip) -> bool {
+    matches!(
+        clip,
+        BodyClip::Gesture(Gesture::Groom | Gesture::Shake | Gesture::Sniff)
+    )
+}
+
+/// Whether a clip is a body at rest, where one of its own moments starts and ends: the rest and
+/// its beats, sat on its doorstep, or up on a window.
+fn rests(clip: BodyClip) -> bool {
+    matches!(
+        clip,
+        BodyClip::Action(ActionKind::Idle | ActionKind::Homebound | ActionKind::Perch)
+    )
+}
+
+/// Whether a clip is a body resting or walking, whose turning round passes through the settle:
+/// the rest, sat on its doorstep or up on a window, and every walk and run, moods and all. A
+/// twirl is a turn done on purpose, in a cheer, and stays as quick as it is.
+pub fn turns(clip: BodyClip) -> bool {
+    rests(clip)
+        || matches!(
+            clip,
+            BodyClip::Action(ActionKind::Traverse | ActionKind::Follow | ActionKind::Sprint)
+                | BodyClip::Gesture(Gesture::Skip | Gesture::Trudge)
+        )
 }
 
 /// Whether a clip has the body up on its feet, where the standing settle can go between it and

@@ -138,12 +138,13 @@ pub fn motion_sheet(path: PathBuf) -> Result<()> {
 
 /// What every body does with itself, frame by frame with the face it is drawn with: washing,
 /// shaking, sniffing the air, the three ways it sleeps — curled, sprawled and loafed — and the
-/// three ways it walks — plainly, skipping and trudging. One row per body at 3x, a gap between
+/// three ways it walks — plainly, skipping and trudging — and the two ways it sits, on its
+/// doorstep and up on a window, breathing. One row per body at 3x, a gap between
 /// each clip, so the moods can be told apart at a glance and a pose that reads as something else
 /// shows up beside the ones it might be mistaken for.
 pub fn repertoire_sheet(path: PathBuf) -> Result<()> {
     const SCALE: u32 = 3;
-    let clips: [(formiga_art::BodyClip, FaceRenderState); 10] = {
+    let clips: [(formiga_art::BodyClip, FaceRenderState); 11] = {
         use formiga_art::BodyClip::{Action, Gesture as G};
         let face = |expression, eyelids| FaceRenderState {
             expression,
@@ -168,6 +169,10 @@ pub fn repertoire_sheet(path: PathBuf) -> Result<()> {
             (G(Gesture::Trudge), gesture_face(Gesture::Trudge)),
             (
                 Action(ActionKind::Homebound),
+                face(ExpressionKind::Content, EyelidPose::Open),
+            ),
+            (
+                Action(ActionKind::Perch),
                 face(ExpressionKind::Content, EyelidPose::Open),
             ),
         ]

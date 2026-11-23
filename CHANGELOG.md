@@ -14,6 +14,17 @@ All notable changes are documented here.
   something in its paws all cut as before, and reduced motion never bridges. No new frames and
   nothing saved: the overlay keeps what it showed last, and the picture, the bubble and the grab
   mask show the settle together. `formiga-tools bridge-sheet` draws it tick by tick.
+- Sitting and sleeping companions breathe. Sat up on a window or on its doorstep, a companion
+  draws a slow breath every two seconds, chest up a pixel and the ears lifting and settling a
+  frame behind, with a flick of the tail every other breath; up on a window its glances go mostly
+  down over the edge. Asleep curled, sprawled or loafed it takes one slow breath in four frames,
+  and the little z over its head rises three pixels and fades with each breath. Tails on the
+  shared bob (looking at the cursor, riding a window, carried) and hanging from a ledge swing at
+  half the rate they ticked at. A wash, a shake or a sniff started from a resident's sit at home
+  begins and ends on the plain settle, as one at rest elsewhere already did, and a companion
+  turning round while it rests or walks passes through the settle for one tick on the turn.
+  Reduced motion holds each pose still as before and never bridges. Nothing is saved; a
+  companion's textures grow by one row of cells, from 1.70 MB to 1.80 MB.
 
 ## [0.68.23] - 2026-11-12
 

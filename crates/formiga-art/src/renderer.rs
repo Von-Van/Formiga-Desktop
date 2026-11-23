@@ -259,15 +259,19 @@ impl AnimationSpec {
             }
             ActionKind::Sprint => (6, 12, PlaybackMode::Loop),
             ActionKind::Eat | ActionKind::Drink => (4, 6, PlaybackMode::Loop),
-            ActionKind::Sleep => (2, 2, PlaybackMode::Loop),
+            // One slow breath in four frames, two seconds in and out.
+            ActionKind::Sleep => (4, 2, PlaybackMode::Loop),
             // Resting is the longest clip a companion plays, because it is the one it plays
             // most: six frames at three a second is a two-second loop, room enough to settle,
             // shift its weight, look off at something and settle back without any of those four
             // reading as hurried. Six is also what was left — the two spare slots in the atlas's
             // last row — so the longer rest costs a creature no texture at all.
             ActionKind::Idle => (6, 3, PlaybackMode::Loop),
-            ActionKind::Perch | ActionKind::RideWindow => (4, 4, PlaybackMode::Loop),
-            ActionKind::Homebound => (2, 2, PlaybackMode::Loop),
+            // Sat down breathing, a breath every two seconds, and every other breath a flick of
+            // the tail: eight frames, of which the first breath and the second share all but the
+            // flick, so the atlas keeps one cell for each frame alike.
+            ActionKind::Perch | ActionKind::Homebound => (8, 2, PlaybackMode::Loop),
+            ActionKind::RideWindow => (4, 4, PlaybackMode::Loop),
             ActionKind::ClimbWindow => (4, 6, PlaybackMode::Loop),
             ActionKind::Dangle => (4, 3, PlaybackMode::Loop),
             ActionKind::InspectScreen => (4, 4, PlaybackMode::Loop),
@@ -328,8 +332,8 @@ impl AnimationSpec {
             Gesture::Shake => (4, 10),
             // Sniff, sniff.
             Gesture::Sniff => (4, 5),
-            // Breathing, as asleep in a curl.
-            Gesture::Sprawl | Gesture::Loaf => (2, 2),
+            // Breathing, as asleep in a curl: one slow breath in four frames.
+            Gesture::Sprawl | Gesture::Loaf => (4, 2),
             // Strides, counted from the ground covered like any walk's.
             Gesture::Skip | Gesture::Trudge => (6, 10),
             // A slow tip of the can, and back.
