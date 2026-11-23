@@ -286,6 +286,13 @@ fn worn(figure: &Figure) -> Worn {
             y: round(back_top) + 2,
         },
         floor: round(floor).min(FRAME_SIZE as i32 - 2) - 1,
+        // A form with arms holds things at the end of its near one; one on four legs, or with
+        // wings in place of arms, carries them in its mouth.
+        hand: figure
+            .arms
+            .iter()
+            .find(|arm| arm.near)
+            .map(|arm| point(arm.foot)),
     }
 }
 

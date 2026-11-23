@@ -316,6 +316,11 @@ pub(super) fn draw(c: &mut Canvas, pose: Pose, clip: BodyClip, frame: u8) -> Fig
     }
 
     let floor = at.ground.y + FOOT_ROW + 2;
+    // What it holds is in the near forepaw: on its sooty end, carried out or folded on the belly.
+    let hand = match arms[1] {
+        Some((_, hand)) => hand,
+        None => at.body(20, 17),
+    };
     Figure {
         face,
         crown: at.head(FACE.0, EAR_ROWS as i32 + 1),
@@ -326,6 +331,7 @@ pub(super) fn draw(c: &mut Canvas, pose: Pose, clip: BodyClip, frame: u8) -> Fig
         hip: at.body(9, 18),
         back: at.body(11, 13),
         floor,
+        hand: Some(hand),
     }
 }
 
@@ -355,21 +361,14 @@ fn arm(c: &mut Canvas, root: PixelPoint, hand: PixelPoint) {
     c.fill_rect(hand.x, hand.y, 2, 2, SOOT);
 }
 
-/// Where the fox holds what it is using: in its front paw, folded on its belly, and up at its
-/// muzzle for a mouthful.
-pub(super) fn prop_hold(pose: Pose, clip: BodyClip) -> PropHold {
+/// Where the middle of the fox's mouth is against its face anchor: under the nose on its white
+/// muzzle, where a yawn opens.
+pub(super) const MOUTH_AT: PixelPoint = PixelPoint { x: 0, y: 2 };
+
+/// How low what the fox holds may go: the floor under its feet, and the lowest row they reach.
+pub(super) fn footing(pose: Pose, clip: BodyClip) -> (i32, i32) {
     let at = Placement::new(pose, clip);
-    let face = at.face();
-    PropHold {
-        hands: at.body(21, 16),
-        mouth: PixelPoint {
-            x: face.x + 4,
-            y: face.y + 3,
-        },
-        floor: at.ground.y + FOOT_ROW + 1,
-        ground: at.ground.y + FOOT_ROW + 2,
-        forward: 1,
-    }
+    (at.ground.y + FOOT_ROW + 1, at.ground.y + FOOT_ROW + 2)
 }
 
 /// The fox's face in its 16-pixel frame: two short dashes for eyes, a blush under each, and its

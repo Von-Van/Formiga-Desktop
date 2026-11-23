@@ -211,6 +211,40 @@ fn templated(face: formiga_core::FaceGenome, template: &FaceTemplate) -> formiga
     }
 }
 
+/// Where the middle of this face's mouth is drawn, against the face anchor, in body-frame pixels
+/// facing right: the pixel every expression's mouth is drawn around. The face frame is centred
+/// on the anchor and drawn about its row 7 of 16, a row above the anchor, so this is the face's
+/// own eye row and mouth drop, read from the same layout [`draw_face`] draws by.
+pub(super) fn mouth_offset(genome: &AppearanceGenome) -> PixelPoint {
+    let design = genome.design.map(formiga_core::CreatureDesign::bounded);
+    let template = design
+        .filter(|design| design.face_template > 0)
+        .and_then(|design| FACE_TEMPLATES.get(usize::from(design.face_template) - 1));
+    let below = match template {
+        Some(template) => template.eye_dy + template.mouth_dy,
+        None => {
+            // Without a layout the eyes' row and size set how far down the mouth is, as
+            // `draw_face` measures it; a recipe's classic eyes sit a row up.
+            let (offset, size) = match design {
+                Some(design) => (
+                    -1,
+                    if matches!(design.classic.face, 3 | 5) {
+                        1
+                    } else {
+                        2
+                    },
+                ),
+                None => (
+                    i32::from(genome.face.vertical_offset),
+                    i32::from(genome.face.eye_size),
+                ),
+            };
+            offset + size + 3
+        }
+    };
+    PixelPoint { x: 0, y: below - 1 }
+}
+
 pub(super) fn draw_face(
     canvas: &mut Canvas,
     genome: &AppearanceGenome,
