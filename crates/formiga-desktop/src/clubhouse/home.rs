@@ -47,6 +47,7 @@ impl HomeState {
     }
 
     /// The Home page.
+    #[allow(clippy::too_many_arguments)]
     pub fn show(
         &mut self,
         ui: &mut Ui,
@@ -54,6 +55,7 @@ impl HomeState {
         save: &SaveFile,
         monitors: &[MonitorInfo],
         formiga_home: FormigaHomeView,
+        colony: &mut collection::ColonyState,
         outcome: &mut SettingsOutcome,
     ) {
         journal::page_heading(
@@ -159,6 +161,16 @@ impl HomeState {
                 "A portrait of everyone, or a postcard",
             ),
             sections::Section::new(
+                "collection",
+                "The collection",
+                format!(
+                    "{} of {} found · keepsakes to hang in the trees",
+                    save.companion.scrapbook.len(),
+                    formiga_core::TRINKET_VARIANTS
+                ),
+            )
+            .marked(tour::TourMark::Collection),
+            sections::Section::new(
                 "belongings",
                 "Belongings in the yards",
                 match things {
@@ -258,6 +270,7 @@ impl HomeState {
                     }
                 });
             }
+            Some("collection") => colony.collection(ui, shell, save, outcome),
             Some("belongings") => {
                 ui.small("The colony keeps its things in the two trees' yards, one end then the other. Slots run outward from a trunk; moving one changes where its influence is felt.");
                 if save.objects.objects.is_empty() {

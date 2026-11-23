@@ -1186,6 +1186,7 @@ fn draw_settings(
                     save,
                     monitors,
                     clubhouse.formiga_home,
+                    &mut clubhouse.colony,
                     outcome,
                 ),
                 SettingsTab::Journal => clubhouse.journal.show(ui, &mut clubhouse.shell, save, clubhouse.reading.as_ref(), outcome),
@@ -1218,6 +1219,15 @@ fn draw_settings(
                 pitch,
             },
             (scrolled.inner_rect.top(), footer.top()),
+        );
+        // While one of the page's sections is open, its corner turns up at its foot as the way
+        // back to the rest of it.
+        clubhouse::sections::back_corner(
+            ui,
+            &mut clubhouse.shell,
+            *tab,
+            egui::pos2(page.left() + spread.margin + 12.0, footer.top() - 8.0),
+            text_scale,
         );
                 });
             clubhouse::journal::paint_open_tab(
@@ -1614,14 +1624,8 @@ fn colony_tab(
     *selected_creature = Some(creature.id);
     outcome.viewed_profile = Some(creature.id);
     // The companion's own page shows who it is and what the notebook has to say about it first,
-    // then a line for each thing to do; a part opens on its own, under a way back.
-    let mut sections = vec![
-        Section::new(
-            "name",
-            "Name and where they like to be",
-            format!("Likes to be {}", creature.leaning.label().to_lowercase()),
-        )
-        .marked(TourMark::Name),
+    // then something to wear, and everything that changes or shares it in one place at the foot.
+    let sections = [
         Section::new(
             "wardrobe",
             "Something to wear",
@@ -1631,82 +1635,82 @@ fn colony_tab(
             ),
         )
         .marked(TourMark::Wardrobe),
-    ];
-    if formiga_farm.installed {
-        sections.push(Section::new(
-            "farm",
-            "A new look",
-            "Reshape them in Formiga Farm",
-        ));
-    }
-    sections.extend([
-        Section::new(
-            "share",
-            format!("Share {}", creature.name),
-            "A code for a friend, a picture card, or a sticker",
-        )
-        .marked(TourMark::Share),
-        Section::new(
-            "care",
-            "Keeping and starting over",
-            if creature.kept {
-                "Kept when the others are made anew"
-            } else {
-                "Not kept when the others are made anew"
-            },
-        ),
         Section::new(
             "together",
             "How everyone gets along",
             "Friendships, playmates and tensions across the colony",
         ),
         Section::new(
-            "collection",
-            "The collection",
+            "care",
+            "Care & share",
             format!(
-                "{} of {} found",
-                colony.save.companion.scrapbook.len(),
-                formiga_core::TRINKET_VARIANTS
+                "Likes to be {}{} · a code, a card or a sticker",
+                creature.leaning.label().to_lowercase(),
+                if creature.kept { " · kept" } else { "" }
             ),
         )
-        .marked(TourMark::Collection),
-    ]);
+        .marked(TourMark::Name)
+        .marked(TourMark::Share),
+    ];
     if clubhouse::sections::current(shell, SettingsTab::Colony, &sections).is_none() {
         let now = time::OffsetDateTime::now_utc();
         ui.add_space(8.0);
-        clubhouse::companion_page::header(ui, shell, creature, creatures, now, |ui| {
-            // The two things the strip over a companion offers, here as plain buttons so they can
-            // be reached from the keyboard, with what came of them in words.
-            ui.add_space(4.0);
-            ui.horizontal_wrapped(|ui| {
-                for (label, kind, help) in [
-                    (
-                        "Offer a snack",
-                        formiga_core::OfferKind::Snack,
-                        "Hold out a snack, as the strip over them on the desktop does.",
-                    ),
-                    (
-                        "Offer a toy",
-                        formiga_core::OfferKind::Toy,
-                        "Hold out a toy, as the strip over them on the desktop does.",
-                    ),
-                ] {
-                    if ui.button(label).on_hover_text(help).clicked() {
-                        outcome.offer = Some((creature.id, kind));
+        let mut renaming = page.renaming.take();
+        let renamed = clubhouse::companion_page::header(
+            ui,
+            shell,
+            creature,
+            creatures,
+            now,
+            &mut renaming,
+            |ui| {
+                // The two things the strip over a companion offers, here as plain buttons so they can
+                // be reached from the keyboard, with what came of them in words.
+                ui.add_space(4.0);
+                ui.horizontal_wrapped(|ui| {
+                    for (label, kind, help) in [
+                        (
+                            "Offer a snack",
+                            formiga_core::OfferKind::Snack,
+                            "Hold out a snack, as the strip over them on the desktop does.",
+                        ),
+                        (
+                            "Offer a toy",
+                            formiga_core::OfferKind::Toy,
+                            "Hold out a toy, as the strip over them on the desktop does.",
+                        ),
+                    ] {
+                        if ui.button(label).on_hover_text(help).clicked() {
+                            outcome.offer = Some((creature.id, kind));
+                        }
                     }
+                });
+                if let Some((_, note)) = page
+                    .offer_note
+                    .as_ref()
+                    .filter(|(id, _)| *id == creature.id)
+                {
+                    clubhouse::journal::write(
+                        ui,
+                        egui::RichText::new(note).small().color(clubhouse::muted()),
+                    );
                 }
-            });
-            if let Some((_, note)) = page
-                .offer_note
-                .as_ref()
-                .filter(|(id, _)| *id == creature.id)
-            {
-                clubhouse::journal::write(
-                    ui,
-                    egui::RichText::new(note).small().color(clubhouse::muted()),
-                );
+            },
+        );
+        // A name typed where the name is written is checked as the Care & share field checks it,
+        // and stays open to be fixed if it will not do.
+        page.renaming = renaming;
+        if let Some(typed) = renamed {
+            match validate_creature_name(&typed) {
+                Ok(validated) => {
+                    creature_names.insert(creature.id, validated.clone());
+                    outcome.rename_creature = Some((creature.id, validated));
+                    page.renaming = None;
+                    *error = None;
+                }
+                Err(message) => *error = Some(message.to_string()),
             }
-        });
+        }
         clubhouse::companion_page::tally_stamp(ui, creature, now);
         // Under it, on the page's own lines, what the notebook has to say about it.
         let learned: Vec<&str> = profile_descriptors(creature, creatures)
@@ -1730,7 +1734,10 @@ fn colony_tab(
         ui.add_space(14.0);
     }
     match clubhouse::sections::show(ui, shell, SettingsTab::Colony, &sections) {
-        Some("name") => {
+        Some("wardrobe") => {
+            page.wardrobe(ui, shell, colony.save, creature, outcome);
+        }
+        Some("care") => {
             let name = clubhouse::card(ui, |ui| {
                 ui.strong("Name");
                 ui.small("A name for your companion. Their preferences grow through experience.");
@@ -1782,12 +1789,11 @@ fn colony_tab(
                 });
             });
             shell.tour_mark(ui, TourMark::Name, name.response.rect);
-        }
-        Some("wardrobe") => {
-            page.wardrobe(ui, shell, colony.save, creature, outcome);
-        }
-        Some("farm") => formiga_farm_group(ui, creature, formiga_farm, outcome),
-        Some("share") => {
+            ui.add_space(8.0);
+            if formiga_farm.installed {
+                formiga_farm_group(ui, creature, formiga_farm, outcome);
+                ui.add_space(8.0);
+            }
             let share = clubhouse::card(ui, |ui| {
                 ui.strong("Share this creature");
                 ui.label("The code recreates innate appearance and personality, not its name or history.");
@@ -1825,8 +1831,7 @@ fn colony_tab(
                 });
             });
             shell.tour_mark(ui, TourMark::Share, share.response.rect);
-        }
-        Some("care") => {
+            ui.add_space(8.0);
             clubhouse::card(ui, |ui| {
                 ui.strong("Colony care");
                 let mut kept = creature.kept;
@@ -1897,7 +1902,6 @@ fn colony_tab(
             });
         }
         Some("together") => colony_standings_card(ui, creatures, relationships, selected_creature),
-        Some("collection") => page.collection(ui, shell, colony.save, outcome),
         _ => {}
     }
     ui.ctx()

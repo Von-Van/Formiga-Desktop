@@ -1,6 +1,6 @@
 //! Everything the colony has found, and what it is wearing from it.
 //!
-//! The Collection on the Your colony page is every keepsake there is: what has been found in full
+//! The Collection on the Home & keepsakes page is every keepsake there is: what has been found in full
 //! colour, and what has not as a shape with a hint beside it, with sixteen of the found ones picked
 //! to hang in the village's two trees. The Journal keeps its own record of the finds themselves —
 //! only what has actually turned up, with who found it and when. And each companion has a place to
@@ -184,6 +184,8 @@ pub(crate) struct ColonyState {
     /// The companion on the page caught in its newest habit, and what it was drawn from, so it is
     /// drawn again only when that changes.
     habit_frame: Option<(HabitFrameKey, TextureHandle)>,
+    /// The name being typed over a companion's own, where its name is written, and whose.
+    pub renaming: Option<(CreatureId, String)>,
 }
 
 /// Whose habit frame it is, how they looked, and which habit it shows.

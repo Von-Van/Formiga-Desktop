@@ -2610,14 +2610,19 @@ word under each ("cozy", "playmates", "squabbles"), closest first, each turning 
 its firsts ("Joined 5 Aug · first friend Tofu, 9 Sep · first find a key, 12 Sep"); and its little
 ways beside a 48-point frame of it doing its newest habit, drawn as the habit sheet draws it. A
 journal line about a find names it ("Moss found a key") where the scrapbook kept the same
-companion's first find of its kind within a minute of the moment. Then a line for each of its
-name and leaning, what it wears, Formiga Farm while Farm is installed, sharing, keeping and starting
-over, how everyone gets along, and the collection; Home & keepsakes keeps the village and the house
-picked out in it above lines for the ground's gardens, spots and ornaments, where the village
-lives, pictures, and the belongings in the yards; Preferences keeps a quiet moment above lines for
+companion's first find of its kind within a minute of the moment. The name is renamed where it is
+written: clicked, it becomes a field, Enter keeps what was typed once `validate_creature_name`
+passes it and Escape leaves it. Then a line for what it wears, one for how everyone gets along,
+and at the foot one for Care & share, which holds everything that changes or shares it: its name
+and where it likes to be, Formiga Farm while Farm is installed, its code, card and sticker, and
+keeping, removing and starting over. Home & keepsakes keeps the village and the house picked out in
+it above lines for the ground's gardens, spots and ornaments, where the village lives, pictures,
+the collection of everything the colony could find, and the belongings in the yards; Preferences keeps a quiet moment above lines for
 the desktop, routines and this notebook; About keeps the colophon above backups, updates, privacy
 and where things are kept. Each line names its section and says how it stands. A section opens in
-the list's place under a way back, which Escape also takes while no text field has the keyboard;
+the list's place under its name, and the way back is the page's own corner turned up at its foot
+(`sections::back_corner`, "‹ Your colony", drawn over the page just above the footer so it stays
+put while the section scrolls), which Escape also takes while no text field has the keyboard;
 the list comes back as it was scrolled, with the section just read barred down its edge, since the
 page's scroll area is keyed by the page and its open section. Which section is open is kept in the
 shell for as long as the window is open and in nothing saved, and a step of the tour that points at
