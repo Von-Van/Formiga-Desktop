@@ -714,7 +714,10 @@ fn the_village_keeps_only_so_many_quiet_moments_going_at_a_time_and_always_settl
                 );
             }
             let run = holding.entry(creature.id).or_default();
-            if creature.state.action == ActionKind::Homebound {
+            if creature.state.indoors {
+                // A spell indoors is no quiet moment, and lasts as long as it lasts.
+                *run = 0;
+            } else if creature.state.action == ActionKind::Homebound {
                 *run = 0;
                 let commons = spots[&creature.id];
                 assert!(

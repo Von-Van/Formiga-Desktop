@@ -167,6 +167,13 @@ pub struct VillageLife {
     pub leaf_weight: u32,
     pub snack_weight: u32,
     pub cushion_weight: u32,
+    /// How much more going indoors weighs for each resident out of doors beyond the number a
+    /// village of that size has room for (`village_life::uncrowded`): what keeps about half of a
+    /// village of four or more indoors, without stopping everybody being out now and then.
+    pub crowded_weight: u32,
+    /// How much sooner the turns of those out of doors come round for the share of the village
+    /// that is indoors: with half of it in, each of the rest is this much of a half quicker.
+    pub few_out_gain: f32,
     /// Going over to somebody free — to say hello, to play, for a walk together — and stopping
     /// to look on at somebody busy. Each is weighed again by the resident's own nature, so the
     /// sociable call on their neighbours and the playful start the games.
@@ -199,6 +206,10 @@ pub struct VillageLife {
     /// How long a resident stays indoors: a nap, or a while pottering about in there.
     pub indoors_nap_secs: Range<f32>,
     pub indoors_potter_secs: Range<f32>,
+    /// The same in a village of four or more, where about half are indoors at any time: longer,
+    /// so the village is not all comings and goings at its doors.
+    pub indoors_long_nap_secs: Range<f32>,
+    pub indoors_long_potter_secs: Range<f32>,
     /// How long a resident sits up on its roof.
     pub roof_secs: Range<f32>,
 }
@@ -217,6 +228,8 @@ pub const VILLAGE_LIFE: VillageLife = VillageLife {
     leaf_weight: 1,
     snack_weight: 1,
     cushion_weight: 1,
+    crowded_weight: 24,
+    few_out_gain: 1.0,
     hello_weight: 4,
     play_weight: 3,
     walk_weight: 2,
@@ -234,6 +247,8 @@ pub const VILLAGE_LIFE: VillageLife = VillageLife {
     ask_again_secs: 3.0..8.0,
     indoors_nap_secs: 40.0..110.0,
     indoors_potter_secs: 12.0..30.0,
+    indoors_long_nap_secs: 100.0..260.0,
+    indoors_long_potter_secs: 60.0..170.0,
     roof_secs: 18.0..45.0,
 };
 

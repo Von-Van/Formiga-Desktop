@@ -43,12 +43,18 @@ const fn max_about(residents: usize) -> usize {
 /// How fast a resident's wait for its next turn runs, against the clock: quicker for the brisk,
 /// quicker again for the sociable while somebody is out and about, and slow for the sleepy. A
 /// village whose residents are drowsy is quiet for a while, and one where something has started
-/// tends to have something else start: nobody keeps time for it.
-fn tempo(creature: &Creature, about: usize) -> f32 {
+/// tends to have something else start: nobody keeps time for it. In a village big enough that
+/// about half of it keeps indoors, it is quicker too for each of the village that is in
+/// (`indoors` of `residents`), so the few who are out are busier and a village with half its
+/// residents in sight is not half as much to watch.
+fn tempo(creature: &Creature, about: usize, indoors: usize, residents: usize) -> f32 {
     let personality = &creature.personality;
     let mut tempo = 0.6 + 0.8 * personality.activity;
     if about > 0 {
         tempo *= 1.0 + 0.4 * personality.sociability;
+    }
+    if village_life::uncrowded(residents) < residents {
+        tempo *= 1.0 + VILLAGE_LIFE.few_out_gain * indoors as f32 / residents as f32;
     }
     if creature.state.drives.sleep_pressure > 0.6 {
         tempo *= 0.6;
@@ -2427,7 +2433,7 @@ impl World {
         if quiet {
             return None;
         }
-        let pace = tempo(creature, doings.about);
+        let pace = tempo(creature, doings.about, doings.indoors, scene.residents);
         let due = {
             let remaining = self
                 .home_moment_timers
@@ -2556,6 +2562,11 @@ impl World {
             onlookers: &scene.onlookers,
             taken: &busy,
             may_go_in: doings.indoors < village_life::max_indoors(residents),
+            crowd: residents
+                .saturating_sub(doings.indoors)
+                .saturating_sub(village_life::uncrowded(residents))
+                .min(village_life::CROWD_MOST) as u32,
+            long_stays: village_life::uncrowded(residents) < residents,
             // Asked of the plans as they stand now, not as the tick began: a mini shares its big
             // version's roof, and both may have a turn in the one tick.
             roof_free: house.is_some_and(|house| {

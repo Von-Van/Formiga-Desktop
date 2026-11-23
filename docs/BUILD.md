@@ -202,7 +202,8 @@ scripts/measure-macos.sh --state "four moving, busy desktop" --build "v0.58.0" -
 [--bare]` keeps colonies at home and counts what they are seen to do, read only from what the
 overlay is given to draw: the share of time spent standing, walking, indoors and doing something,
 how often residents go somewhere and how far back, what was begun and how much of it with or about
-somebody else, how many are up to something at once, and what a tick cost. Run it before and after
+somebody else, how many are up to something at once, how many are out of doors at once, and what
+a tick cost. Run it before and after
 a change to how the village decides things.
 
 `tick-bench` times `World::tick` over deterministic synthetic desktops with one, four and six

@@ -1690,7 +1690,7 @@ moment does:
 - **Indoors** for a spell, pottering or napping: the resident is marked `indoors`, drawn nowhere and
   out of reach of the pointer, and `World::house_occupancy` names the house so the overlay draws its
   occupied cell and, for a nap, the Zs. At most `max_indoors(residents)` are in at once — none while
-  there is only one resident, one for two or three, two beyond that.
+  there is only one resident, one for two or three, and all but two beyond that.
 - **Up on its own roof**, in a little hop to the height `house_roof_height` gives: measured from the
   house's proportions the way it is drawn, since the simulation cannot draw a house, and held to the
   drawing within a pixel for every kind at every height by a test in the art crate.
@@ -1708,6 +1708,21 @@ one resident on each roof, and nothing settled into in front of somebody standin
 Through 0.68.23 one plan and one quiet moment ran in the whole village at a time, so a nap at a door
 held everybody else's turn for up to two and a half minutes.
 
+A village of four or more usually has about half its residents out of doors and the rest in
+their houses, so two or three are in sight rather than all of them. It is a leaning and not a
+limit. `uncrowded(residents)` is how many may be out before the village counts as crowded — two
+for a village of four, five or six — and each resident out beyond it, up to `CROWD_MOST`, adds
+`VILLAGE_LIFE.crowded_weight` to the weight going indoors has for whoever's turn comes next, the
+stay-at-home soonest but the brisk as well; with more out than that, somebody with nothing else it
+may do goes in rather than waiting. A spell in there is longer in such a village
+(`indoors_long_nap_secs`, `indoors_long_potter_secs`). The village settles about one above
+`uncrowded`: watched by `formiga-tools village-watch` for fifteen minutes over six colonies, a
+village of six had two out 26% of the time, three 40%, four 21%, five 9% and all six 3%; one of
+five had two out 41%, three 36% and four 19%; and one of four had two out 49%, three 41% and all
+four 10%. Until then everybody was out about 80% of the time whatever the size. Everybody is still
+out together as each visit begins, when the colony walks home, and under reduced motion, when
+nobody goes in at all. A village of one, two or three is as it was.
+
 Watering or looking in on a garden, a chore, or a spell on a roof turns something up one time in
 seven, with the at-home circumstances and the calendar's; the find completes as `PresentDiscovery`
 does anywhere, which is what writes it into the scrapbook. A friend nearby stops to look at a
@@ -1718,7 +1733,9 @@ nap, has a stretch on the doorstep first.
 
 Each resident has a wait before its next turn (`VILLAGE_LIFE.first_turn_secs`, then
 `next_turn_secs`), counted down at its own `tempo`: quicker for the brisk, quicker again for the
-sociable while somebody is out and about, and slow for the sleepy. Nothing keeps time for the
+sociable while somebody is out and about, and slow for the sleepy; and, in a village of four or
+more, quicker by the share of the village that is indoors (`few_out_gain`), half as quick again with half of it in, so the few
+in sight are busier and a village with half its residents out is not half as much to watch. Nothing keeps time for the
 village, so a drowsy one is quiet for a while and one where something has started tends to have
 something else start. The wait runs whatever the resident's feet are doing and comes due once it is
 standing at its own place or its door. Through 0.68.23 any walk threw the wait away and started a new

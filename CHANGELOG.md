@@ -24,6 +24,14 @@ All notable changes are documented here.
 
 ### Changed
 
+- A village of four or more usually has about half its companions out of doors, two or three
+  of them, with the rest in their houses behind drawn curtains. Everybody used to be out about
+  four fifths of the time, at most two indoors, which made a full village a crowd. Now the more
+  there are out beyond two, the likelier whoever's turn comes next is to go in, and a spell
+  indoors is longer; two are always out at least, and everybody is still out together now and
+  then, as when the colony walks home. Those who are out take their turns sooner the more of
+  the village is in, so the few in sight are busier. A village of one, two or three is as it
+  was. `formiga-tools village-watch` now counts how many are out of doors at once.
 - Companions walk and run rather than march on the spot. A two-legged companion's feet used to
   lift out to their own sides and come back down where they were, the same for a walk and a run
   but for speed lines. Now each foot is planted out ahead, goes back along the ground as the body

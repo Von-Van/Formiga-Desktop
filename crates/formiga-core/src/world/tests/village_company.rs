@@ -361,7 +361,9 @@ fn afternoon(seed: u8, members: usize, minutes: f32, prepare: impl Fn(&mut Creat
 }
 
 /// Several residents are about the village at once — never more than its size allows, and one
-/// mishap at a time — everybody gets turns, and no plan goes on for ever.
+/// mishap at a time — everybody gets turns, and no plan goes on for ever. About half of a
+/// village of six is indoors at any time, so two are about together less than they would be
+/// with everybody out, and the longest plan is a long nap indoors.
 #[test]
 fn several_residents_are_about_at_once_and_everybody_gets_a_turn() {
     for seed in [21_u8, 22] {
@@ -374,7 +376,7 @@ fn several_residents_are_about_at_once_and_everybody_gets_a_turn() {
             seen.most_about
         );
         assert!(
-            seen.two_about > 600,
+            seen.two_about > 300,
             "seed {seed}: two were about together for only {} ticks",
             seen.two_about
         );
@@ -390,7 +392,7 @@ fn several_residents_are_about_at_once_and_everybody_gets_a_turn() {
             seen.begun.values().collect::<Vec<_>>()
         );
         assert!(
-            seen.longest_plan < 200.0,
+            seen.longest_plan < 300.0,
             "seed {seed}: one plan went on for {}s",
             seen.longest_plan
         );
@@ -415,20 +417,22 @@ fn a_village_of_one_keeps_itself_busy_and_calls_on_nobody() {
 #[test]
 fn who_seeks_company_and_who_looks_on_is_down_to_what_they_are_like() {
     let (mut sociable, mut solitary, mut curious, mut incurious) = (0, 0, 0, 0);
+    // A full village: with about half of it indoors at any time, three or so are out to call
+    // on one another and to be looked on at.
     for seed in [41_u8, 42, 43] {
-        sociable += afternoon(seed, 4, 12.0, |c| {
+        sociable += afternoon(seed, 6, 12.0, |c| {
             c.personality.sociability = 0.95;
             c.personality.playfulness = 0.9;
         })
         .calls;
-        solitary += afternoon(seed, 4, 12.0, |c| {
+        solitary += afternoon(seed, 6, 12.0, |c| {
             c.personality.sociability = 0.05;
             c.personality.playfulness = 0.05;
             c.personality.activity = 0.3;
         })
         .calls;
-        curious += afternoon(seed, 4, 12.0, |c| c.personality.curiosity = 1.0).looks_on;
-        incurious += afternoon(seed, 4, 12.0, |c| c.personality.curiosity = 0.0).looks_on;
+        curious += afternoon(seed, 6, 12.0, |c| c.personality.curiosity = 1.0).looks_on;
+        incurious += afternoon(seed, 6, 12.0, |c| c.personality.curiosity = 0.0).looks_on;
     }
     assert!(sociable >= 6, "the sociable made only {sociable} calls");
     assert!(

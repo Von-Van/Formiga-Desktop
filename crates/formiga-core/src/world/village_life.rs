@@ -968,6 +968,11 @@ pub(super) struct VillageOptions<'a> {
     pub(super) taken: &'a [Point],
     /// Whether one more can go indoors without leaving the village looking empty.
     pub(super) may_go_in: bool,
+    /// How many more are out of doors than a village of this size has room for (`uncrowded`),
+    /// up to `CROWD_MOST`: each one more makes going in likelier.
+    pub(super) crowd: u32,
+    /// Whether this is a village where about half keep indoors, and a spell in there is long.
+    pub(super) long_stays: bool,
     /// Whether nobody is up on its roof already.
     pub(super) roof_free: bool,
     /// Whether one more of the quiet moments at a door may start, by a resident standing at its
@@ -1181,8 +1186,9 @@ pub(super) fn choose(
     options: &VillageOptions<'_>,
 ) -> Choice {
     // Everything but going indoors is somebody else's turn: wait for one of those to end rather
-    // than going in because there is nothing else to do.
-    if !options.moment_free && !options.plan_free {
+    // than going in because there is nothing else to do — unless more are out than usually are,
+    // when having nothing to do out here is as good a reason to go in as any.
+    if !options.moment_free && !options.plan_free && options.crowd == 0 {
         return Choice::Wait;
     }
     let personality = &creature.personality;
@@ -1244,11 +1250,19 @@ pub(super) fn choose(
             Kind::Chore,
             personality.routine_affinity,
         ),
+        // The more there are out beyond the usual, the likelier anybody is to go in, the
+        // stay-at-home soonest; with no more out than usual it is a matter of its own nature.
         lean(
             house.is_some() && options.may_go_in,
-            VILLAGE_LIFE.indoors_weight + 2 * u32::from(sleepy),
+            VILLAGE_LIFE.indoors_weight
+                + 2 * u32::from(sleepy)
+                + VILLAGE_LIFE.crowded_weight * options.crowd,
             Kind::Indoors,
-            1.0 - personality.activity,
+            if options.crowd > 0 {
+                0.35 + 0.65 * (1.0 - personality.activity)
+            } else {
+                1.0 - personality.activity
+            },
         ),
         lean(
             out && house.is_some() && options.roof_free,
@@ -1341,10 +1355,11 @@ pub(super) fn choose(
                     y: ground,
                 },
                 depth: house.depth,
-                stay: rng.random_range(if nap {
-                    VILLAGE_LIFE.indoors_nap_secs
-                } else {
-                    VILLAGE_LIFE.indoors_potter_secs
+                stay: rng.random_range(match (nap, options.long_stays) {
+                    (true, false) => VILLAGE_LIFE.indoors_nap_secs,
+                    (false, false) => VILLAGE_LIFE.indoors_potter_secs,
+                    (true, true) => VILLAGE_LIFE.indoors_long_nap_secs,
+                    (false, true) => VILLAGE_LIFE.indoors_long_potter_secs,
                 }),
                 nap,
             }
@@ -1586,15 +1601,34 @@ pub(super) fn roof_hop_down(creature: &Creature, landing: Point) -> WindowJourne
 }
 
 /// The most residents indoors at once for a village of `residents`: nobody while there is only
-/// one, so a lone companion is never out of sight, and at most two however big it grows, so the
-/// village never looks empty.
+/// one, so a lone companion is never out of sight, one of two or three, and all but two of a
+/// bigger village, so the village never looks empty.
 pub(super) const fn max_indoors(residents: usize) -> usize {
     match residents {
         0 | 1 => 0,
         2 | 3 => 1,
-        _ => 2,
+        more => more - 2,
     }
 }
+
+/// How many of a village of `residents` may be out of doors before it counts as crowded:
+/// everybody in a small one, and one fewer than half, though never fewer than two, of a village
+/// of four or more. It is a leaning and not a limit: each resident out beyond it, up to
+/// `CROWD_MOST`, makes going indoors likelier (`crowded_weight`), and the village settles about
+/// one above it, with half its residents out. Everybody is still out together now and then, as
+/// at the start of every visit home.
+pub(super) const fn uncrowded(residents: usize) -> usize {
+    if residents < 4 {
+        residents
+    } else {
+        let fewer = residents / 2 - 1;
+        if fewer < 2 { 2 } else { fewer }
+    }
+}
+
+/// The most residents beyond `uncrowded` that add to the pull indoors: past this a full village
+/// empties no faster, so everybody home together stays a sight for a little while.
+pub(super) const CROWD_MOST: usize = 2;
 
 impl World {
     /// Ends every resident's plan about the village and puts each back on its own feet outside:
