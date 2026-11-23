@@ -54,6 +54,12 @@ All notable changes are documented here.
   point at it, and a kept moment has a strip of tape across its time. A new colony's Journal is
   everyone on their plate and "Day 1. Nothing written down yet; I'll jot things here as they
   happen.", and the guest book, scrapbook and wonders appear only once they have something in them.
+- The Journal has pictures. The newest days' best moment — an arrival, two companions growing
+  close, a first find, a ritual or a visitor — is taped in as a little picture with its caption,
+  drawn from the companions' own art: a wave under sparkles, two facing each other with a heart,
+  the finder holding up what it found, everyone napping or dancing or at a picnic, a late-night
+  sleep pile under stars, a visitor as a shape at the edge. The scrapbook's finds are pasted in
+  like snapshots. `formiga-tools vignette-sheet` draws every picture for review.
 
 ### Fixed
 

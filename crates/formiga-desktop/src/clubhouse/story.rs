@@ -60,6 +60,15 @@ pub(crate) fn find_name(variant: u8) -> Option<String> {
 /// The find a journal's "found a little treasure" was, where the scrapbook kept it as a first
 /// find by the same companion within a minute of the moment.
 pub(crate) fn find_of(save: &SaveFile, entry: &JournalEntry) -> Option<String> {
+    find_record(save, entry).and_then(|record| find_name(record.variant))
+}
+
+/// The scrapbook's record of the find a journal's "found a little treasure" was, as `find_of`
+/// matches it.
+pub(crate) fn find_record<'a>(
+    save: &'a SaveFile,
+    entry: &JournalEntry,
+) -> Option<&'a formiga_core::ScrapbookRecord> {
     if entry.moment != JournalMoment::Discovery {
         return None;
     }
@@ -69,7 +78,6 @@ pub(crate) fn find_of(save: &SaveFile, entry: &JournalEntry) -> Option<String> {
         .iter()
         .filter(|record| record.finder == Some(finder))
         .find(|record| (record.first_at - entry.at).abs() <= time::Duration::minutes(1))
-        .and_then(|record| find_name(record.variant))
 }
 
 /// When something happened, as a sentence ends with it: "this morning", "yesterday", "on

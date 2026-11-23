@@ -2701,6 +2701,7 @@ fn save_trouble_is_shown_with_ways_to_act_on_it() {
 #[test]
 fn the_guest_book_remembers_how_often_a_visitor_has_come() {
     let mut h = Harness::new(SettingsTab::Journal);
+    h.screen = egui::vec2(1000.0, 4000.0);
     let again = h.save.visitors.guest_book[5].clone();
     h.save.visitors.guest_book.push(GuestBookEntry {
         visited_at_utc: again.visited_at_utc + time::Duration::days(1),
@@ -3864,4 +3865,38 @@ fn the_journal_reads_as_a_diary() {
             && rect.right() < text.left()),
         "no time beside a moment that would wrap"
     );
+}
+
+/// The newest days' best moments are taped into the Journal as pictures with their caption, and
+/// the scrapbook's finds are pasted in like snapshots.
+#[test]
+fn the_journal_has_pictures_taped_in() {
+    let mut save = aged_fixture(110);
+    let now = time::OffsetDateTime::now_utc();
+    let (a, b) = (save.creatures[0].id, save.creatures[1].id);
+    save.companion.journal.push(JournalEntry {
+        at: now - time::Duration::minutes(5),
+        creature: Some(a),
+        moment: JournalMoment::Friendship(b),
+    });
+    let caption = clubhouse::moment_text(&save, save.companion.journal.last().unwrap());
+    let mut h = Harness::over(SettingsTab::Journal, save);
+    h.screen = egui::vec2(940.0, 4000.0);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    let written = h.labels.iter().filter(|(t, _)| *t == caption).count();
+    assert!(
+        written >= 2,
+        "the moment and its picture's caption: {written}"
+    );
+    assert!(shown(&h, "THE SCRAPBOOK · 2 FOUND"));
+    let before = h.artwork_bytes();
+    h.clubhouse.release_images();
+    assert!(h.clubhouse.texture_ids().is_empty());
+    assert!(before > 0);
+    if let Some(path) = std::env::var_os("FORMIGA_UI_REVIEW_DIR").map(std::path::PathBuf::from) {
+        std::fs::create_dir_all(&path).unwrap();
+        h.screen = egui::vec2(940.0, 1600.0);
+        h.picture().save(path.join("Journal-pictures.png")).unwrap();
+    }
 }
