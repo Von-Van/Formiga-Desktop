@@ -15,6 +15,7 @@ mod bridge;
 mod classic;
 mod effects;
 mod face;
+mod face_change;
 mod foods;
 mod fox;
 mod held;
@@ -31,6 +32,7 @@ pub use bridge::{BRIDGE_ROWS, BridgeReason, ClipBridge, FrameShape, SETTLE_FRAME
 use classic::*;
 use effects::*;
 use face::*;
+pub use face_change::{FACE_CHANGE_FACE, FaceChange};
 use held::toy_colourway;
 pub use held::{
     HELD_CELL, HELD_CELLS, HELD_SHEET_COLUMNS, HELD_SHEET_HEIGHT, HELD_SHEET_WIDTH, HeldPlacement,

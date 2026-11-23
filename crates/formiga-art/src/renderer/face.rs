@@ -340,6 +340,46 @@ pub(super) fn draw_face(
     );
 }
 
+/// Which of the three ways a face is drawn a creature wears, with what of its own decides which
+/// expressions share a feature there (see `face_change`, which asks).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum FaceDrawing {
+    /// An authored layout ([`draw_layout_face`]), with the mouth it picked: a beak keeps its own
+    /// few shapes.
+    Layout { mouth: MouthStyle },
+    /// The classic face ([`draw_eye`], [`draw_brows`], [`draw_mouth`]), with its own mouth — a
+    /// tiny one at rest is the one dot pleading wears too — and whether it has no brows, when a
+    /// face at rest is bare above.
+    Classic { mouth: MouthStyle, browless: bool },
+    /// The echo fox's own (`fox::draw_face`).
+    Fox,
+}
+
+/// How [`super::CreatureRenderer::render_face_frame`] draws `genome`'s face, chosen the way it
+/// chooses.
+pub(super) fn face_drawing(genome: &AppearanceGenome) -> FaceDrawing {
+    if genome.echo_fox {
+        return FaceDrawing::Fox;
+    }
+    if let Some(sculpt) = &genome.sculpt {
+        return face_drawing(&crate::forms::face_genome(sculpt, genome));
+    }
+    let template = genome
+        .design
+        .map(formiga_core::CreatureDesign::bounded)
+        .filter(|design| design.face_template > 0)
+        .and_then(|design| FACE_TEMPLATES.get(usize::from(design.face_template) - 1));
+    match template {
+        Some(template) => FaceDrawing::Layout {
+            mouth: templated(genome.face, template).mouth_style,
+        },
+        None => FaceDrawing::Classic {
+            mouth: genome.face.mouth_style,
+            browless: genome.face.brow_style == BrowStyle::None,
+        },
+    }
+}
+
 /// An eye of an authored layout, as the rows it fills from the top: each row a bit mask read from
 /// the eye's outer edge inward, bit 0 the outermost pixel. The left eye is drawn as it is and the
 /// right one mirrored, so an eye an even number of pixels wide stands half a pixel further out on
@@ -778,7 +818,7 @@ fn draw_layout_cheek(
     }
 }
 
-fn draw_layout_mouth(
+pub(super) fn draw_layout_mouth(
     canvas: &mut Canvas,
     face: formiga_core::FaceGenome,
     palette: Palette,
@@ -859,7 +899,12 @@ fn draw_layout_mouth(
             put(canvas, &[(-1, 0), (0, 0), (1, 0), (-1, 1), (1, 1)], inside);
             put(canvas, &[(0, 1)], palette.accent);
         }
-        E::Neutral | E::Sleepy => match face.mouth_style {
+        // Dozing, the jaw slack: a little dark opening under the line of the lip.
+        E::Sleepy => {
+            put(canvas, &[(0, 0)], ink);
+            put(canvas, &[(0, 1)], inside);
+        }
+        E::Neutral => match face.mouth_style {
             MouthStyle::Tiny | MouthStyle::Beak => put(canvas, &[(0, 0)], ink),
             MouthStyle::Smile => put(canvas, &[(-2, -1), (-1, 0), (0, 0), (1, 0), (2, -1)], ink),
             MouthStyle::Cat => put(canvas, &[(-1, -1), (0, 0), (1, -1)], ink),
@@ -1067,9 +1112,22 @@ pub(super) fn draw_mouth(
             canvas.set(x, y + 1, palette.outline);
             canvas.set(x + 1, y, palette.outline);
         }
-        ExpressionKind::Startled | ExpressionKind::Curious => {
+        ExpressionKind::Curious => {
             canvas.fill_circle(x, y, 1, palette.outline);
             canvas.set(x, y, palette.coat);
+        }
+        // A gasp: taller than a question's little round mouth, and open.
+        ExpressionKind::Startled => {
+            for (dx, dy) in [(0, -1), (-1, 0), (1, 0), (-1, 1), (1, 1), (0, 2)] {
+                canvas.set(x + dx, y + dy, palette.outline);
+            }
+            canvas.set(x, y, mouth_inside(palette));
+            canvas.set(x, y + 1, mouth_inside(palette));
+        }
+        // Dozing, the jaw slack: a little dark opening under the line of the lip.
+        ExpressionKind::Sleepy => {
+            canvas.set(x, y, palette.outline);
+            canvas.set(x, y + 1, mouth_inside(palette));
         }
         ExpressionKind::Worried => {
             canvas.set(x - 1, y, palette.outline);

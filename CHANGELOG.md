@@ -229,6 +229,15 @@ All notable changes are documented here.
 - A companion's bubble holds still over a bouncing greeting, a hop or a breath at rest, rather than
   bobbing with its head. `formiga-tools ui-sheet` shows a bubble over a greeting and a cheer frame
   by frame.
+- A companion's face changes behind a blink. Where the new expression differs from the last both
+  in the eyes and at the mouth, the plain face shows for one tick with its lids half down on the
+  way, rather than one face swapping for the other between two frames. A change of only the eyes or
+  only the mouth still cuts straight across, a fright still lands at once, and under reduced motion
+  nothing comes between two faces. It uses faces every companion already has.
+- Sleepy and startled faces have mouths of their own. Sleepy shared the resting mouth and a fright
+  the classic face's little round "o" of a question, so each pair told itself apart only by a brow;
+  now a sleepy companion's jaw goes slack and a startled classic face gasps open, as the authored
+  faces already did. Every other expression draws exactly as before.
 
 ### Fixed
 

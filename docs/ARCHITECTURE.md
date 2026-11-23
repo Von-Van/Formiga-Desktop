@@ -877,6 +877,29 @@ turning round, coming to rest, and sat on its doorstep as a wash starts and as i
 every twentieth of a second, the old cut over what the overlay draws now with each bridged tick on
 an amber ground.
 
+**A face changes behind a blink.** When a companion's expression changes to one that looks
+different both above the mouth and at it — rest to a scowl, a smile to worry, asleep to awake — the
+overlay shows one presentation tick of the plain face with its lids half down on the way, so the
+new face comes in behind a blink instead of swapping whole between two frames. A change of only the
+eyes or only the mouth (rest to content, focused to determined on a layout face) cuts straight
+across, as there is nothing for a blink to hide, and so does a change into a fright, which lands on
+its tick. Which expressions share their eyes or their mouth depends on how the face is drawn — an
+authored layout puts the expression in the eyes' own shape, the classic face in its brows, and a
+beak keeps its few shapes — so `face_change::eyes` and `face_change::mouth` key each expression by
+the face's `FaceDrawing`, and a test holds the keys to the pixels every layout and classic face
+actually draws. It is presentation only: the memory of the expression worn last is a `FaceChange`
+the app keeps beside each companion (`carry_face_changes`, once a tick) and hands every overlay,
+outside the world and its save. A blink lasts exactly one tick, a change on the tick straight
+after one does not start another, one that starts or ends asks for a frame so it is seen however
+slowly the colony is being drawn, and the in-between face is a cell every face texture already
+has. Under reduced motion no third face comes between two: a change is the one swap it always was.
+
+Four expressions used to draw one mouth between two of them, rest and sleepy, a question and a
+fright, and told themselves apart only by a brow or one eye a row higher. Sleepy now lets its jaw
+go slack — a dark dot over a little opening — on every face but an authored beak, and the classic face's
+fright is the tall open gasp the layouts draw, so the question keeps the small round mouth to
+itself.
+
 ## Lived-experience projection
 
 `World::emit` is the sole event queue path. Before events become visible through `drain_events`, a

@@ -5,6 +5,7 @@ use super::*;
 mod belongings;
 mod bridge;
 mod effects;
+mod face_change;
 mod faces;
 mod frames;
 mod liveliness;
