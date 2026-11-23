@@ -38,7 +38,7 @@ pub(super) fn draw_blob(
     canvas.fill_ellipse(cx, cy - 1, rx - 2, (ry - 2).max(2), palette.coat);
     apply_pattern(canvas, genome, palette, cx, cy, rx - 1, ry - 1);
     draw_feet(canvas, palette, cx, cy + ry - 1, rx, genome.foot_size, pose);
-    draw_forelimbs(
+    let hand = draw_forelimbs(
         canvas,
         genome,
         palette,
@@ -86,6 +86,7 @@ pub(super) fn draw_blob(
             y: cy - ry / 3,
         },
         floor: cy + ry + 1,
+        hand: Some(hand),
     }
 }
 
@@ -140,7 +141,7 @@ pub(super) fn draw_hopper(
     canvas.fill_ellipse(cx - 2, cy + 3, rx - 2, (ry / 3).max(2), palette.shadow);
     canvas.fill_ellipse(cx, cy - 3, rx - 2, ry - 4, palette.coat);
     apply_pattern(canvas, genome, palette, cx, cy, rx - 1, ry - 1);
-    draw_forelimbs(
+    let hand = draw_forelimbs(
         canvas,
         genome,
         palette,
@@ -188,6 +189,7 @@ pub(super) fn draw_hopper(
             y: cy - ry / 2,
         },
         floor: ground,
+        hand: Some(hand),
     }
 }
 
@@ -264,7 +266,7 @@ pub(super) fn draw_quadruped(
         body_rx - 1,
         body_ry - 1,
     );
-    draw_quadruped_forelimbs(
+    let hand = draw_quadruped_forelimbs(
         canvas,
         genome,
         palette,
@@ -332,6 +334,7 @@ pub(super) fn draw_quadruped(
             y: body_y - body_ry,
         },
         floor: ground,
+        hand,
     }
 }
 
@@ -555,12 +558,14 @@ pub(super) struct LimbPose {
     pub(super) family: BodyFamily,
 }
 
+/// Both forelimbs, out to where the clip puts them. Returns where the near paw (the right one, on
+/// a frame drawn facing right) ends: the middle of the tip drawn there.
 pub(super) fn draw_forelimbs(
     canvas: &mut Canvas,
     genome: &AppearanceGenome,
     palette: Palette,
     limb_pose: LimbPose,
-) {
+) -> PixelPoint {
     // Quadruped genes share the same stored range as upright families, but reading that full range
     // as an arm puts paws across the chest and face. Keep expressive cat paws compact; ordinary
     // actions still use the planted-leg rig below.
@@ -568,7 +573,7 @@ pub(super) fn draw_forelimbs(
         BodyFamily::SoftQuadruped => i32::from(genome.forelimbs.length).min(4),
         _ => i32::from(genome.forelimbs.length),
     };
-    let (left_target, right_target) = limb_targets(
+    let (left_target, mut right_target) = limb_targets(
         limb_pose.left_root,
         limb_pose.right_root,
         limb_pose.clip,
@@ -577,6 +582,17 @@ pub(super) fn draw_forelimbs(
         genome.forelimbs.rest_pose,
         limb_pose.pose,
     );
+    // A soft quadruped keeps its toy up back over its shoulders, away from the head it carries
+    // out in front, so it catches it with the near paw drawn in under its chest.
+    if limb_pose.family == BodyFamily::SoftQuadruped
+        && limb_pose.clip == BodyClip::Action(ActionKind::SoloPlay)
+        && limb_pose.frame.is_multiple_of(4)
+    {
+        right_target = PixelPoint {
+            x: limb_pose.right_root.x - 3,
+            y: limb_pose.right_root.y + length - 1,
+        };
+    }
     let inner = match limb_pose.family {
         BodyFamily::Blob => palette.coat,
         BodyFamily::Hopper => palette.shadow,
@@ -598,15 +614,18 @@ pub(super) fn draw_forelimbs(
         right_target,
         inner,
     );
+    right_target
 }
 
+/// A soft quadruped's forelegs, standing or in use. Returns where the near paw ends while it is
+/// in use, and `None` while all four paws stand on the ground.
 pub(super) fn draw_quadruped_forelimbs(
     canvas: &mut Canvas,
     genome: &AppearanceGenome,
     palette: Palette,
     limb_pose: LimbPose,
     ground: i32,
-) {
+) -> Option<PixelPoint> {
     // Standing on four legs is what separates the cat silhouette from an upright body. Arm-style
     // forelimbs are reserved for the actions where the creature is visibly using its paws.
     // A crouch keeps all four paws down; every other gesture is made with the paws.
@@ -662,8 +681,9 @@ pub(super) fn draw_quadruped_forelimbs(
             limb_pose.pose.step_b,
             true,
         );
+        None
     } else {
-        draw_forelimbs(canvas, genome, palette, limb_pose);
+        Some(draw_forelimbs(canvas, genome, palette, limb_pose))
     }
 }
 
@@ -718,7 +738,8 @@ pub(super) fn limb_targets(
             left,
             right,
             match frame % 4 {
-                0 => ((2, length), (-2, length)),
+                // The near paw held out to catch the toy coming down, rather than at its side.
+                0 => ((2, length), (length - 1, 1)),
                 1 => ((2, 1), (length + 1, -2)),
                 2 => ((length - 1, -length), (-length + 1, -length)),
                 _ => ((-length - 1, -2), (-2, 1)),
@@ -939,7 +960,7 @@ pub(super) fn gesture_limb_targets(
         }
         // Both paws out low in front, holding the can, tipping it further and back.
         Gesture::Pour => {
-            let tip = [0, 1, 1, 0][usize::from(frame % 4)];
+            let tip = pour_tip(frame);
             (
                 at(middle + 4 + tip, left.y + 3 + tip),
                 at(middle + 6 + tip, right.y + 2 + tip),
