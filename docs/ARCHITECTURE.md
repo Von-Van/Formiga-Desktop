@@ -750,7 +750,8 @@ A mini rests and gestures a little quicker and lighter than the adult it would b
 perch, greeting and gesture plays at `MINI_PACE` (1.15) times the rate the same identity would play
 it at as an adult (`MotionSignature::rate`), a one-shot gesture reaches its held frame sooner, and
 its spells of washing or shaking take as many loops in less time. Its walk is left to its stride,
-which already patters, and climbing, eating and the other clips keep the adult's rate. It is read
+which already patters, and climbing and the mantle at its top, eating and the other clips keep the
+adult's rate. It is read
 from the creature's role, so nothing is stored, no frame or cell is added, and an adult's frames
 are exactly what they were. The last band of `formiga-tools rest-sheet` is a mini beside the adult
 of the same identity, resting a frame every third of a second and bopping and washing a frame every
@@ -823,7 +824,7 @@ second, each frame moving one thing a pixel (`BREATH` in `renderer/pose.rs`), an
 over its head rises three pixels and fades across the breath, a new one with each
 (`draw_sleep_z`); a stir before a nap turns over plays the same breath four times as fast. Sat on a
 window, a companion's own glances go mostly down over the edge, at the desk below. A tail on the
-body's shared bob — investigating the cursor, riding a window, carried — and a tail hanging from a
+body's shared bob — riding a window — and a tail hanging from a
 ledge swing on a counter half the clip's rate, the same swing stepped every other frame, so they
 read as weight rather than ticking with the body. The frames presented are unchanged, since the
 overlay draws every tick a companion is on screen whatever its frame; the atlas grows by one row of
@@ -880,7 +881,8 @@ the next, so only a change that jumps further than the loops already do is bridg
 bridged within a clip, so a loop going round or a one-shot clip holding its last frame cuts as it
 always has; nor from or to the settle itself, which most rests are on and which would only be
 held a tick longer; nor from or to a body off its feet or asleep (held, thrown, climbing,
-hanging, asleep curled, sprawled or loafed, or sat on a wonder), nor into or out of a landing,
+topping out a climb, in the air on a hop, hanging, asleep curled, sprawled or loafed, or sat on a
+wonder), nor into or out of a landing,
 an impact that has to land on its tick; nor from or to a frame with
 something in its paws, which the settle would drop for the tick; nor on the tick straight after
 a bridge; nor at all under reduced motion. `BodyPresentation::for_creature` stays a pure function
