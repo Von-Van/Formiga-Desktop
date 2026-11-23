@@ -450,8 +450,9 @@ fn every_trinket_in_the_catalogue_samples_its_own_cell_of_the_colony_sheet() {
 }
 
 /// The village atlas is one texture: a cell for every house by day, with somebody at home and
-/// without, the same again lit after dark, and one tree cell both trees come from. No two lots may
-/// sample the same cell, and none may sample off the sheet.
+/// without, the same again lit after dark, one tree cell both trees come from, and below it the
+/// tree leaning either way in the wind and the tents' blown-out pennants. No two lots may sample
+/// the same cell, and none may sample off the sheet: the wind costs the texture nothing.
 #[test]
 fn every_village_cell_including_the_tree_has_its_own_place_on_the_one_atlas() {
     let (cell_u, cell_v) = (
@@ -470,6 +471,16 @@ fn every_village_cell_including_the_tree_has_its_own_place_on_the_one_atlas() {
         })
         .collect();
     cells.push(VillageCell::Tree);
+    let wind = [
+        VillageCell::TreeInWind {
+            leaning_right: true,
+        },
+        VillageCell::TreeInWind {
+            leaning_right: false,
+        },
+        VillageCell::Pennants,
+    ];
+    cells.extend(wind);
     let mut seen = std::collections::BTreeSet::new();
     for kind in cells {
         let (u, v) = village_cell(kind);
@@ -482,11 +493,45 @@ fn every_village_cell_including_the_tree_has_its_own_place_on_the_one_atlas() {
             "{kind:?} shares a cell"
         );
         // By day everything is in the top half, which is all the Home page holds.
-        if !matches!(kind, VillageCell::House { lit: true, .. }) {
+        if !matches!(kind, VillageCell::House { lit: true, .. }) && !wind.contains(&kind) {
             assert!(v + cell_v <= 0.5, "{kind:?} is not in the daylit half");
         }
     }
-    assert_eq!(seen.len(), formiga_art::VILLAGE_HOUSES * 4 + 1);
+    assert_eq!(seen.len(), formiga_art::VILLAGE_HOUSES * 4 + 4);
+    // Every slot's blown-out pennant has its own square inside the pennants' cell.
+    let (px, py) = ShelterRenderer::village_cell(VillageCell::Pennants);
+    let mut patches = std::collections::BTreeSet::new();
+    for slot in 0..formiga_art::VILLAGE_HOUSES {
+        for lit in [false, true] {
+            let (x, y) = ShelterRenderer::pennant_patch(slot, lit);
+            assert!(
+                (px..=px + SHELTER_SIZE - formiga_art::PENNANT_PATCH).contains(&x)
+                    && (py..=py + SHELTER_SIZE - formiga_art::PENNANT_PATCH).contains(&y),
+                "slot {slot}'s pennant falls outside its cell"
+            );
+            assert!(
+                patches.insert((x, y)),
+                "slot {slot}'s pennant shares a square"
+            );
+        }
+    }
+    // In a gust both trees lean the way the pennants fly: the inward one, read mirrored, from
+    // the cell that leans the other way. Still, both are the one tree cell.
+    for end in formiga_core::TreeEnd::BOTH {
+        assert_eq!(tree_cell(end, false), VillageCell::Tree);
+    }
+    assert_eq!(
+        tree_cell(formiga_core::TreeEnd::Outward, true),
+        VillageCell::TreeInWind {
+            leaning_right: true
+        }
+    );
+    assert_eq!(
+        tree_cell(formiga_core::TreeEnd::Inward, true),
+        VillageCell::TreeInWind {
+            leaning_right: false
+        }
+    );
     assert!(
         tree_is_mirrored(formiga_core::TreeEnd::Inward)
             && !tree_is_mirrored(formiga_core::TreeEnd::Outward),

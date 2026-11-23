@@ -357,7 +357,10 @@ pub fn doings_sheet(path: PathBuf) -> Result<()> {
 /// or looking off when it does, glancing about and blinking at its own pace. The two rows are what
 /// a rest looked like and what it looks like now, side by side. Under them, one row a body of a
 /// long nap turning over, a frame every tenth of a second from just before the turn: the stir,
-/// the crouch it gathers itself up in, and the way it settles into.
+/// the crouch it gathers itself up in, and the way it settles into. Last, a mini beside the adult
+/// it would be with the same identity and temperament, row against row: resting a frame every
+/// third of a second, and bopping and washing a frame every tenth, so its quicker, lighter pace
+/// can be seen against the grown-up one beat for beat.
 pub fn rest_sheet(path: PathBuf) -> Result<()> {
     const SCALE: u32 = 2;
     const COLUMNS: u32 = 30;
@@ -382,7 +385,9 @@ pub fn rest_sheet(path: PathBuf) -> Result<()> {
     let width = COLUMNS * cell;
     let rests = subjects.len() as u32 * (2 * cell + GAP);
     // Under the rests, one row each of a long nap turning over, a tenth of a second a column.
-    let height = rests + subjects.len() as u32 * (cell + GAP);
+    let naps = rests + subjects.len() as u32 * (cell + GAP);
+    // Under the naps, the mini beside its adult: six rows, rest, bop and wash, adult then mini.
+    let height = naps + 6 * cell + GAP;
     let mut pixels = vec![0_u8; (width * height * 4) as usize];
     for chunk in pixels.chunks_exact_mut(4) {
         chunk.copy_from_slice(&[236, 234, 228, 255]);
@@ -498,6 +503,81 @@ pub fn rest_sheet(path: PathBuf) -> Result<()> {
                 &rendered.rgba_bytes(),
                 SCALE,
             );
+        }
+    }
+    // The mini: the first reference companion again, as a mini of itself at the share minis are
+    // drawn at, so the only differences are its size and its pace.
+    let adult = subjects[0].clone();
+    let mut mini = adult.clone();
+    mini.role = CreatureRole::Mini {
+        parent_id: adult.id,
+    };
+    mini.display_scale_percent = 70;
+    mini.appearance.logical_size = size_after_parent(&adult, mini.display_scale_percent);
+    for (pair, creature) in [adult, mini].into_iter().enumerate() {
+        let mut creature = creature;
+        creature.state.attention = None;
+        creature.state.beat = None;
+        creature.state.flourish = None;
+        creature.state.facing_right = true;
+        creature.state.drives = Drives::default();
+        creature.state.action = ActionKind::Idle;
+        let motion = formiga_art::MotionSignature::for_creature(&creature);
+        for (band, clip) in [None, Some(Gesture::Bop), Some(Gesture::Groom)]
+            .into_iter()
+            .enumerate()
+        {
+            for column in 0..COLUMNS {
+                let (clip, frame, face) = match clip {
+                    None => {
+                        let at = column as f32 / 3.0;
+                        creature.state.action_elapsed = at;
+                        creature.state.presence = Presence {
+                            clock: 40.0 + at,
+                            since: at,
+                            last: Some(PresenceMark {
+                                x: creature.state.position.x,
+                                depth: 0.0,
+                                window: None,
+                            }),
+                            ..Presence::default()
+                        };
+                        let body = formiga_art::BodyPresentation::for_creature(&creature);
+                        let face = CreatureRenderer::resolve_face_state_among(
+                            &creature,
+                            &[],
+                            CursorSnapshot::default(),
+                            false,
+                            false,
+                        );
+                        (body.clip, body.frame, face)
+                    }
+                    Some(gesture) => {
+                        let clip = formiga_art::BodyClip::Gesture(gesture);
+                        (
+                            clip,
+                            motion.frame(clip, column as f32 / 10.0),
+                            gesture_face(gesture),
+                        )
+                    }
+                };
+                let rendered = CreatureRenderer::render_composited_frame(
+                    &creature.appearance,
+                    clip,
+                    frame,
+                    true,
+                    false,
+                    face,
+                );
+                blit_scaled(
+                    &mut pixels,
+                    width,
+                    column * cell,
+                    naps + (band as u32 * 2 + pair as u32) * cell,
+                    &rendered.rgba_bytes(),
+                    SCALE,
+                );
+            }
         }
     }
     write_png(&path, width, height, &pixels)?;

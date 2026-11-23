@@ -512,12 +512,20 @@ impl AnimationSpec {
     }
 }
 
+/// How much quicker a mini rests and gestures than the adult it would be: a small body does
+/// the same things lighter and faster, as its walk already patters on its shorter stride.
+pub const MINI_PACE: f32 = 1.15;
+
 /// Stable per-creature timing. The same creature always walks, rests, greets, and recovers with
-/// its own cadence and phase, from data that already exists: its identity and personality. Nothing
-/// here is stored, no frame is added, and one-shot clips keep their exact timing.
+/// its own cadence and phase, from data that already exists: its identity, its personality and
+/// whether it is a mini. Nothing here is stored, no frame is added, and an adult's one-shot clips
+/// keep their exact timing.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MotionSignature {
     tempo: [f32; 4],
+    /// How much quicker than an adult it rests and gestures: [`MINI_PACE`] for a mini, 1 for an
+    /// adult. Its walk is left alone, since its steps are already counted from its own stride.
+    pace: f32,
     phase: [u8; 4],
     /// Where its own run of rests comes from: which beats it does between settles, and how long
     /// it holds still in between.
@@ -592,6 +600,11 @@ impl MotionSignature {
         let axes = creature.temperament().axes;
         Self {
             tempo,
+            pace: if creature.role.is_adult() {
+                1.0
+            } else {
+                MINI_PACE
+            },
             phase,
             rest_seed,
             calm: (1.0 - (axes.energy + axes.impulsiveness) / 2.0).clamp(0.0, 1.0),
@@ -599,6 +612,24 @@ impl MotionSignature {
             energy: axes.energy.clamp(0.0, 1.0),
             playful: axes.playfulness.clamp(0.0, 1.0),
             trusting: (1.0 - axes.suspicion).clamp(0.0, 1.0),
+        }
+    }
+
+    /// How fast `clip` plays for this creature, in frames a second: the clip's own rate at its
+    /// tempo for that kind of clip, and for a mini's rests and gestures a little quicker still.
+    /// A walk's steps are counted from the ground it covers instead (see [`Self::stride_frame`]).
+    pub fn rate(self, clip: impl Into<BodyClip>) -> f32 {
+        let clip = clip.into();
+        let group = motion_group(clip);
+        self.tempo[group] * self.group_pace(group) * f32::from(AnimationSpec::for_clip(clip).fps)
+    }
+
+    /// The mini's quickening for a group of clips: rests (1) and gestures (2) only.
+    fn group_pace(self, group: usize) -> f32 {
+        if matches!(group, 1 | 2) {
+            self.pace
+        } else {
+            1.0
         }
     }
 
@@ -634,7 +665,7 @@ impl MotionSignature {
             Gesture::Groom if self.calm > 0.6 => 3.0,
             _ => 2.0,
         };
-        loops * f32::from(spec.frames) / f32::from(spec.fps)
+        loops * f32::from(spec.frames) / (f32::from(spec.fps) * self.pace)
     }
 
     /// The frame of a walk or a run its feet have reached, `stride` walking frames along: the
@@ -663,8 +694,7 @@ impl MotionSignature {
     /// its temperament leans. Which, and how long each stillness lasts, come from its own stream,
     /// so the same companion rests the same way every time it is shown and no two rest in step.
     pub fn rest_moment(self, elapsed: f32, fidgets: bool) -> RestMoment {
-        let spec = AnimationSpec::for_action(ActionKind::Idle);
-        let rate = self.tempo[1] * f32::from(spec.fps);
+        let rate = self.rate(ActionKind::Idle);
         // A rest this long starts over: the run is irregular, so nobody can see where.
         const ROUND_SECS: f32 = 300.0;
         let mut left = elapsed.max(0.0) % ROUND_SECS;
@@ -678,7 +708,8 @@ impl MotionSignature {
                 let secs = self.fidget_secs(gesture);
                 if left < secs {
                     let spec = AnimationSpec::for_clip(gesture);
-                    let frame = (left * f32::from(spec.fps)) as u32 % u32::from(spec.frames);
+                    let frame =
+                        (left * f32::from(spec.fps) * self.pace) as u32 % u32::from(spec.frames);
                     return RestMoment::Own(gesture, frame as u8);
                 }
                 left -= secs;
@@ -785,14 +816,23 @@ impl MotionSignature {
     pub fn frame(self, clip: impl Into<BodyClip>, elapsed: f32) -> u8 {
         let clip = clip.into();
         let spec = AnimationSpec::for_clip(clip);
-        // A climb keeps the world's beat rather than its own: the body is raised on the pull
-        // frames, counted from the start of the climb at the clip's own rate.
-        if spec.playback == PlaybackMode::Hold || clip == BodyClip::Action(ActionKind::ClimbWindow)
-        {
+        // A climb and the mantle it tops out with keep the world's beat rather than their own: the
+        // body is raised on the pull frames and hauled over on the mantle's, counted from the
+        // start at the clip's own rate, which a mini's quicker pace would run ahead of.
+        if matches!(
+            clip,
+            BodyClip::Action(ActionKind::ClimbWindow) | BodyClip::Gesture(Gesture::Mantle)
+        ) {
             return spec.frame_at(elapsed);
         }
         let group = motion_group(clip);
-        let advanced = elapsed.max(0.0) * self.tempo[group] * f32::from(spec.fps);
+        if spec.playback == PlaybackMode::Hold {
+            // Played once at its own rate, a mini's a little quicker.
+            return spec.frame_at(elapsed * self.group_pace(group));
+        }
+        // Multiplied in this order so an adult's frames come out exactly as they always have.
+        let advanced =
+            elapsed.max(0.0) * self.tempo[group] * self.group_pace(group) * f32::from(spec.fps);
         ((advanced as u32).wrapping_add(u32::from(self.phase[group])) % u32::from(spec.frames))
             as u8
     }

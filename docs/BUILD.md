@@ -326,7 +326,8 @@ the shuffle of a squeeze through a gap, pinched with its face,
 where a loop that hitches or repeats itself shows. `rest-sheet` draws ten
 seconds of every body at rest, a frame every third of a second with its face, once as the action
 alone draws it and once as a companion carries itself on the desktop, holding still, shifting,
-glancing about and blinking. `bridge-sheet` draws every body walking, startled in mid-stride, walking
+glancing about and blinking, and ends with a mini beside the adult of the same identity, so its
+quicker pace shows beat for beat. `bridge-sheet` draws every body walking, startled in mid-stride, walking
 on and turning round, coming to rest, and sat on its doorstep as a wash starts and as it ends, a
 frame every twentieth of a second: in two rows a body, the cut each change of clip used to make over
 what the overlay draws now, with each tick that passes through the plain settle on an amber ground

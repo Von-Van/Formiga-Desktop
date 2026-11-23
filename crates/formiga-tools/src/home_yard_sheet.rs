@@ -25,6 +25,8 @@ struct YardPanel {
     styles: Vec<ShelterStyle>,
     /// After dark: the houses lit from inside, on a night sky.
     night: bool,
+    /// In a breath of wind: the trees leaning and the tents' pennants blown out.
+    gust: bool,
     /// How many of the sixteen trinkets this colony has found, so the trees can be judged bare,
     /// part-filled and full.
     found: usize,
@@ -78,6 +80,7 @@ pub fn home_yard_sheet(path: PathBuf) -> Result<()> {
             found: [0, 5, 11, 16][style as usize],
             style_seed: style,
             night: false,
+            gust: false,
         })
         .collect();
     for members in 1..=MAX_COLONY_CREATURES {
@@ -91,6 +94,7 @@ pub fn home_yard_sheet(path: PathBuf) -> Result<()> {
             found: [16, 12, 8, 5, 3, 0][members - 1],
             style_seed: 3,
             night: false,
+            gust: false,
         });
     }
     for style in 0..4 {
@@ -116,6 +120,7 @@ pub fn home_yard_sheet(path: PathBuf) -> Result<()> {
             found: 8,
             style_seed: style,
             night: true,
+            gust: false,
         });
     }
 
@@ -169,6 +174,69 @@ pub fn home_yard_sheet(path: PathBuf) -> Result<()> {
             draw_yard_panel(&mut pixels, width, x, y, panel, corner, &[]);
         }
     }
+    // Under them, the village in its wind: the same village still on the left and in a gust on
+    // the right, both at one corner, so the trees' crowns and the tents' pennants can be judged
+    // frame against frame. A village of tents by day, the same after dark, and a mixed one.
+    let windy = |styles: Vec<ShelterStyle>, night: bool, gust: bool| YardPanel {
+        cottages: full.clone(),
+        objects: MAX_COLONY_OBJECTS,
+        hangouts: [None; 3],
+        gardens: [None; 3],
+        palette: None,
+        styles,
+        found: 8,
+        style_seed: 0,
+        night,
+        gust,
+    };
+    let mixed: Vec<ShelterStyle> = (0..MAX_COLONY_CREATURES)
+        .map(|slot| ShelterStyle::ALL[slot % ShelterStyle::ALL.len()])
+        .collect();
+    let tents = vec![ShelterStyle::Tent; MAX_COLONY_CREATURES];
+    let wind_rows = [
+        [false, true].map(|gust| windy(tents.clone(), false, gust)),
+        [false, true].map(|gust| windy(tents.clone(), true, gust)),
+        [false, true].map(|gust| windy(mixed.clone(), false, gust)),
+    ];
+    let wind_top = gap + panels.len() as u32 * (panel_height + gap);
+    let mut tall =
+        vec![0; (width * (height + wind_rows.len() as u32 * (panel_height + gap)) * 4) as usize];
+    tall[..pixels.len()].copy_from_slice(&pixels);
+    for chunk in tall[pixels.len()..].chunks_exact_mut(4) {
+        chunk.copy_from_slice(&[209, 226, 219, 255]);
+    }
+    let height = height + wind_rows.len() as u32 * (panel_height + gap);
+    let mut pixels = tall;
+    for (row, pair) in wind_rows.iter().enumerate() {
+        for (column, panel) in pair.iter().enumerate() {
+            let (x, y) = (
+                gap + column as u32 * (panel_width + gap),
+                wind_top + row as u32 * (panel_height + gap),
+            );
+            fill_rect(
+                &mut pixels,
+                width,
+                x,
+                y,
+                panel_width,
+                panel_height,
+                if panel.night {
+                    [28, 34, 58, 235]
+                } else {
+                    [237, 240, 232, 255]
+                },
+            );
+            draw_yard_panel(
+                &mut pixels,
+                width,
+                x,
+                y,
+                panel,
+                HomeCorner::BottomRight,
+                &[],
+            );
+        }
+    }
     write_png(&path, width, height, &pixels)?;
     println!("wrote {}", path.display());
     Ok(())
@@ -194,6 +262,7 @@ pub fn village_depth_sheet(path: PathBuf) -> Result<()> {
         found: 8,
         style_seed: 1,
         night,
+        gust: false,
     };
     // Where each panel puts its residents, from where the doors are: `None` leaves everyone at
     // their own place at the front.
@@ -457,6 +526,7 @@ fn draw_yard_panel(
     corner: HomeCorner,
     stands: &[Stand],
 ) {
+    let gust = panel.gust;
     let mut seed = [55; 32];
     seed[1] = panel.style_seed;
     let (mut home, monitor) = panel_home(panel, corner);
@@ -605,9 +675,34 @@ fn draw_yard_panel(
             }
         }
         let (x, y) = standing(SHELTER_SIZE, p);
+        let mut squares = vec![(cell, SHELTER_SIZE, x, y)];
+        // In a gust, a tent's pennant blown out over it, as the overlay lays it.
+        let style = look.styles[slot.min(look.styles.len() - 1)];
+        if gust && style == ShelterStyle::Tent {
+            let (px, py) = ShelterRenderer::pennant_patch(slot, panel.night);
+            let size = formiga_art::PENNANT_PATCH;
+            let mut patch = formiga_art::Canvas::new(size, size);
+            for row in 0..size as i32 {
+                for column in 0..size as i32 {
+                    patch.set(
+                        column,
+                        row,
+                        village.get(px as i32 + column, py as i32 + row),
+                    );
+                }
+            }
+            let (ox, oy) = ShelterRenderer::pennant_origin(
+                &ShelterGenome {
+                    style,
+                    ..look.genome
+                },
+                slot,
+            );
+            squares.push((patch, size, x + ox, y + oy));
+        }
         village_items.push((
             f32::from(DEFAULT_HOUSE_DEPTHS.get(slot).copied().unwrap_or(0)),
-            vec![(cell, SHELTER_SIZE, x, y)],
+            squares,
         ));
     }
 
@@ -632,7 +727,15 @@ fn draw_yard_panel(
         let Some((_, tree)) = home_tree_position(&home, end, cottages, monitors, &policy, 1) else {
             continue;
         };
-        let (tree_x, tree_y) = ShelterRenderer::village_cell(formiga_art::VillageCell::Tree);
+        // In a gust, both crowns lean the way the pennants fly: the inward tree, read mirrored,
+        // from the cell that leans the other way.
+        let (tree_x, tree_y) = ShelterRenderer::village_cell(if gust {
+            formiga_art::VillageCell::TreeInWind {
+                leaning_right: end != TreeEnd::Inward,
+            }
+        } else {
+            formiga_art::VillageCell::Tree
+        });
         let mut cell = formiga_art::Canvas::new(SHELTER_SIZE, SHELTER_SIZE);
         for y in 0..SHELTER_SIZE as i32 {
             for x in 0..SHELTER_SIZE as i32 {
