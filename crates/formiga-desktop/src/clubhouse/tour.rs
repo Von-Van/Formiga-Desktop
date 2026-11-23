@@ -120,9 +120,9 @@ const STEPS: [Step; 19] = [
         SettingsTab::Colony,
         TourMark::Name,
         "A page for each companion",
-        "Every companion has a page here; choose one from the names at the top. Give them a \
-         name, and say where they like to be: wherever they like, close to home, down on the \
-         floor, or up high on your windows.",
+        "Every companion has a page here; choose one by its face at the top. Click its name to \
+         rename it, and under Care & share say where they like to be: wherever they like, close \
+         to home, down on the floor, or up high on your windows.",
     ),
     marked(
         SettingsTab::Colony,
@@ -137,14 +137,6 @@ const STEPS: [Step; 19] = [
         "Share a companion",
         "Copy a companion's code for a friend to meet them, or export a picture card or an \
          animated sticker of them.",
-    ),
-    marked(
-        SettingsTab::Colony,
-        TourMark::Collection,
-        "The collection",
-        "Everything the colony could ever find. What has turned up shows in colour, and the \
-         rest as a shape with a hint about where to look. Click a find to hang it in the \
-         village's trees.",
     ),
     marked(
         SettingsTab::Studio,
@@ -168,6 +160,14 @@ const STEPS: [Step; 19] = [
         "Where the village lives",
         "Move the village to the other corner of the screen or to another display, and choose \
          its colours. Further down, export a portrait of everyone or a postcard from the village.",
+    ),
+    marked(
+        SettingsTab::Home,
+        TourMark::Collection,
+        "The collection",
+        "Everything the colony could ever find. What has turned up shows in colour, and the \
+         rest as a shape with a hint about where to look. Click a find to hang it in the \
+         village's trees.",
     ),
     step(
         SettingsTab::Journal,
