@@ -1121,12 +1121,14 @@ pub(super) fn mouth_inside(palette: Palette) -> Rgba {
     )
 }
 
+/// The face an action is drawn with when nothing about the creature itself says otherwise: on
+/// the sheets, the cards and the notebook's pictures. A stroll, or a ride on a window, is the
+/// face of standing about; only working a way through a gap is concentrating, and a run is
+/// determined.
 pub(super) fn expression_for_action(action: ActionKind) -> ExpressionKind {
     match action {
-        ActionKind::Idle => ExpressionKind::Neutral,
-        ActionKind::Traverse | ActionKind::SqueezeWindow | ActionKind::RideWindow => {
-            ExpressionKind::Focused
-        }
+        ActionKind::Idle | ActionKind::Traverse | ActionKind::RideWindow => ExpressionKind::Neutral,
+        ActionKind::SqueezeWindow => ExpressionKind::Focused,
         ActionKind::Sprint => ExpressionKind::Determined,
         ActionKind::Perch | ActionKind::Homebound => ExpressionKind::Content,
         ActionKind::Sleep => ExpressionKind::Sleepy,

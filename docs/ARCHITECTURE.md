@@ -649,7 +649,7 @@ starts the cooldown.
 ### Between the big moments
 
 Most of what a companion is drawn doing is walking about, resting and sleeping, so how those look
-sets how alive it feels more than any single clip. Seven things keep them, and everything else it
+sets how alive it feels more than any single clip. Eight things keep them, and everything else it
 does, from reading as loops or as one another; none adds a saved field, only the repertoire, the
 chores and the breathing add frames to the atlas, and only the repertoire, the chores and the bridge
 between clips add to the frames presented.
@@ -676,6 +676,31 @@ of the body's own size (0.83 for a run), so at the default display scale an aver
 walks at the ten frames a second it always did, a slow stroller steps slowly, a busy one briskly,
 and a mini patters, kept between 7 and 15 frames a second (9 and 18 running) so a step never sticks
 or blurs. Walking speeds differ 2.4 times across companions; before, their steps differed 1.5 times.
+
+**Walks that get going and stop.** A walk used to go from standing to its full pace in one tick and
+back to standing in one, so a start was a picture that began sliding and a stop one that froze.
+`execute_action` (`world/movement.rs`) now brings a walk to a spot up to its pace over its first
+quarter of a second (`WALK_EASE_SECS`), from whatever it was already doing that way, and down from
+it over its last, slowing evenly onto the mark: each tick takes the speed half way through it, so
+the last tick is short rather than a lurch, and the walk still ends exactly on the mark, or on the
+edge of the room it was to leave around one. A wander with nowhere to stop eases in the same way
+and comes to rest by coasting out of whatever it does next, as before. A walk that turns round
+starts again from standing rather than sliding backwards out of its last step. Its feet follow,
+because a stride is counted from the ground covered: they slow with it to the seven frames a second
+a walk never goes under, and the first step shows on the first tick that covers walking pace. A
+step out of a friend's way is given the extra quarter second it now takes.
+
+A turn is held, too. Facing came from the sign of the distance left every tick, so a follower whose
+friend drifted across its middle, or a journey taking a step straight up a window, faced one way
+and the other on consecutive ticks. The world keeps, at runtime only, which way each creature ended
+the last tick facing and for how long (`World::carry_facing`, whatever turned it), and a walk, the
+turn to face a friend at the end of one, and a journey's step (`face_toward`) turn it back only
+once it has faced the new way for a quarter of a second (`TURN_HOLD_SECS`), unless what it is
+after is more than six points behind it (`TURN_POINTS`). Until then a walker whose mark has gone a
+little way behind it waits where it stands. Something straight ahead or straight above, within a
+hundredth of a point, leaves it facing the way it was: a climb up a window keeps the facing of the
+walk that brought it there rather than always facing right. The turn itself is still the mirrored
+picture from one frame to the next.
 
 **A rest that holds still.** The six authored beats of resting are no longer played round and
 round every two seconds. `MotionSignature::rest_frame` comes to rest on a settle onto one foot,
@@ -765,7 +790,13 @@ with a friend is a play bow, a spring, a landing and a bounce aside. Being pette
 down under the hand and pushes it up into it, eyes shut, tail going, with a heart. And a companion
 a friend is walking over to — to greet, follow or play — watches it come, so the one being
 approached is seen to notice. These sixteen frames, and the chores' slower clips in place of the
-reach, change the frames presented by nothing measurable.
+reach, change the frames presented by nothing measurable. Going to see what the pointer is up to
+is drawn as the peek at the screen is, leaning in on one foot back with its ears pricked as well
+and its paw up, its eyes on the pointer, where it was the plain standing bob. And a stroll or a
+ride on a window wears the plain face on the sheets, the cards and the notebook's pictures, where
+they wore the flat brow of concentrating; only working a way through a gap keeps that, and a run
+stays determined. Out on the desktop the face comes from the creature itself
+(`resolve_expression`), as before.
 
 **Eyes that live.** With nothing in particular to look at, a companion's eyes used to look
 straight out forever, and it blinked once every five seconds on the dot. Now its eyes look where

@@ -189,6 +189,20 @@ All notable changes are documented here.
   Play already held the toy at the paw and is unchanged, as is every clip with motion on. Each
   clip is still one picture, so it costs no texture. `formiga-tools activity-sheet --reduced`
   draws the clips as reduced motion shows them.
+- Walks get going and stop rather than starting and stopping at full speed. A companion comes up
+  to its pace over the first quarter of a second of a walk and slows evenly over the last onto
+  exactly the spot it was going to, its feet slowing with it, and one that turns round starts
+  again from standing instead of sliding backwards out of its last step.
+- A companion no longer turns one way and back on consecutive moments. Once it has turned it
+  faces that way for at least a quarter of a second, unless what it is walking to is more than a
+  few points behind it, so a follower whose friend drifts across its middle stops flickering, and
+  a climb up a window keeps the way the creature was facing instead of always turning right.
+- Going to see what the pointer is up to now looks like it: the companion leans in on one foot
+  back with its ears pricked and its paw up, eyes on the pointer, the way it peers at the screen,
+  instead of standing about with a bob.
+- On the review sheets, cards and the notebook's pictures, a stroll and a ride on a window wear
+  the plain face instead of the flat brow of concentrating; squeezing through a gap keeps it, and
+  a run stays determined.
 
 ### Fixed
 

@@ -963,18 +963,14 @@ fn a_sleepers_z_rises_three_pixels_and_fades() {
     assert_eq!(canvas.alpha_bounds().expect("a z").1, 1);
 }
 
-/// A tail on the shared bob — investigating the cursor, riding a window — and a tail hanging
-/// from a ledge swing at half the clip's rate: the same swing stepped every other frame. Carried,
-/// a body hangs still, its tail with it (see
-/// `landing_holds_standing_a_leap_has_its_own_frames_and_a_carry_hangs_still`).
+/// A tail on the shared bob — riding a window — and a tail hanging from a ledge swing at half the
+/// clip's rate: the same swing stepped every other frame. Carried, a body hangs still, its tail
+/// with it (see `landing_holds_standing_a_leap_has_its_own_frames_and_a_carry_hangs_still`), and
+/// investigating the cursor leans in with the pose of a look at the screen.
 #[test]
 fn tails_on_the_shared_bob_and_hanging_swing_at_half_rate() {
     let genome = genome(BodyFamily::SoftQuadruped);
-    for action in [
-        ActionKind::InvestigateCursor,
-        ActionKind::RideWindow,
-        ActionKind::Dangle,
-    ] {
+    for action in [ActionKind::RideWindow, ActionKind::Dangle] {
         let sway: Vec<i32> = (0..8)
             .map(|frame| Pose::new(&genome, BodyClip::Action(action), frame, false).tail_sway)
             .collect();

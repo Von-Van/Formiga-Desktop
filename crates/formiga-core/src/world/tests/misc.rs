@@ -59,6 +59,7 @@ fn every_runtime_map_stays_inside_the_colony_and_a_cut_short_scene_leaves_nothin
             world.window_routes.len(),
             world.window_journeys.len(),
             world.tosses.len(),
+            world.facing_holds.len(),
         ] {
             assert!(
                 map <= colony,
@@ -120,14 +121,30 @@ fn passive_activity_actions_have_distinct_state_outcomes() {
     eating.state.drives.energy = 0.25;
     let energy_before = eating.state.drives.energy;
     update_drives(&mut eating, 1.0);
-    execute_action(&mut eating, &desktop, context, 1.0, None, None);
+    execute_action(
+        &mut eating,
+        &desktop,
+        context,
+        1.0,
+        None,
+        None,
+        f32::INFINITY,
+    );
     assert!(eating.state.drives.energy > energy_before);
 
     let mut drinking = creature.clone();
     drinking.state.action = ActionKind::Drink;
     drinking.state.drives.comfort = 0.2;
     drinking.state.drives.arousal = 0.8;
-    execute_action(&mut drinking, &desktop, context, 1.0, None, None);
+    execute_action(
+        &mut drinking,
+        &desktop,
+        context,
+        1.0,
+        None,
+        None,
+        f32::INFINITY,
+    );
     assert!(drinking.state.drives.comfort > 0.2);
     assert!(drinking.state.drives.arousal < 0.8);
 
@@ -136,7 +153,15 @@ fn passive_activity_actions_have_distinct_state_outcomes() {
     sprinting.state.facing_right = true;
     let start_x = sprinting.state.position.x;
     let walking_speed = 24.0 + sprinting.personality.activity * 34.0;
-    execute_action(&mut sprinting, &desktop, context, 0.5, None, None);
+    execute_action(
+        &mut sprinting,
+        &desktop,
+        context,
+        0.5,
+        None,
+        None,
+        f32::INFINITY,
+    );
     assert!(sprinting.state.position.x - start_x > walking_speed * 0.5 * 2.0);
 }
 
@@ -181,7 +206,15 @@ fn doing_something_where_it_stands_brings_a_walk_to_a_stop() {
         settling.state.velocity = Point { x: walking, y: 0.0 };
         let start = settling.state.position.x;
         for _ in 0..40 {
-            execute_action(&mut settling, &desktop, context, 0.05, None, None);
+            execute_action(
+                &mut settling,
+                &desktop,
+                context,
+                0.05,
+                None,
+                None,
+                f32::INFINITY,
+            );
         }
         let travelled = settling.state.position.x - start;
         eprintln!("{action:?}: {travelled:.1} px in two seconds from {walking:.1} px/s");
@@ -190,6 +223,182 @@ fn doing_something_where_it_stands_brings_a_walk_to_a_stop() {
         }
     }
     assert!(sliding.is_empty(), "still sliding: {sliding:?}");
+}
+
+fn walking_context() -> BehaviorContext {
+    BehaviorContext {
+        cursor_safe: true,
+        ambience: DesktopAmbience::default(),
+        nearest_creature_distance: None,
+        nearest_creature_position: None,
+        nearest_creature_id: None,
+        bond: None,
+        on_window_ledge: false,
+        reachable_window_ledge: false,
+        window_changed_nearby: false,
+        objects: ObjectUtility::default(),
+        hour_utc: 12,
+        night: false,
+        home_point: None,
+    }
+}
+
+/// A walk to a spot comes up to its pace over its first quarter second and down from it over
+/// its last, and still ends standing exactly on the spot.
+#[test]
+fn a_walk_eases_in_and_out_and_lands_on_its_mark() {
+    let desktop = desktop();
+    let mut walker = World::new([61; 32], datetime!(2026-01-01 0:00 UTC), &desktop)
+        .save
+        .creatures
+        .remove(0);
+    walker.state.action = ActionKind::Traverse;
+    walker.state.velocity = Point::default();
+    walker.state.position.x = 400.0;
+    let pace = 24.0 + walker.personality.activity * 34.0;
+    let mark = Point {
+        x: 600.0,
+        y: walker.state.position.y,
+    };
+    let mut speeds = Vec::new();
+    for _ in 0..400 {
+        execute_action(
+            &mut walker,
+            &desktop,
+            walking_context(),
+            0.05,
+            None,
+            Some(mark),
+            f32::INFINITY,
+        );
+        speeds.push(walker.state.velocity.x);
+        if walker.state.velocity.x == 0.0 {
+            break;
+        }
+    }
+    assert_eq!(walker.state.position.x, 600.0, "it stands on its mark");
+    assert!(
+        speeds[0] > 0.0 && speeds[0] < pace * 0.5,
+        "it sets out slowly: {:.1} of {pace:.1}",
+        speeds[0]
+    );
+    assert!(
+        speeds[..5].windows(2).all(|pair| pair[1] > pair[0]),
+        "and gathers pace: {:?}",
+        &speeds[..5]
+    );
+    assert_eq!(speeds[5], pace, "at its pace after a quarter second");
+    let last = &speeds[speeds.len() - 5..speeds.len() - 1];
+    assert!(
+        last.windows(2).all(|pair| pair[1] < pair[0]) && last[3] < pace * 0.5,
+        "and comes down from it onto the mark: {last:?}"
+    );
+}
+
+/// A walker that has just turned does not turn straight back for a mark only a little behind
+/// it — it waits out the turn where it stands — but a mark well behind it turns it at once.
+#[test]
+fn a_fresh_turn_holds_unless_the_mark_has_really_gone_the_other_way() {
+    let desktop = desktop();
+    let mut walker = World::new([61; 32], datetime!(2026-01-01 0:00 UTC), &desktop)
+        .save
+        .creatures
+        .remove(0);
+    walker.state.action = ActionKind::Traverse;
+    walker.state.facing_right = true;
+    walker.state.position.x = 400.0;
+    let y = walker.state.position.y;
+    let behind = |by: f32| Point { x: 400.0 - by, y };
+
+    let mut held = walker.clone();
+    execute_action(
+        &mut held,
+        &desktop,
+        walking_context(),
+        0.05,
+        None,
+        Some(behind(4.0)),
+        0.1,
+    );
+    assert!(held.state.facing_right, "a fresh turn holds");
+    assert_eq!(held.state.position.x, 400.0, "and it waits where it stands");
+
+    let mut settled = walker.clone();
+    execute_action(
+        &mut settled,
+        &desktop,
+        walking_context(),
+        0.05,
+        None,
+        Some(behind(4.0)),
+        0.3,
+    );
+    assert!(!settled.state.facing_right, "an old one does not");
+    assert!(settled.state.position.x < 400.0, "and it walks back");
+
+    let mut far = walker;
+    execute_action(
+        &mut far,
+        &desktop,
+        walking_context(),
+        0.05,
+        None,
+        Some(behind(40.0)),
+        0.0,
+    );
+    assert!(
+        !far.state.facing_right,
+        "a mark well behind turns it at once"
+    );
+}
+
+/// A follower whose friend keeps drifting across its middle faces one way for at least a
+/// quarter second at a time, rather than flipping on every tick.
+#[test]
+fn a_mark_drifting_across_a_walker_does_not_flip_it_every_tick() {
+    let desktop = desktop();
+    let mut world = World::new([61; 32], datetime!(2026-01-01 0:00 UTC), &desktop);
+    world.save.creatures.truncate(1);
+    let id = world.save.creatures[0].id;
+    let now = datetime!(2026-01-01 12:00 UTC);
+    let x = world.save.creatures[0].state.position.x;
+    let mut faced = Vec::new();
+    for step in 0..60 {
+        let creature = &mut world.save.creatures[0];
+        creature.state.action = ActionKind::Traverse;
+        creature.state.action_elapsed = 0.0;
+        creature.state.action_duration = 30.0;
+        creature.state.position.x = x;
+        world.action_choices.insert(
+            id,
+            ActionChoice {
+                action: ActionKind::Traverse,
+                target_creature: None,
+                target_point: Some(Point {
+                    x: x + if step % 2 == 0 { 3.0 } else { -3.0 },
+                    y: creature.state.position.y,
+                }),
+            },
+        );
+        world.tick(now + Duration::milliseconds(step * 50), 0.05, &desktop);
+        faced.push(world.save.creatures[0].state.facing_right);
+    }
+    let mut runs = Vec::new();
+    let mut run = 0;
+    for pair in faced.windows(2) {
+        run += 1;
+        if pair[0] != pair[1] {
+            runs.push(run);
+            run = 0;
+        }
+    }
+    // The first run is however long it faced the way it was put down facing before the mark
+    // began to drift, which is a long time.
+    assert!(runs.len() > 2, "it does turn: {faced:?}");
+    assert!(
+        runs[1..].iter().all(|&ticks| ticks >= 5),
+        "each way held for a quarter second: {runs:?}"
+    );
 }
 
 #[test]

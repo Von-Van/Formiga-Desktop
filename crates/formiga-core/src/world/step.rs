@@ -191,7 +191,7 @@ impl World {
                 );
                 return true;
             }
-            let (step, surface, into, climbing, facing) = {
+            let (step, surface, into, facing) = {
                 let journey = self
                     .window_journeys
                     .get_mut(&creature.id)
@@ -201,7 +201,6 @@ impl World {
                     step,
                     journey.surface().clone(),
                     journey.action_elapsed(),
-                    matches!(journey, WindowJourney::Climb(_)),
                     journey.facing_right(),
                 )
             };
@@ -241,13 +240,15 @@ impl World {
             }) {
                 creature.state.surface = surface.clone();
             }
-            // A climb faces the window it is climbing onto, up its side and over its edge; the
-            // look before it keeps facing the way the creature already does, rather than turning
-            // to face right for a step that goes nowhere across.
+            // A climb faces the window it is climbing onto, up its side and over its edge. Any
+            // other journey faces the way it is going, held like a walk's: a step straight up a
+            // window, or a pause where it stands, leaves it facing the way it was.
             if let Some(facing_right) = facing {
                 creature.state.facing_right = facing_right;
-            } else if !climbing || (step.position.x - creature.state.position.x).abs() >= 0.01 {
-                creature.state.facing_right = step.position.x >= creature.state.position.x;
+            } else {
+                let held = facing_held(&self.facing_holds, creature);
+                let going = step.position.x - creature.state.position.x;
+                face_toward(&mut creature.state, held, going);
             }
             creature.state.position = step.position;
             if step.action != previous_action {
@@ -1087,7 +1088,8 @@ impl World {
             .action_choices
             .get(&creature.id)
             .and_then(|choice| choice.target_point);
-        execute_action(creature, desktop, context, dt, nearest, target_point);
+        let held = facing_held(&self.facing_holds, creature);
+        execute_action(creature, desktop, context, dt, nearest, target_point, held);
         // Walking into the end of a ledge, or of the ground a creature is allowed on, is
         // arriving: the constraint turns it round, and letting go of the target it cannot
         // reach is what stops it stepping straight back out and being put back every tick.
