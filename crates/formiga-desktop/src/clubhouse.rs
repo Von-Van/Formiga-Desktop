@@ -12,6 +12,7 @@ use time::OffsetDateTime;
 
 pub(crate) mod arrange;
 pub(crate) mod collection;
+pub(crate) mod companion_page;
 pub(crate) mod home;
 pub(crate) mod journal;
 pub(crate) mod journal_page;
@@ -19,6 +20,7 @@ pub(crate) mod paper;
 pub(crate) mod recovery;
 pub(crate) mod sections;
 pub(crate) mod shell;
+pub(crate) mod story;
 pub(crate) mod studio;
 pub(crate) mod today;
 pub(crate) mod tour;
@@ -454,7 +456,11 @@ pub fn moment_text(save: &SaveFile, entry: &JournalEntry) -> String {
                 .find(|c| c.id == friend_id)
                 .map_or("a past companion", |c| c.name.as_str())
         ),
-        JournalMoment::Discovery => format!("{name} found a little treasure"),
+        // Named where the scrapbook kept it as the same companion's first find of its kind.
+        JournalMoment::Discovery => match story::find_of(save, entry) {
+            Some(find) => format!("{name} found {find}"),
+            None => format!("{name} found a little treasure"),
+        },
         JournalMoment::Preference(descriptor) => format!(
             "{name} is becoming known for: {}",
             descriptor.label().to_lowercase()
@@ -515,6 +521,92 @@ pub fn moment_text(save: &SaveFile, entry: &JournalEntry) -> String {
         // Battle's to name. It is one line of plain text, checked when it came and again whenever
         // the colony is read, and it reads as every other moment does, without a full stop.
         JournalMoment::Battle(ref line) => line.trim_end_matches('.').to_owned(),
+    }
+}
+
+/// The notebook writes a date one way wherever it writes one: a day's heading in full, "Sunday
+/// 14 September"; a date beside something, "14 Sep"; a time, "07:00"; a kept moment, "14 Sep ·
+/// 07:00". The year is added only when it is not this one. Never an ISO date.
+pub(crate) mod dates {
+    use time::{Date, OffsetDateTime, UtcOffset};
+
+    /// This year on the reader's own clock.
+    fn this_year() -> i32 {
+        OffsetDateTime::now_utc()
+            .to_offset(super::local_offset())
+            .year()
+    }
+
+    fn year_tail(date: Date, this_year: i32) -> String {
+        if date.year() == this_year {
+            String::new()
+        } else {
+            format!(" {}", date.year())
+        }
+    }
+
+    /// "Sunday 14 September", for a day's heading.
+    pub(crate) fn day_heading(date: Date, this_year: i32) -> String {
+        format!(
+            "{} {} {}{}",
+            date.weekday(),
+            date.day(),
+            date.month(),
+            year_tail(date, this_year)
+        )
+    }
+
+    /// "14 Sep", for a date written beside something.
+    pub(crate) fn short_date(date: Date, this_year: i32) -> String {
+        format!(
+            "{} {}{}",
+            date.day(),
+            &date.month().to_string()[..3],
+            year_tail(date, this_year)
+        )
+    }
+
+    /// "07:00".
+    pub(crate) fn clock(at: OffsetDateTime, offset: UtcOffset) -> String {
+        let local = at.to_offset(offset);
+        format!("{:02}:{:02}", local.hour(), local.minute())
+    }
+
+    /// "14 Sep", on the reader's clock, for a moment.
+    pub(crate) fn on(at: OffsetDateTime, offset: UtcOffset) -> String {
+        short_date(at.to_offset(offset).date(), this_year())
+    }
+
+    /// "14 Sep · 07:00", for a kept moment, which stays long after its day.
+    pub(crate) fn kept(at: OffsetDateTime, offset: UtcOffset) -> String {
+        format!("{} · {}", on(at, offset), clock(at, offset))
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use time::macros::{date, datetime, offset};
+
+        #[test]
+        fn every_date_is_written_the_notebooks_one_way() {
+            assert_eq!(
+                day_heading(date!(2026 - 09 - 14), 2026),
+                "Monday 14 September"
+            );
+            assert_eq!(
+                day_heading(date!(2025 - 12 - 31), 2026),
+                "Wednesday 31 December 2025"
+            );
+            assert_eq!(short_date(date!(2026 - 09 - 04), 2026), "4 Sep");
+            assert_eq!(short_date(date!(2025 - 09 - 04), 2026), "4 Sep 2025");
+            assert_eq!(clock(datetime!(2026-09-14 07:05 UTC), offset!(+2)), "09:05");
+            for written in [
+                day_heading(date!(2026 - 09 - 14), 2026),
+                short_date(date!(2026 - 09 - 14), 2026),
+            ] {
+                assert!(!written.contains('-'), "no ISO dates: {written}");
+            }
+        }
     }
 }
 
@@ -633,7 +725,7 @@ pub fn schedule_controls(ui: &mut Ui, save: &SaveFile, outcome: &mut SettingsOut
                 if preset == 0 { "Work" } else { "Relax" },
                 at.hour(),
                 at.minute(),
-                at.date()
+                dates::day_heading(at.date(), local.year())
             ));
         }
         ui.add_space(8.0);

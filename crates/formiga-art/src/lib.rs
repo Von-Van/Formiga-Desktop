@@ -17,6 +17,7 @@ mod train;
 mod tree;
 mod trinkets;
 mod ui_atlas;
+mod vignette;
 mod village_ground;
 mod wonders;
 
@@ -77,6 +78,9 @@ pub use ui_atlas::{
     MENU_UNAVAILABLE_TEXT, MenuIcon, MenuLayout, MenuRect, SHADOW_FADE_HEIGHT, SHADOW_MAX_WIDTH,
     SHADOW_SHEET_HEIGHT, SHADOW_SHEET_WIDTH, ShadowGround, SpriteRect, UI_ATLAS_HEIGHT,
     UI_ATLAS_WIDTH, UiAtlasRenderer, menu_label_text,
+};
+pub use vignette::{
+    VIGNETTE_HEIGHT, VIGNETTE_WIDTH, Vignette, render_vignette, render_vignette_figures,
 };
 pub use village_ground::{
     GROUND_ATLAS_HEIGHT, GROUND_BAND, GROUND_STRIP_HEIGHT, GROUND_STRIP_WIDTH, GroundHouse,
