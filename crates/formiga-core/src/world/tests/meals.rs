@@ -3,13 +3,16 @@ use super::*;
 const TICK: f32 = 0.05;
 
 /// Nothing a colony does depends on what it is eating: the same seed ticked the same way does
-/// the same things whatever its meals say.
+/// the same things whatever its meals say. Whether a given three minutes holds a meal at all
+/// depends on everything else that colony gets up to, so a few colonies are run in turn: every
+/// one of them must do the same with its meals wiped, and most of them must have eaten, so the
+/// check is never passed by a colony that simply did not eat.
 #[test]
 fn meals_change_nothing_the_colony_does() {
     let created = datetime!(2026-01-01 0:00 UTC);
     let desktop = desktop();
-    let run = |wipe: bool| {
-        let mut world = World::new([61; 32], created, &desktop);
+    let run = |seed: u8, wipe: bool| {
+        let mut world = World::new([seed; 32], created, &desktop);
         let now = created + Duration::hours(1);
         let_colony_wander(&mut world, now);
         let mut meals = 0;
@@ -35,10 +38,18 @@ fn meals_change_nothing_the_colony_does() {
             .collect::<Vec<_>>();
         (trace, meals)
     };
-    let (kept, eaten) = run(false);
-    let (wiped, _) = run(true);
-    assert_eq!(kept, wiped);
-    assert!(eaten > 0, "nobody ate in over three minutes of wandering");
+    let seeds = 58..=73_u8;
+    let mut ate = 0;
+    for seed in seeds.clone() {
+        let (kept, eaten) = run(seed, false);
+        let (wiped, _) = run(seed, true);
+        assert_eq!(kept, wiped, "seed {seed}");
+        ate += usize::from(eaten > 0);
+    }
+    assert!(
+        ate * 2 > seeds.count(),
+        "only {ate} colonies ate in over three minutes of wandering"
+    );
 }
 
 /// A companion that settles down to eat is given a meal at once, carries it along while it eats,

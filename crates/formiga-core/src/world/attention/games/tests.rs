@@ -764,10 +764,12 @@ fn a_jump_contest_gives_each_competitor_a_turn_with_the_others_watching() {
     assert!(started && watched, "{started} {watched}");
     assert_eq!(performers.len(), 2, "both competitors take a turn");
     // A turn still in the air when the contest ends is allowed to land before everything is
-    // expected to be put away; it is the landing that clears it, not the scene ending.
+    // expected to be put away; it is the landing that clears it, not the scene ending. A
+    // competitor that fell short climbs back up to the ledge, and is glad to be up for a moment
+    // once it stands there, as anyone topping out a climb is.
     for step in 500..900 {
         tick(&mut world, &mut desktop, now, step);
-        if world.window_journeys.is_empty() {
+        if world.window_journeys.is_empty() && world.attention.plans.is_empty() {
             break;
         }
     }

@@ -36,22 +36,32 @@ fn a_clip_asked_for_long_after_it_began_still_plays() {
 
 #[test]
 fn ambient_animation_specs_and_shared_handhold_placement_are_exact() {
-    for (action, fps) in [
-        (ActionKind::ClimbWindow, 6),
-        (ActionKind::Dangle, 3),
-        (ActionKind::InspectScreen, 4),
-        (ActionKind::PresentDiscovery, 2),
+    for (action, frames, fps) in [
+        // A stroke with each paw, at the rate the world raises a climber by.
+        (
+            ActionKind::ClimbWindow,
+            6,
+            formiga_core::CLIMB_FRAMES_PER_SECOND,
+        ),
+        (ActionKind::Dangle, 4, 3),
+        (ActionKind::InspectScreen, 4, 4),
+        (ActionKind::PresentDiscovery, 4, 2),
     ] {
         let spec = AnimationSpec::for_action(action);
-        assert_eq!(spec.frames, 4);
+        assert_eq!(spec.frames, frames);
         assert_eq!(spec.fps, fps);
     }
+    assert_eq!(formiga_core::CLIMB_FRAMES_PER_SECOND, 6);
+    assert_eq!(
+        AnimationSpec::for_action(ActionKind::ClimbWindow).frames,
+        2 * formiga_core::CLIMB_STROKE_FRAMES
+    );
     let discovery = AnimationSpec::for_action(ActionKind::PresentDiscovery);
     assert_eq!(discovery.playback, PlaybackMode::Hold);
     assert_eq!(discovery.frame_at(20.0), 3);
     assert_eq!(
         AnimationSpec::body_action(ActionKind::Tossed),
-        ActionKind::Dragged
+        ActionKind::Tossed
     );
     assert_eq!(
         AnimationSpec::body_action(ActionKind::PetReaction),
@@ -65,6 +75,31 @@ fn ambient_animation_specs_and_shared_handhold_placement_are_exact() {
         FramePlacement::for_action(ActionKind::Idle, 5).origin_y,
         -43
     );
+}
+
+/// Every companion climbs on the same beat, the world's: its own tempo and phase would put its
+/// pulls out of step with the rise the world gives it on them.
+#[test]
+fn a_climb_is_drawn_on_the_clock_the_world_raises_it_by() {
+    let spec = AnimationSpec::for_action(ActionKind::ClimbWindow);
+    let world = World::new(
+        [61; 32],
+        time::OffsetDateTime::UNIX_EPOCH,
+        &DesktopSnapshot::default(),
+    );
+    for index in 0..40_u64 {
+        let mut creature = world.save.creatures[0].clone();
+        creature.id ^= index.wrapping_mul(0x9e37_79b9);
+        creature.personality.activity = index as f32 / 40.0;
+        let signature = MotionSignature::for_creature(&creature);
+        for step in 0..200 {
+            let elapsed = step as f32 / 20.0;
+            assert_eq!(
+                signature.frame(ActionKind::ClimbWindow, elapsed),
+                spec.frame_at(elapsed)
+            );
+        }
+    }
 }
 
 #[test]
@@ -243,8 +278,12 @@ fn every_gesture_is_a_distinct_looping_pose_on_every_body() {
         for gesture in Gesture::ALL {
             let spec = AnimationSpec::for_clip(gesture);
             // A scene holds a pose for as long as the moment lasts, and so does a temperament's.
-            // A habit's stretch, a yawn and a swoon are done once and held at the end.
-            let playback = if matches!(gesture, Gesture::Stretch | Gesture::Yawn | Gesture::Swoon) {
+            // A habit's stretch, a yawn, a swoon and a climb's mantle are done once and held at
+            // the end.
+            let playback = if matches!(
+                gesture,
+                Gesture::Stretch | Gesture::Yawn | Gesture::Swoon | Gesture::Mantle
+            ) {
                 PlaybackMode::Hold
             } else {
                 PlaybackMode::Loop
@@ -439,6 +478,8 @@ fn a_body_shows_a_gesture_only_while_its_attention_carries_one() {
             Gesture::Strut => Some(ExpressionKind::Smug),
             Gesture::Beg => Some(ExpressionKind::Pleading),
             Gesture::Swoon => Some(ExpressionKind::Affectionate),
+            // Topping out a climb keeps the climb's effort on its face.
+            Gesture::Mantle => Some(ExpressionKind::Determined),
             _ => None,
         };
         if gesture == Gesture::Cover {
@@ -640,4 +681,147 @@ fn a_companion_walks_to_bed_and_lies_down_when_it_gets_there() {
     );
     let face = CreatureRenderer::resolve_face_state(&creature, CursorSnapshot::default(), false);
     assert_eq!(face.eyelids, EyelidPose::Closed);
+}
+
+/// A climb tops out in a mantle of three frames played once, at the rate the world hauls the
+/// body up by: the chest over the edge and the push up while it hauls, the stand as it steps in.
+/// With reduced motion it holds still on the push up, which says what it is doing better than
+/// any other moment of it, and every other clip holds still on its first frame as before.
+#[test]
+fn a_mantle_plays_once_at_the_worlds_rate_and_holds_its_push_with_motion_reduced() {
+    let spec = AnimationSpec::for_clip(Gesture::Mantle);
+    assert_eq!(spec.frames, 3);
+    assert_eq!(spec.fps, formiga_core::MANTLE_FRAMES_PER_SECOND);
+    assert_eq!(spec.playback, PlaybackMode::Hold);
+    let haul_secs = f32::from(formiga_core::MANTLE_HAUL_FRAMES)
+        / f32::from(formiga_core::MANTLE_FRAMES_PER_SECOND);
+    assert_eq!(spec.frame_at(0.0), 0);
+    assert_eq!(spec.frame_at(haul_secs * 0.75), 1);
+    assert_eq!(spec.frame_at(haul_secs + 0.01), 2);
+    assert_eq!(spec.frame_at(30.0), 2);
+    assert_eq!(AnimationSpec::still_frame(Gesture::Mantle), 1);
+    // Eating, drinking and the climb hold their own still frames (see `AnimationSpec::still_frame`);
+    // every other clip holds its first.
+    assert_eq!(AnimationSpec::still_frame(ActionKind::Eat), 1);
+    assert_eq!(AnimationSpec::still_frame(ActionKind::Drink), 2);
+    assert_eq!(AnimationSpec::still_frame(ActionKind::ClimbWindow), 1);
+    for clip in BodyClip::baked().filter(|clip| {
+        !matches!(
+            clip,
+            BodyClip::Gesture(Gesture::Mantle)
+                | BodyClip::Action(ActionKind::Eat | ActionKind::Drink | ActionKind::ClimbWindow)
+        )
+    }) {
+        assert_eq!(AnimationSpec::still_frame(clip), 0, "{clip:?}");
+    }
+    for family in [
+        BodyFamily::Blob,
+        BodyFamily::Hopper,
+        BodyFamily::SoftQuadruped,
+    ] {
+        let genome = genome(family);
+        let held = CreatureRenderer::render_body_frame(&genome, Gesture::Mantle, 0, true);
+        for frame in 1..spec.frames {
+            assert_eq!(
+                held,
+                CreatureRenderer::render_body_frame(&genome, Gesture::Mantle, frame, true),
+                "{family:?} mantle frame {frame} moves with motion reduced"
+            );
+        }
+        // Not the chest over the edge, which is the frame anything else would hold.
+        let chest = CreatureRenderer::render_body_frame(&genome, Gesture::Mantle, 0, false);
+        assert_ne!(held.canvas, chest.canvas, "{family:?}");
+    }
+}
+
+/// Hanging from a ledge, a body swings its legs slowly from side to side across the dangle's
+/// loop while its paws stay where they hold the ledge.
+#[test]
+fn a_dangling_body_swings_its_legs_and_keeps_its_grip() {
+    let preview = World::preview_adult(
+        [29; 32],
+        time::OffsetDateTime::UNIX_EPOCH,
+        &DesktopSnapshot::default(),
+    );
+    let mut bodies = vec![genome(BodyFamily::Hopper)];
+    for plan in formiga_core::BodyPlan::ALL {
+        let mut appearance = preview.appearance.clone();
+        let mut design = formiga_core::CreatureDesign::modular([29; 32], 0, None);
+        design.body = plan;
+        appearance.design = Some(design);
+        bodies.push(appearance);
+    }
+    for genome in &bodies {
+        let frames: Vec<_> = (0..AnimationSpec::for_action(ActionKind::Dangle).frames)
+            .map(|frame| {
+                CreatureRenderer::render_body_frame(genome, ActionKind::Dangle, frame, false)
+            })
+            .collect();
+        // Out to one side and out to the other.
+        assert_ne!(frames[1].canvas, frames[3].canvas, "{:?}", genome.design);
+        // The paws on the ledge, at the top of the frame, never move.
+        for frame in &frames[1..] {
+            for y in 0..8 {
+                for x in 0..FRAME_SIZE as i32 {
+                    assert_eq!(
+                        frame.canvas.get(x, y),
+                        frames[0].canvas.get(x, y),
+                        "{:?} lets go of the ledge",
+                        genome.design
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// A companion hanging from a ledge glances down at the drop once each swing of its legs, and
+/// for longer when the hang has it worried, and looks where its attention is the rest of the
+/// time.
+#[test]
+fn a_dangling_companion_glances_down_at_the_drop() {
+    let mut creature = World::preview_adult(
+        [31; 32],
+        time::OffsetDateTime::UNIX_EPOCH,
+        &DesktopSnapshot::default(),
+    );
+    creature.state.action = ActionKind::Dangle;
+    let ahead = formiga_core::Point {
+        x: creature.state.position.x + 48.0,
+        y: creature.state.position.y - 28.0,
+    };
+    let spec = AnimationSpec::for_action(ActionKind::Dangle);
+    let mut glances = Vec::new();
+    for emotion in [
+        formiga_core::AttentionEmotion::Curious,
+        formiga_core::AttentionEmotion::Concerned,
+    ] {
+        creature.state.attention = Some(formiga_core::AttentionPose {
+            target: ahead,
+            emotion,
+            hanging: 1.0,
+            gesture: None,
+        });
+        let mut down = 0;
+        let mut ahead_of_it = 0;
+        // Two whole loops, sampled in the middle of each frame.
+        for step in 0..u32::from(spec.frames) * 2 * 4 {
+            creature.state.action_elapsed = (step as f32 + 0.5) / f32::from(spec.fps) / 4.0;
+            let gaze =
+                CreatureRenderer::resolve_face_state(&creature, CursorSnapshot::default(), false)
+                    .gaze;
+            if gaze == GazeDirection::new(0, 1) {
+                down += 1;
+            } else {
+                assert_eq!(gaze, GazeDirection::new(1, 0), "{emotion:?}");
+                ahead_of_it += 1;
+            }
+        }
+        assert!(
+            down > 0 && ahead_of_it >= down,
+            "{emotion:?}: {down} {ahead_of_it}"
+        );
+        glances.push(down);
+    }
+    assert!(glances[1] > glances[0], "{glances:?}");
 }
