@@ -30,6 +30,10 @@ pub(super) struct Pose {
     /// Feet set out to the sides, in art pixels: sat down on something with its legs out in
     /// front. Only a seated pose asks for it, so no standing clip changes shape.
     pub(super) splay: i32,
+    /// The whole mass carried to one side over feet that stay where they are, in art pixels,
+    /// positive the way the body faces. Only a blob's stride asks for it: a blob has no head to
+    /// lean, so its weight going over onto the planted foot is the mass itself going over.
+    pub(super) sway: i32,
 }
 
 impl Pose {
@@ -49,7 +53,7 @@ impl Pose {
                 return pose;
             }
             BodyClip::Gesture(mood @ (Gesture::Skip | Gesture::Trudge)) => {
-                let mut pose = Self::mood_walk(genome, mood, frame);
+                let mut pose = Self::mood_walk(genome, mood, frame, reduce_motion);
                 if reduce_motion {
                     pose.calm();
                 }
@@ -69,9 +73,11 @@ impl Pose {
         let bob_amount = genome.gait_bob.max(0.2).round() as i32;
         let mut pose = match action {
             ActionKind::Traverse | ActionKind::SqueezeWindow | ActionKind::Follow => {
-                Self::stride(genome, phase, bob_amount, false)
+                Self::stride(genome, phase, bob_amount, false, reduce_motion)
             }
-            ActionKind::Sprint => Self::stride(genome, phase, bob_amount.max(1), true),
+            ActionKind::Sprint => {
+                Self::stride(genome, phase, bob_amount.max(1), true, reduce_motion)
+            }
             // Curled up and breathing: a little fuller on the breath in, the ears drooping a
             // touch further on the breath out.
             ActionKind::Sleep => Self {
@@ -315,7 +321,13 @@ impl Pose {
     ///
     /// The stride has a step for every frame of the loop, so no leg steps twice where the loop
     /// comes round.
-    fn stride(genome: &AppearanceGenome, phase: usize, bob: i32, running: bool) -> Self {
+    fn stride(
+        genome: &AppearanceGenome,
+        phase: usize,
+        bob: i32,
+        running: bool,
+        reduce_motion: bool,
+    ) -> Self {
         let run = i32::from(running);
         if genome.design.is_none() {
             // Side on: the legs swing through each other, a footfall at each end of the swing.
@@ -353,8 +365,25 @@ impl Pose {
             };
         }
         // Facing the screen: left foot up and out, down; right foot up and out, down.
-        let left = [-1, -2, 0, 0, 0, 0][phase] * (1 + run);
-        let right = [0, 0, 0, 1, 2, 0][phase] * (1 + run);
+        //
+        // A blob's feet are tucked under the one mass it is, so a foot lifted a pixel and then
+        // two barely shows from under it. Its foot comes up the whole two pixels for both frames
+        // it is off the ground, and the mass goes over onto the planted foot while the other one
+        // is up, so the walk reads as a waddle from one foot to the other. Reduced motion holds
+        // the first frame of the walk it always held, with both feet down.
+        let blob = strides_as_blob(genome) && !reduce_motion;
+        let left = if blob {
+            [-2, -2, 0, 0, 0, 0]
+        } else {
+            [-1, -2, 0, 0, 0, 0]
+        }[phase]
+            * (1 + run);
+        let right = if blob {
+            [0, 0, 0, 2, 2, 0]
+        } else {
+            [0, 0, 0, 1, 2, 0]
+        }[phase]
+            * (1 + run);
         let landed = phase % 3 == 2;
         let top = phase % 3 == 1;
         Self {
@@ -368,6 +397,7 @@ impl Pose {
             tail_sway: [1, 2, 1, -1, -2, -1][phase],
             lean: 1 + run,
             ear_perk: i32::from(top),
+            sway: if blob { [1, 1, 0, -1, -1, 0][phase] } else { 0 },
             ..Self::default()
         }
     }
@@ -375,10 +405,10 @@ impl Pose {
     /// One frame of a walk with a mood in it, `frame` of six: the body's own stride, with a hop
     /// in each step and everything carried high for a skip, or slower-footed with the head, the
     /// ears and the tail hung low for a trudge.
-    fn mood_walk(genome: &AppearanceGenome, mood: Gesture, frame: u8) -> Self {
+    fn mood_walk(genome: &AppearanceGenome, mood: Gesture, frame: u8, reduce_motion: bool) -> Self {
         let phase = usize::from(frame % 6);
         let bob = genome.gait_bob.max(0.2).round() as i32;
-        let mut pose = Self::stride(genome, phase, bob, false);
+        let mut pose = Self::stride(genome, phase, bob, false, reduce_motion);
         if mood == Gesture::Skip {
             // Up off the ground between footfalls, landing squashed on each.
             let hop = SKIP_HOP[phase];
@@ -453,6 +483,7 @@ impl Pose {
             // Ears up for the look and down again, which is what tells a look from a sway.
             ear_perk: [0, 0, 1, 2, 1, 0][beat],
             splay: 0,
+            sway: 0,
         }
     }
 
@@ -583,6 +614,7 @@ impl Pose {
                 // Ears up the whole time, with a single flick on the fourth frame.
                 ear_perk: [2, 2, 2, 1, 2, 2][slow],
                 splay: 0,
+                sway: 0,
             },
             // Breathing in, drawn up tall with the head tipped back as the paw comes up to the
             // mouth, held at the top, and settling down a little lower than it began. Played once:
@@ -975,6 +1007,16 @@ pub(super) fn footfall(genome: &AppearanceGenome, phase: usize) -> bool {
         2
     };
     phase % 3 == down
+}
+
+/// Whether a body walks as a blob recipe does (see [`Pose::stride`]): drawn from a recipe of the
+/// blob plan, not a sculpted form or the fox, which draw their own bodies.
+fn strides_as_blob(genome: &AppearanceGenome) -> bool {
+    !genome.echo_fox
+        && genome.sculpt.is_none()
+        && genome
+            .design
+            .is_some_and(|design| design.body == formiga_core::BodyPlan::Blob)
 }
 
 pub(super) fn stretches_long(genome: &AppearanceGenome) -> bool {

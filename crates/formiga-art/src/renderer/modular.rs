@@ -66,10 +66,19 @@ pub(super) fn draw(
     } else {
         match d.tail {
             1 => oval(c, p, tx - 2, y + 1, 3, 3, p.highlight),
+            // A stalk out behind from the rump, below where the paws rest, rising a row or two to
+            // its end, in the coat's shade with only the tip in the accent. Held up from the
+            // shoulder at the angle of a raised arm, in the accent a paw is tipped with, it read
+            // as a paw waving all day. Its root starts inside the body, which covers it.
             2 | 3 => {
-                let ty = y - 3 + pose.tail_sway.clamp(-2, 2);
-                c.line(tx, y + 3, (tx - 6).max(3), ty, 3, p.outline);
-                c.line(tx, y + 3, (tx - 6).max(3), ty, 2, p.accent);
+                let root = PixelPoint {
+                    x: tx + 2,
+                    y: y + ry / 2,
+                };
+                // A row on a small body, whose head sits down beside its middle; two on a big one.
+                let ty = root.y - (ry / 4).clamp(1, 2) + pose.tail_sway.clamp(-1, 1);
+                c.line(root.x, root.y, (tx - 6).max(3), ty, 3, p.outline);
+                c.line(root.x, root.y, (tx - 6).max(3), ty, 2, p.shadow);
                 if d.details.tip > 0 {
                     let tip = crate::palette::detail_color(&d, d.details.tip_color);
                     // A bobble is a pixel rounder than a flame, so it keeps a pixel further in
@@ -77,7 +86,9 @@ pub(super) fn draw(
                     let end = (tx - 6).max(if d.details.tip == 2 { 5 } else { 4 });
                     tail_tip(c, p, d.details.tip, tip, end, ty);
                 } else if d.tail == 3 {
-                    oval(c, p, (tx - 6).max(4), ty - 2, 2, 3, p.accent);
+                    oval(c, p, (tx - 6).max(4), ty, 2, 2, p.accent);
+                } else {
+                    c.fill_circle((tx - 6).max(3), ty, 1, p.accent);
                 }
             }
             4 => oval(c, p, tx - 2, y, 4, 5, p.accent),
@@ -225,7 +236,9 @@ pub(super) fn draw(
         four_legs(c, p, d, body, pose, clip, limbs, true);
     } else {
         for ((side, step), limb) in [(-1, pose.step_a), (1, pose.step_b)].into_iter().zip(limbs) {
-            let fx = x + side * (rx - 4 + pose.splay.clamp(0, 3)) + step.clamp(-2, 2);
+            // A foot stays where it was put while a blob's mass sways over it.
+            let fx =
+                x - sway(d, pose) + side * (rx - 4 + pose.splay.clamp(0, 3)) + step.clamp(-2, 2);
             let lift = step.abs().min(2);
             // Stick legs are drawn in shade, so they read as thin legs rather than coat.
             let leg = if k.limbs == 2 { p.shadow } else { p.coat };
@@ -693,7 +706,7 @@ fn measure(d: CreatureDesign, pose: Pose, size: f32) -> Body {
         rx = (rx + 2).clamp(8, 12);
         ry = (ry - 1).clamp(5, 9);
     }
-    let x = if long { 20 } else { 24 };
+    let x = if long { 20 } else { 24 } + sway(d, pose);
     // The floor is the same row in every clip. A bob or a lift moves the body over feet that
     // stay on it, the way a crouch already does, so a companion that sets off walking keeps the
     // ground it was standing on instead of rising a pixel or two above it for the length of the
@@ -758,6 +771,16 @@ fn measure(d: CreatureDesign, pose: Pose, size: f32) -> Body {
         hy,
         head,
         floor,
+    }
+}
+
+/// How far a blob's mass has gone over to one side of its feet: a pixel at most, only ever asked
+/// for by its stride (see `Pose::sway`). Every other plan stands over its feet.
+fn sway(d: CreatureDesign, pose: Pose) -> i32 {
+    if d.body == BodyPlan::Blob {
+        pose.sway.clamp(-1, 1)
+    } else {
+        0
     }
 }
 
@@ -1981,6 +2004,96 @@ mod tests {
                 stilts.y < plain.y,
                 "{plan:?} stands no taller on stick legs"
             );
+        }
+    }
+
+    #[test]
+    fn a_stalk_tail_trails_out_behind_lower_than_a_greeting_paw_is_raised() {
+        // A greeting paw is raised beside the head, two to four rows above its middle; a stalk
+        // held up that high reads as a second paw waving. A flame or a bobble on the end is
+        // its own colour and shape, and a flame burns upward, so it is left out.
+        let creature = preview();
+        let clips = [
+            BodyClip::Action(ActionKind::Idle),
+            BodyClip::Action(ActionKind::Traverse),
+            BodyClip::Action(ActionKind::Greet),
+            BodyClip::Gesture(Gesture::Skip),
+        ];
+        for body in BodyPlan::ALL {
+            for tail in [2, 3] {
+                for small in [false, true] {
+                    let mut d = creature.appearance.design.unwrap();
+                    d.body = body;
+                    d.tail = tail;
+                    d.details.tip = 0;
+                    d.width = if small { 8 } else { 12 };
+                    d.height = if small { 7 } else { 11 };
+                    d.head = if small { 7 } else { 9 };
+                    d.legs = if small { 3 } else { 6 };
+                    let mut bare = d;
+                    bare.tail = 0;
+                    let size = if small { 0.55 } else { 1.05 };
+                    for clip in clips {
+                        for frame in 0..AnimationSpec::for_clip(clip).frames {
+                            let (with, _, pose) = render(&creature, d, clip, frame, size);
+                            let (without, ..) = render(&creature, bare, clip, frame, size);
+                            let top = (0..FRAME_SIZE as i32)
+                                .find(|&y| {
+                                    (0..FRAME_SIZE as i32)
+                                        .any(|x| with.get(x, y) != without.get(x, y))
+                                })
+                                .expect("the tail is drawn");
+                            let at = measure(d, pose, size);
+                            assert!(
+                                top > at.hy - 2,
+                                "{body:?} tail {tail} small={small} {clip:?} \
+                                     frame {frame}: the tail reaches row {top}, as high as \
+                                     a greeting paw at row {}",
+                                at.hy - 2
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_blob_waddles_from_foot_to_foot_and_holds_still_under_reduced_motion() {
+        let mut creature = preview();
+        let mut d = creature.appearance.design.unwrap();
+        d.body = BodyPlan::Blob;
+        creature.appearance.design = Some(d);
+        for clip in [
+            BodyClip::Action(ActionKind::Traverse),
+            BodyClip::Action(ActionKind::Sprint),
+        ] {
+            let pose = |frame| Pose::new(&creature.appearance, clip, frame, false);
+            let x: Vec<i32> = (0..6).map(|frame| measure(d, pose(frame), 1.0).x).collect();
+            // Over onto the front foot while the back one is up, and back again.
+            assert!(x[1] > x[2] && x[4] < x[2], "{clip:?}: {x:?}");
+            // Each foot is up the whole two pixels for both frames it is off the ground.
+            for frame in [0, 1] {
+                assert!(pose(frame).step_a.abs() >= 2 && pose(frame).step_b == 0);
+            }
+            for frame in [3, 4] {
+                assert!(pose(frame).step_b.abs() >= 2 && pose(frame).step_a == 0);
+            }
+            let calm = Pose::new(&creature.appearance, clip, 0, true);
+            assert_eq!(calm.sway, 0, "{clip:?} sways under reduced motion");
+        }
+        // Every other plan stands over its feet.
+        let mut round = d;
+        round.body = BodyPlan::Round;
+        creature.appearance.design = Some(round);
+        for frame in 0..6 {
+            let pose = Pose::new(
+                &creature.appearance,
+                BodyClip::Action(ActionKind::Traverse),
+                frame,
+                false,
+            );
+            assert_eq!(pose.sway, 0);
         }
     }
 }

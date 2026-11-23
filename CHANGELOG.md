@@ -6,6 +6,17 @@ All notable changes are documented here.
 
 ### Changed
 
+- A stalk tail no longer looks like a paw waving all day. The two stalk tails were held up and
+  back from the shoulder in the accent colour, at the angle and in the colour of a raised paw, so
+  a companion with one seemed to be waving in every clip and its real wave when it said hello did
+  not read. They now trail out behind from the rump, rising a row or two, in the coat's shade with
+  only the tip, the club or the flame in colour. The recipe is unchanged; every companion whose
+  recipe has one of these tails (about a quarter of new ones) is drawn this way in every frame.
+- A blob walks instead of bobbing in place. Each foot comes up two pixels for both frames it is off
+  the ground and the body sways a pixel over onto the planted foot, so the walk, the run, the skip
+  and the trudge read as a waddle from foot to foot. Its feet stay planted, nothing else a blob does
+  changes, and reduced motion still shows the walk's first frame with both feet down.
+
 - The notebook reads less like a settings window. Apply and Revert are only under Habitat,
   Applications and Preferences, the pages with preferences on them (and under any page while a
   change is waiting to be applied); elsewhere the foot of the page holds only the undo offer and
