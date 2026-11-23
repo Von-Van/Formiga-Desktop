@@ -937,11 +937,11 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     let total_bytes = atlas.body_pixels.len() + atlas.face_pixels.len();
     eprintln!("layered atlas: {total_bytes} bytes, baked in {bake_time:?}");
     // 110 action frames — six of them the climb, a stroke with each paw, two the toss's own and
-    // the last two a squeeze's own, pinched — and 130 gesture frames — three of them the mantle
+    // the last two a squeeze's own, pinched — and 134 gesture frames — five of them the mantle
     // a climb tops out with, eight the seat and the sled wonders brought in 0.66.0, twenty-eight a
     // companion's own repertoire (a wash, a shake, a sniff, two more ways to sleep and two more
     // ways to walk), sixteen the chores and a pet leaned into, fourteen the nibble, chomp, chew and
-    // gulp of a meal, and two a hop's leap through the air — and sixteen more for breathing:
+    // gulp of a meal, and four a hop's leap through the air — and sixteen more for breathing:
     // eight frames each for sitting on a window and on the doorstep where each had one pose, and
     // four for each way of sleeping where each had two —
     // and fifteen expressions' faces in every eyelid pose
@@ -950,7 +950,7 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     // nothing read: 1,824,768 bytes with the temperament poses and their faces. Since 0.62.0 a
     // frame or face that comes out the same as one already baked shares its cell — a held pose,
     // eyes shut whichever way they would be looking — and the trinket cells are gone.
-    assert_eq!(total_animation_frames(), 240);
+    assert_eq!(total_animation_frames(), 244);
     // 1,244,160 until 0.66.0, when the walk, the run, the greeting and the meal stopped repeating
     // frames they had shared and the texture grew by a row of ten cells, to 1,336,320;
     // 1,244,160 again from 0.66.1, whose scoot along on a leaf sled repeats two of its four
@@ -963,19 +963,22 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     // more (a seated breath's second loop is its first but for the tail), and still that with a
     // squeeze's two pinched frames, which fill cells the last row had spare; and 1,889,280 once
     // the marks over a greeting, a game with a friend and a cheer drift and fade across their
-    // frames, so fewer of those frames come out alike: one row more again.
+    // frames, so fewer of those frames come out alike: one row more again; and still that
+    // with the mantle's hang and pull-up and the leap's two more frames, which fit in cells
+    // that row had spare.
     assert_eq!(total_bytes, 1_889_280);
-    assert_eq!(full_layout_bytes(), 2_626_560);
-    // Tripled in 0.58.0 so the pose vocabulary has somewhere to grow: the budget is what
-    // stops a creature costing more than a creature should, not what stops it having poses.
-    assert!(full_layout_bytes() <= 4_500_000);
-    // A full colony of six like this one: 9,676,800 bytes. Even with no two frames alike it
-    // would be 13,547,520, which is why the ceiling was raised from 10 MiB to 15 MiB in 0.62.0,
-    // and to 16 MiB in 0.68.0, when the animation pass's new clips (climb, mantle, toss, leap,
-    // squeeze, breathing) put the no-two-frames-alike colony just past 15 MiB.
+    assert_eq!(full_layout_bytes(), 2_718_720);
+    // Tripled in 0.58.0 so the pose vocabulary has somewhere to grow, and raised again with the
+    // animation pass: the budget is what stops a creature costing more than a creature should,
+    // not what stops it having poses.
+    assert!(full_layout_bytes() <= 5_500_000);
+    // A full colony of six like this one: 11,335,680 bytes. With no two frames alike it would be
+    // 16,312,320. The ceiling was raised from 10 MiB to 15 MiB in 0.62.0 and to 32 MiB with the
+    // animation pass, whose frames together passed 15: the owner allows the colony's atlases up
+    // to about 50 MiB and prefers them between 30 and 40, so this leaves room to grow below that.
     assert!(
-        full_layout_bytes() * formiga_core::MAX_COLONY_CREATURES < 16 * 1024 * 1024,
-        "a full colony's atlases could exceed 16 MiB"
+        full_layout_bytes() * formiga_core::MAX_COLONY_CREATURES < 32 * 1024 * 1024,
+        "a full colony's atlases could exceed 32 MiB"
     );
     assert!(total_bytes < atlas.body_pixels.len() * 3);
     // The optional outline is baked into the same atlas: no extra texture, no extra frame,

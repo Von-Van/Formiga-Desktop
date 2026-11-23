@@ -2,39 +2,57 @@ use super::surfaces::supports_on;
 use super::*;
 
 const INSPECTION_RADIUS: f32 = 12.0;
-pub(super) const MANTLE_LIFT_POINTS: f32 = 10.0;
 
 /// How many frames a second a top-out onto a ledge is drawn at. The art plays its mantle at this
-/// rate from the moment the climb tops out, so the haul and the step in below change over on the
-/// frame the art does.
+/// rate from the moment the climb tops out, so the pull-up, the haul and the step in below change
+/// over on the frame the art does.
 pub const MANTLE_FRAMES_PER_SECOND: u8 = 5;
+/// How many of the mantle's frames the pull-up takes: hung from the ledge by both paws at arms'
+/// length, and pulled up until the chin is over it. The haul follows.
+pub const MANTLE_PULL_FRAMES: u8 = 2;
 /// How many of the mantle's frames the haul takes: its chest over the edge with a knee up, and the
-/// push up on both paws. The step in onto the ledge is the third. The haul is the longer part: it
-/// is the effort, and the step is the arrival.
+/// push up on both paws. The step in onto the ledge is the frame after. The haul is the longer
+/// part: it is the effort, and the step is the arrival.
 pub const MANTLE_HAUL_FRAMES: u8 = 2;
+/// How far below a ledge a companion's feet are on each frame of the mantle before the push, in
+/// art pixels: hung from it at arms' length, pulled up with its chin over it, and with its chest
+/// on it. The art draws the ledge this far above the feet in those frames, so the paws it draws on
+/// the ledge are on the ledge the desktop shows.
+const MANTLE_FRAME_DROP: [u8; 3] = [30, 20, 10];
+/// The same for a long body, which goes up a wall with all four paws on it and its body upright:
+/// its forepaws are nearer its feet than a paw reached up over a head is, and it pulls up by the
+/// length of a foreleg.
+const MANTLE_FRAME_DROP_LONG: [u8; 3] = [23, 19, 10];
 /// How much of the haul's rise is made with the chest over the edge, before the push: a little,
 /// as the knee comes up. The push makes the rest.
 const HAUL_CHEST_RISE: f32 = 0.15;
 /// How much of the push is made at once, as the paws plant and the pose changes to the push.
 const HAUL_HEAVE: f32 = 0.6;
+/// How long the step in onto the ledge takes once the push is made, in seconds.
+const MANTLE_STEP_SECS: f32 = 0.3;
 
 /// How many frames a second a climb up a window's side is drawn at. The art plays its climb at
-/// this rate, so the rise below and the hands drawn keep step.
-pub const CLIMB_FRAMES_PER_SECOND: u8 = 6;
-/// A climb goes a hand at a time, and each hand's stroke is this many frames: a reach up, a pull
-/// and a settle onto the new grip. The climb's clip is two strokes, one with each hand.
+/// this rate, so the rise below and the paws drawn keep step.
+pub const CLIMB_FRAMES_PER_SECOND: u8 = 10;
+/// A climb goes a paw at a time, and each paw's stroke is this many frames: a catch, the paw
+/// landed high on the wall; a pull up on it; and a lock, the paw drawn down to the cheek while
+/// the other reaches. The climb's clip is two strokes, one with each paw.
 pub const CLIMB_STROKE_FRAMES: u8 = 3;
-/// How much of a stroke's rise each of its frames takes: hardly any while the hand reaches up,
-/// most of it on the pull, and a little as the body settles onto the new grip. Never none, so a
-/// climber is never stood still on the wall — a journey that holds still is a pause, which a
-/// scene may fill with a pose.
-const CLIMB_STROKE_RISE: [f32; CLIMB_STROKE_FRAMES as usize] = [0.08, 1.0, 0.3];
+/// How far a climber rises on coming to each frame of a stroke, in art pixels: hardly at all onto
+/// the catch, most of it onto the pull, and the rest onto the lock. The art draws the paw that
+/// holds the wall lower against the body by exactly this much from each frame to the next, so the
+/// paw stays where it gripped while the body goes up past it.
+pub const CLIMB_FRAME_RISE: [u8; CLIMB_STROKE_FRAMES as usize] = [1, 7, 4];
+/// How much of the rise onto the next frame is made while this one is still showing. Never none,
+/// so a climber is never stood still on the wall — a journey that holds still is a pause, which a
+/// scene may fill with a pose — and little enough that the paws drawn stay where they gripped.
+const CLIMB_CREEP: f32 = 0.12;
 
 /// How far a climber's paw on the window's side reaches past its frame's middle, in art pixels,
-/// for the bodies that reach furthest: a long body's forepaw held out ahead of it, and a classic
+/// for the bodies that reach furthest: a long body's paws on the wall under it, and a classic
 /// hopper's arm. See [`climb_grip_reach`].
 const CLIMB_REACH_LONG: f32 = 18.0;
-/// The same for every other body: the paws go up beside the head.
+/// The same for every other body: the paws go up the wall beside the head.
 const CLIMB_REACH: f32 = 16.0;
 /// How far over a window's edge line a climber's paw on that side grips, in art pixels: its tip,
 /// so the paw is drawn on the edge rather than beside it.
@@ -68,6 +86,31 @@ pub fn climb_grip_reach(appearance: &AppearanceGenome) -> f32 {
     }
 }
 
+/// Whether a companion wearing `appearance` goes up a wall as a long body does: upright against
+/// it on all four paws. A fox and a sculpted form draw in place of the body the design would.
+pub fn climbs_on_all_fours(appearance: &AppearanceGenome) -> bool {
+    !appearance.echo_fox
+        && appearance.sculpt.is_none()
+        && appearance.design.map(|design| design.body) == Some(BodyPlan::Long)
+}
+
+/// How far below a ledge a companion wearing `appearance` has its feet on each frame of the
+/// mantle before the push, in art pixels: hung from the ledge, pulled up on it, and with its chest
+/// on it. The simulation holds the companion this far under the ledge on those frames and the art
+/// draws the ledge this far above the feet in them, so the paws drawn on the ledge are on the
+/// ledge the desktop shows.
+pub fn mantle_frame_drop(appearance: &AppearanceGenome) -> [u8; 3] {
+    mantle_frame_drop_for(climbs_on_all_fours(appearance))
+}
+
+/// [`mantle_frame_drop`] for a body that goes up a wall on all fours, or for any other.
+pub const fn mantle_frame_drop_for(all_fours: bool) -> [u8; 3] {
+    if all_fours {
+        MANTLE_FRAME_DROP_LONG
+    } else {
+        MANTLE_FRAME_DROP
+    }
+}
 /// How long a creature crouches to spring before a hop from standing, in seconds. The journey
 /// starts this far before nought and holds it where it is until then. A hop across a gap has a
 /// run-up instead.
@@ -114,7 +157,11 @@ pub(super) struct ClimbJourney {
     target_bounds: DesktopRect,
     pub(super) start: Point,
     pub(super) approach: Point,
+    /// Where the climb ends and the mantle begins: beside the window, hung from its ledge as far
+    /// below it as the mantle's first frame draws it.
     pub(super) climb_end: Point,
+    /// Where the pull-up has brought it, its chest at the ledge: straight above `climb_end`.
+    pub(super) chest: Point,
     /// Where across the companion's middle is once it has pushed itself up over the edge: past
     /// the edge line, with both its paws on the ledge, and no further in than `target`.
     pub(super) over_x: f32,
@@ -124,6 +171,18 @@ pub(super) struct ClimbJourney {
     pub(super) approach_duration: f32,
     pub(super) climb_duration: f32,
     pub(super) mantle_duration: f32,
+    /// How far below the ledge its feet are on each of the mantle's frames before the push, in
+    /// art pixels (see [`mantle_frame_drop`]).
+    pub(super) drops: [f32; 3],
+    /// Points to an art pixel where the companion is drawn: the climb is paced in the pixels its
+    /// paws are drawn in, so they hold where they grip at any size.
+    pub(super) pixel: f32,
+    /// How many of the mantle's first frames are left out, 0 to [`MANTLE_PULL_FRAMES`]: a ledge
+    /// low enough to reach from the floor is not hung from at arms' length first.
+    pub(super) mantle_skip: u8,
+    /// Risen steadily rather than a stroke at a time, as it is drawn with motion reduced: the
+    /// climb holds one frame then, which a body going up in steps would not match.
+    pub(super) steady: bool,
 }
 
 #[derive(Clone)]
@@ -178,6 +237,21 @@ pub(super) struct JourneyStep {
 }
 
 impl WindowJourney {
+    /// Has a climb rise steadily, as it is drawn with motion reduced, or a stroke at a time. The
+    /// climb takes as long as that rise does, so this is set before the climb begins; once it is
+    /// on the wall it keeps the rise it started with.
+    pub(super) fn set_steady(&mut self, steady: bool) {
+        let Self::Climb(journey) = self else {
+            return;
+        };
+        if journey.steady == steady || journey.elapsed >= journey.approach_duration {
+            return;
+        }
+        journey.steady = steady;
+        let pixels = journey.approach.distance(journey.climb_end) / journey.pixel.max(0.001);
+        journey.climb_duration = climb_secs(pixels, steady);
+    }
+
     pub(super) fn initial_action(&self) -> ActionKind {
         match self {
             Self::Gap(_) => ActionKind::InspectScreen,
@@ -394,39 +468,49 @@ impl WindowJourney {
                         pose: None,
                     }
                 } else if journey.elapsed < climb_end {
-                    let progress =
-                        climb_progress(journey.elapsed - approach_end, journey.climb_duration);
+                    let rise =
+                        climb_rise(journey.elapsed - approach_end, journey.steady) * journey.pixel;
+                    let height = journey.approach.y - journey.climb_end.y;
                     JourneyStep {
-                        position: lerp_point(journey.approach, journey.climb_end, progress),
+                        position: Point {
+                            x: journey.approach.x,
+                            y: journey.approach.y - rise.min(height),
+                        },
                         action: ActionKind::ClimbWindow,
                         complete: false,
                         pose: None,
                     }
                 } else {
-                    // Topping out is a mantle of its own, frame for frame with the art: the
-                    // chest brought up to the edge with a knee up, straight up beside the window
-                    // with the forearm laid over the edge; the push, which heaves the companion up
+                    // Topping out is a mantle of its own, frame for frame with the art: hung from
+                    // the ledge by both paws; pulled up until the chin is over it; the chest
+                    // brought up onto the edge with a knee up, all three straight up beside the
+                    // window with the paws on its ledge; the push, which heaves the companion up
                     // and over the edge onto both paws on the ledge; and a stand with a little
-                    // settle as it steps the rest of the way in. Rising and sliding in together
-                    // all the way up used to drag a body hung over the window along its edge;
-                    // now the body hangs beside the window and only the push crosses the edge,
+                    // settle as it steps the rest of the way in. Only the push crosses the edge,
                     // as a heave does. It is still a climb while it does.
-                    let mantle = (journey.elapsed - climb_end).max(0.0);
-                    let haul = mantle_haul_secs(journey.mantle_duration);
+                    let mantle = (journey.elapsed - climb_end).max(0.0) + journey.skipped_secs();
+                    let pull = mantle_pull_secs();
+                    let haul = mantle_haul_secs();
                     let over = Point {
                         x: journey.over_x,
                         y: journey.target.y,
                     };
-                    let position = if mantle < haul {
-                        let t = mantle / haul.max(0.001);
+                    let position = if mantle < pull {
                         Point {
-                            x: lerp(journey.climb_end.x, over.x, haul_across(t)),
-                            y: lerp(journey.climb_end.y, over.y, haul_rise(t)),
+                            x: journey.chest.x,
+                            y: journey.target.y
+                                + mantle_drop(journey.drops, mantle, journey.steady)
+                                    * journey.pixel,
+                        }
+                    } else if mantle < pull + haul {
+                        let t = (mantle - pull) / haul.max(0.001);
+                        Point {
+                            x: lerp(journey.chest.x, over.x, haul_across(t)),
+                            y: lerp(journey.chest.y, over.y, haul_rise(t)),
                         }
                     } else {
-                        let step = (journey.mantle_duration - haul).max(0.001);
                         // Carried in by the push, and coming to a stop on the ledge.
-                        let progress = ((mantle - haul) / step).clamp(0.0, 1.0);
+                        let progress = ((mantle - pull - haul) / MANTLE_STEP_SECS).clamp(0.0, 1.0);
                         lerp_point(over, journey.target, 1.0 - (1.0 - progress).powi(2))
                     };
                     // Looking ahead along the ledge it is climbing onto.
@@ -500,8 +584,9 @@ impl WindowJourney {
                 if (0.0..journey.climb_duration).contains(&into) {
                     into
                 } else if into >= journey.climb_duration {
-                    // The mantle counts from the moment the climb topped out.
-                    into - journey.climb_duration
+                    // The mantle counts from the moment the climb topped out, and from as far
+                    // into its clip as a low ledge has it begin.
+                    into - journey.climb_duration + journey.skipped_secs()
                 } else {
                     0.0
                 }
@@ -516,10 +601,37 @@ impl WindowJourney {
     }
 }
 
-/// How long the haul of a mantle lasting `mantle` seconds takes: its first
-/// [`MANTLE_HAUL_FRAMES`] frames at [`MANTLE_FRAMES_PER_SECOND`], never more than the mantle.
-fn mantle_haul_secs(mantle: f32) -> f32 {
-    (f32::from(MANTLE_HAUL_FRAMES) / f32::from(MANTLE_FRAMES_PER_SECOND)).min(mantle)
+impl ClimbJourney {
+    /// How far into the mantle's clip it begins, in seconds: the frames a low ledge leaves out.
+    fn skipped_secs(&self) -> f32 {
+        f32::from(self.mantle_skip) / f32::from(MANTLE_FRAMES_PER_SECOND)
+    }
+}
+
+/// How long the pull-up of a whole mantle takes: its first [`MANTLE_PULL_FRAMES`] frames at
+/// [`MANTLE_FRAMES_PER_SECOND`].
+fn mantle_pull_secs() -> f32 {
+    f32::from(MANTLE_PULL_FRAMES) / f32::from(MANTLE_FRAMES_PER_SECOND)
+}
+
+/// How long the haul of a mantle takes: the [`MANTLE_HAUL_FRAMES`] frames after the pull-up.
+fn mantle_haul_secs() -> f32 {
+    f32::from(MANTLE_HAUL_FRAMES) / f32::from(MANTLE_FRAMES_PER_SECOND)
+}
+
+/// How far below the ledge a companion's feet are `secs` into a whole mantle's pull-up, in art
+/// pixels: where each frame draws them, `drops` ([`mantle_frame_drop`]), creeping up a little
+/// while the frame shows and making the rest of the rise as the next one comes, so the paws drawn
+/// on the ledge stay on it. `steady` rises evenly instead, for a pull-up drawn as one still frame.
+fn mantle_drop(drops: [f32; 3], secs: f32, steady: bool) -> f32 {
+    let frames =
+        (secs.max(0.0) * f32::from(MANTLE_FRAMES_PER_SECOND)).min(f32::from(MANTLE_PULL_FRAMES));
+    let frame = (frames as usize).min(usize::from(MANTLE_PULL_FRAMES) - 1);
+    let within = frames - frame as f32;
+    let from = drops[frame];
+    let to = drops[frame + 1];
+    let made = if steady { within } else { CLIMB_CREEP * within };
+    from + (to - from) * made
 }
 
 /// How far across the edge the haul has carried a companion, from 0 to 1, `t` of the way through
@@ -552,32 +664,58 @@ pub(super) fn haul_rise(t: f32) -> f32 {
     }
 }
 
-/// How far up its climb a companion is, from 0 to 1, `into` seconds into a climb that lasts
-/// `duration`: a hand at a time rather than a steady slide. Each stroke rises mostly on its pull
-/// and holds almost still through the reach, frame for frame with the clip, which plays at
-/// [`CLIMB_FRAMES_PER_SECOND`] from the start of the climb. The whole climb still takes
-/// `duration` and ends where it did, so only the shape of the rise changes.
-pub(super) fn climb_progress(into: f32, duration: f32) -> f32 {
-    let total = climb_effort(duration);
-    if total <= f32::EPSILON {
-        return (into / duration.max(0.001)).clamp(0.0, 1.0);
-    }
-    (climb_effort(into.clamp(0.0, duration)) / total).clamp(0.0, 1.0)
+/// How far a stroke of a climb rises, in art pixels.
+fn climb_stroke_rise() -> f32 {
+    CLIMB_FRAME_RISE.iter().map(|rise| f32::from(*rise)).sum()
 }
 
-/// The rise a climb has made `secs` into it, in strokes' worth of [`CLIMB_STROKE_RISE`].
-fn climb_effort(secs: f32) -> f32 {
-    let frames = secs.max(0.0) * f32::from(CLIMB_FRAMES_PER_SECOND);
-    let per_stroke = f32::from(CLIMB_STROKE_FRAMES);
-    let strokes = (frames / per_stroke).floor();
-    let mut effort = strokes * CLIMB_STROKE_RISE.iter().sum::<f32>();
-    let mut into = frames - strokes * per_stroke;
-    for rise in CLIMB_STROKE_RISE {
-        let part = into.clamp(0.0, 1.0);
-        effort += rise * part;
-        into -= part;
+/// How far a climb has risen by the moment its `frame`th frame comes, in art pixels: nothing on
+/// the first, which catches the wall where the climb starts, and then what each frame it has come
+/// to since takes ([`CLIMB_FRAME_RISE`]).
+fn climb_rise_at(frame: u32) -> f32 {
+    let per_stroke = u32::from(CLIMB_STROKE_FRAMES);
+    let mut rise = (frame / per_stroke) as f32 * climb_stroke_rise();
+    for coming in 1..=frame % per_stroke {
+        rise += f32::from(CLIMB_FRAME_RISE[coming as usize]);
     }
-    effort
+    rise
+}
+
+/// How far up its climb a companion is `secs` into it, in art pixels: a paw at a time rather than
+/// a steady slide. The body goes up as each frame of the clip comes, by what that frame's paws
+/// are drawn lower by, and only creeps while a frame shows, so the paw gripping the wall stays
+/// where it gripped. `steady` rises evenly at the same speed instead, for a climb drawn as one
+/// still frame.
+pub(super) fn climb_rise(secs: f32, steady: bool) -> f32 {
+    let frames = secs.max(0.0) * f32::from(CLIMB_FRAMES_PER_SECOND);
+    if steady {
+        return frames / f32::from(CLIMB_STROKE_FRAMES) * climb_stroke_rise();
+    }
+    let frame = frames as u32;
+    let next = climb_rise_at(frame + 1) - climb_rise_at(frame);
+    climb_rise_at(frame) + CLIMB_CREEP * next * (frames - frame as f32)
+}
+
+/// How long a climb takes to rise `pixels` art pixels: the moment [`climb_rise`] first gets
+/// there.
+pub(super) fn climb_secs(pixels: f32, steady: bool) -> f32 {
+    let fps = f32::from(CLIMB_FRAMES_PER_SECOND);
+    if pixels <= 0.0 {
+        return 0.0;
+    }
+    if steady {
+        return pixels / climb_stroke_rise() * f32::from(CLIMB_STROKE_FRAMES) / fps;
+    }
+    let mut frame = 0_u32;
+    loop {
+        let at = climb_rise_at(frame);
+        let creep = CLIMB_CREEP * (climb_rise_at(frame + 1) - at);
+        if at + creep >= pixels {
+            return (frame as f32 + ((pixels - at) / creep.max(f32::EPSILON)).clamp(0.0, 1.0))
+                / fps;
+        }
+        frame += 1;
+    }
 }
 
 /// Shows the pose a journey's step strikes, `into` seconds into it, for this tick: over a scene's
@@ -722,10 +860,19 @@ pub(super) fn build_window_journey(
     let regions = monitor.map(|monitor| accessible_regions(policy, monitor));
     let half = monitor.map_or(0.0, |monitor| body_half_width(monitor, display_scale));
     let hang = (climb_grip_reach(&creature.appearance) - CLIMB_GRIP_OVER_EDGE) * unit;
-    // Stop with the body just below its final contact point, then haul it up and over in the
-    // mantle. Previously the contact point reached the ledge before the horizontal pull began,
-    // producing a visible hold-and-reposition hitch.
-    let top_y = window.bounds.y + MANTLE_LIFT_POINTS;
+    // The climb stops with the paws on the ledge and the body hung below it at arms' length, and
+    // the mantle pulls it up and over from there. A ledge too low to hang that far under from the
+    // floor is taken from as far into the mantle as it can be reached: with the chin over it, or
+    // with the chest already at it.
+    let rise = start.y - window.bounds.y;
+    let drops = mantle_frame_drop(&creature.appearance).map(f32::from);
+    let mantle_skip = drops[..usize::from(MANTLE_PULL_FRAMES)]
+        .iter()
+        .take_while(|drop| **drop * unit > rise)
+        .count() as u8;
+    let drop = |frame: u8| window.bounds.y + drops[usize::from(frame)] * unit;
+    let chest_y = drop(MANTLE_PULL_FRAMES).min(start.y);
+    let top_y = drop(mantle_skip).min(start.y);
     let track = |edge: f32, outward: f32| {
         climb_track(
             edge,
@@ -763,26 +910,37 @@ pub(super) fn build_window_journey(
         x: track_x,
         y: top_y,
     };
+    let chest = Point {
+        x: track_x,
+        y: chest_y,
+    };
     let target = Point {
         x: target_x,
         y: window.bounds.y,
     };
     surface.relative_x = ((target_x - window.bounds.x) / window.bounds.width).clamp(0.05, 0.95);
     let traverse_speed = 24.0 + creature.personality.activity * 34.0;
-    let climb_speed = 44.0 + creature.personality.activity * 18.0;
+    let pull_frames = f32::from(MANTLE_PULL_FRAMES - mantle_skip);
     WindowJourney::Climb(ClimbJourney {
         target_window: window.key,
         target_bounds: window.bounds,
         start,
         approach,
         climb_end,
+        chest,
         over_x,
         target,
         surface,
         elapsed: 0.0,
         approach_duration: (start.distance(approach) / traverse_speed).clamp(0.0, 6.0),
-        climb_duration: (approach.distance(climb_end) / climb_speed).max(0.35),
-        mantle_duration: 0.7,
+        climb_duration: climb_secs(approach.distance(climb_end) / unit, false),
+        mantle_duration: pull_frames / f32::from(MANTLE_FRAMES_PER_SECOND)
+            + mantle_haul_secs()
+            + MANTLE_STEP_SECS,
+        drops,
+        pixel: unit,
+        mantle_skip,
+        steady: false,
     })
 }
 

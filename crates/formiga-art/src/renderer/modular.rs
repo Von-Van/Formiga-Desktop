@@ -11,6 +11,21 @@ const MAX_SIZE: f32 = formiga_core::STATURE_MAX as f32 / 100.0 + 0.01;
 const LONG_MAX_SIZE: f32 = 1.10;
 
 /// The size `d` is drawn at, between the smallest a mini is drawn and the largest its plan allows.
+/// The column of a climber's frame the edge line of the window it climbs is drawn on, facing
+/// right: as far past the middle of the frame as the simulation hangs it out from the edge (see
+/// `formiga_core::climb_grip_reach`), less the grip. Everything from here on is over the window.
+pub(super) const CLIMB_WALL: i32 = FRAME_SIZE as i32 / 2 + 14;
+/// The column a climber's paw holds the wall at: on the edge line, its tip over it.
+const CLIMB_PAW: i32 = CLIMB_WALL - 2;
+
+/// The row of a frame the ledge is drawn on in each of a mantle's first frames, for feet that
+/// reach down to `feet`: as far above the row under them as the simulation has the ledge above
+/// the companion then (see `formiga_core::MANTLE_FRAME_DROP`).
+pub(super) fn mantle_ledge(feet: i32, frame: u8, all_fours: bool) -> i32 {
+    let drops = formiga_core::mantle_frame_drop_for(all_fours);
+    feet + 1 - i32::from(drops[usize::from(frame).min(drops.len() - 1)])
+}
+
 fn drawn_size(d: CreatureDesign, size: f32) -> f32 {
     let largest = if d.body == BodyPlan::Long {
         LONG_MAX_SIZE
@@ -25,6 +40,19 @@ fn oval(c: &mut Canvas, p: Palette, x: i32, y: i32, rx: i32, ry: i32, color: Rgb
     c.fill_ellipse(x, y, rx, ry, color);
 }
 
+/// Which of a body `draw_parts` draws: all of it, as nearly every frame is; the head and what
+/// grows on it apart from everything else, for a four-pawed body turned upright against a wall
+/// under a head that stays level; or all of it but its legs and the paws it is using, for a
+/// two-legged body leant in to a wall, whose limbs go out to the wall from where the lean has put
+/// its shoulders and hips.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Parts {
+    All,
+    Trunk,
+    Head,
+    Core,
+}
+
 pub(super) fn draw(
     c: &mut Canvas,
     design: CreatureDesign,
@@ -35,12 +63,444 @@ pub(super) fn draw(
     frame: u8,
 ) -> PixelPoint {
     let d = design.bounded();
+    if d.body == BodyPlan::Long && pose.wall {
+        return draw_upright(c, d, p, pose, size, clip, frame);
+    }
+    if pose.wall {
+        return draw_leaning(c, d, p, pose, size, clip, frame);
+    }
+    let body = measure(d, pose, size);
+    draw_parts(c, d, p, pose, size, clip, frame, body, Parts::All)
+}
+
+/// How a two-legged body up against a wall is leant in to it: turned as one piece about the
+/// middle of its trunk, a little the way the hands of a clock go when the wall is on its right, so
+/// its head tips toward the wall and its hips come out from it. A climber faces what it climbs;
+/// drawn square to the screen with only its paws and feet gone to the wall, it reads as standing
+/// in the air beside it. Whole numbers throughout, so every machine turns it the same.
+#[derive(Clone, Copy)]
+struct Lean {
+    about: PixelPoint,
+    /// How many rows the leant body is set down by, so that a tall one's crown, tipped over,
+    /// stays inside its frame.
+    drop: i32,
+}
+
+impl Lean {
+    /// The sine and cosine of the lean, sixteen degrees, in 1024ths.
+    const SIN: i32 = 282;
+    const COS: i32 = 984;
+
+    fn of(body: Body) -> Self {
+        Self {
+            about: PixelPoint {
+                x: body.x,
+                y: body.y,
+            },
+            drop: 0,
+        }
+    }
+
+    fn rounded(value: i32) -> i32 {
+        (value + 512).div_euclid(1024)
+    }
+
+    /// Where a point of the body as it stands is once it leans.
+    fn turn(self, at: PixelPoint) -> PixelPoint {
+        let (dx, dy) = (at.x - self.about.x, at.y - self.about.y);
+        PixelPoint {
+            x: self.about.x + Self::rounded(dx * Self::COS - dy * Self::SIN),
+            y: self.about.y + Self::rounded(dx * Self::SIN + dy * Self::COS) + self.drop,
+        }
+    }
+
+    /// `standing` leant. Each pixel looks back at the standing body from nine points across
+    /// itself, and is drawn if four of them or more find the body there, in the colour most of
+    /// those find; so an edge comes out as even as a turned edge can and a line one pixel wide
+    /// stays joined up rather than falling between pixels. Any pixel left on the edge of the
+    /// turned shape that is not outline is given the outline's colour, so the turn invents no
+    /// colour and leaves the outline whole. Set down as far as keeps it a row inside the top of
+    /// its frame, which [`Self::turn`] follows from then on.
+    fn lean(&mut self, standing: &Canvas, outline: Rgba) -> Canvas {
+        let size = FRAME_SIZE as i32;
+        let mut leant = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+        let third = |value: i32| (value + 1536).div_euclid(3072);
+        for y in 0..size {
+            for x in 0..size {
+                let mut found: Vec<(Rgba, u8)> = Vec::with_capacity(4);
+                let mut solid = 0;
+                let mut middle = None;
+                for oy in -1..=1 {
+                    for ox in -1..=1 {
+                        let dx = (x - self.about.x) * 3 + ox;
+                        let dy = (y - self.about.y) * 3 + oy;
+                        let pixel = standing.get(
+                            self.about.x + third(dx * Self::COS + dy * Self::SIN),
+                            self.about.y + third(dy * Self::COS - dx * Self::SIN),
+                        );
+                        if pixel.a == 0 {
+                            continue;
+                        }
+                        solid += 1;
+                        if (ox, oy) == (0, 0) {
+                            middle = Some(pixel);
+                        }
+                        match found.iter_mut().find(|(colour, _)| *colour == pixel) {
+                            Some((_, count)) => *count += 1,
+                            None => found.push((pixel, 1)),
+                        }
+                    }
+                }
+                if solid < 4 {
+                    continue;
+                }
+                // The colour most of them found; the middle's own, where it is one of those.
+                let most = found.iter().map(|(_, count)| *count).max().unwrap_or(0);
+                let colour = middle
+                    .filter(|middle| found.contains(&(*middle, most)))
+                    .or_else(|| {
+                        found
+                            .iter()
+                            .find(|(_, count)| *count == most)
+                            .map(|(colour, _)| *colour)
+                    });
+                if let Some(colour) = colour {
+                    leant.set(x, y, colour);
+                }
+            }
+        }
+        // A stalk or a whisker one pixel wide can still fall between pixels: each pixel of the
+        // standing body with three neighbours or fewer, which only a thin line's has, is carried
+        // forward to where it leans, and so is the point halfway to each of those neighbours,
+        // into any gap left there, so the line stays joined up along its length.
+        let half = |value: i32| (value + 1024).div_euclid(2048);
+        for y in 0..size {
+            for x in 0..size {
+                let pixel = standing.get(x, y);
+                if pixel.a == 0 {
+                    continue;
+                }
+                let neighbours: Vec<(i32, i32)> = (-1..=1)
+                    .flat_map(|dy| (-1..=1).map(move |dx| (dx, dy)))
+                    .filter(|&(dx, dy)| (dx, dy) != (0, 0) && standing.get(x + dx, y + dy).a > 0)
+                    .collect();
+                if neighbours.len() > 3 {
+                    continue;
+                }
+                for (toward_x, toward_y) in neighbours.into_iter().chain([(0, 0)]) {
+                    let dx = (x - self.about.x) * 2 + toward_x;
+                    let dy = (y - self.about.y) * 2 + toward_y;
+                    let to = PixelPoint {
+                        x: self.about.x + half(dx * Self::COS - dy * Self::SIN),
+                        y: self.about.y + half(dx * Self::SIN + dy * Self::COS),
+                    };
+                    if leant.get(to.x, to.y).a == 0 {
+                        leant.set(to.x, to.y, pixel);
+                    }
+                }
+            }
+        }
+        let mut edged = leant.clone();
+        for y in 0..size {
+            for x in 0..size {
+                if leant.get(x, y).a == 0 {
+                    continue;
+                }
+                let open = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+                    .into_iter()
+                    .any(|(dx, dy)| leant.get(x + dx, y + dy).a == 0);
+                if open {
+                    edged.set(x, y, outline);
+                }
+            }
+        }
+        if let Some((_, top, _, _)) = edged.alpha_bounds() {
+            self.drop = (1 - top as i32).max(0);
+            edged.translate(0, self.drop);
+        }
+        edged
+    }
+}
+
+/// A two-legged body up against a wall (see [`Lean`]): its trunk and head, with everything that
+/// grows on them, drawn as they stand and leant in to the wall as one piece; and its limbs drawn
+/// straight, out to the wall from where that puts its shoulders and hips. The far paw comes round
+/// from behind the body, so only the end of it shows past the head, on the wall; both feet are on
+/// the wall, neither left hanging under the body, the front one with its sole on the edge line
+/// and the back one brought round under the body to the wall just short of it, further from us
+/// and so in shade. The face goes where the lean puts the middle of the head.
+fn draw_leaning(
+    c: &mut Canvas,
+    d: CreatureDesign,
+    p: Palette,
+    pose: Pose,
+    size: f32,
+    clip: BodyClip,
+    frame: u8,
+) -> PixelPoint {
+    let k = d.classic;
+    let body = measure(d, pose, size);
+    let mut lean = Lean::of(body);
+    let Body {
+        x,
+        y,
+        rx,
+        ry,
+        floor,
+        ..
+    } = body;
+    let mut standing = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+    let face = draw_parts(
+        &mut standing,
+        d,
+        p,
+        pose,
+        size,
+        clip,
+        frame,
+        body,
+        Parts::Core,
+    );
+    let leant = lean.lean(&standing, p.outline);
+    let limbs = limbs(clip, frame, body, d.body);
+    let reach = |c: &mut Canvas, root: PixelPoint, hand: PixelPoint, side: i32| {
+        if d.body == BodyPlan::Winged {
+            draw_open_wing(c, p, wing_style(d), root, hand, side);
+        } else if k.limbs > 0 {
+            classic_arm(c, p, root, hand);
+        } else {
+            draw_arm(c, p, root, hand);
+        }
+    };
+    if let Limb::Reach(hand) = limbs[0] {
+        let root = lean.turn(PixelPoint {
+            x: x - rx / 2,
+            y: y + 1,
+        });
+        reach(c, root, hand, 1);
+    }
+    for row in 0..FRAME_SIZE as i32 {
+        for column in 0..FRAME_SIZE as i32 {
+            let pixel = leant.get(column, row);
+            if pixel.a > 0 {
+                c.set(column, row, pixel);
+            }
+        }
+    }
+    // The face is drawn square to the screen on a head that is not, quite: wherever the head as
+    // it stands would be behind the face and the leant one is not, the standing head's own edge
+    // is put in, so no corner of a face is left hanging off a small head.
+    let face = seat_face(c, lean.turn(face));
+    if d.body != BodyPlan::Blob {
+        let mut behind = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+        oval(
+            &mut behind,
+            p,
+            face.x,
+            face.y,
+            body.head,
+            body.head - 1,
+            p.coat,
+        );
+        for row in 0..FRAME_SIZE as i32 {
+            for column in 0..FRAME_SIZE as i32 {
+                let pixel = behind.get(column, row);
+                if pixel.a > 0 && c.get(column, row).a == 0 {
+                    c.set(column, row, pixel);
+                }
+            }
+        }
+    }
+    // The back foot's step is how far up the wall it has stepped; the front one's knee, how far
+    // it is drawn up it.
+    for (far, step) in [(true, pose.step_a), (false, pose.step_b)] {
+        let hip = lean.turn(PixelPoint {
+            x: if far {
+                x + (rx - 8).max(4 - rx)
+            } else {
+                x + rx - 4
+            },
+            y: y + ry - 2,
+        });
+        let fx = CLIMB_WALL - if far { 9 } else { 5 };
+        let lift = if far {
+            step.clamp(0, 5) - pose.trail.clamp(0, 4)
+        } else {
+            step.abs().min(2) + pose.knee.clamp(0, 6)
+        };
+        // Stick legs are drawn in shade, so they read as thin legs rather than coat.
+        let leg = if k.limbs == 2 || far {
+            p.shadow
+        } else {
+            p.coat
+        };
+        c.line(hip.x, hip.y, fx, floor - 2 - lift, 2, p.outline);
+        c.line(hip.x, hip.y, fx, floor - 2 - lift, 1, leg);
+        let foot = PixelPoint {
+            x: fx,
+            y: floor - 1 - lift,
+        };
+        if k.limbs > 0 {
+            classic_foot(c, p, k.limbs, foot);
+        } else {
+            oval(c, p, foot.x, foot.y, 3, 2, leg);
+        }
+    }
+    if let Limb::Reach(hand) = limbs[1] {
+        reach(c, lean.turn(shoulder(body, pose, 1)), hand, 1);
+    }
+    face
+}
+
+/// Where the face goes on a body leant in to a wall, for a head the lean has put the middle of
+/// `at`: there, or a pixel or two from there where more of the body is behind it. A turned head
+/// is not quite the shape it was, and a face is drawn square to the screen, so on a small head
+/// the corner of one could otherwise hang off the edge.
+fn seat_face(c: &Canvas, at: PixelPoint) -> PixelPoint {
+    let covered = |centre: PixelPoint, across: i32, down: i32| {
+        (-across..=across)
+            .flat_map(|dx| (-down..=down).map(move |dy| (dx, dy)))
+            .filter(|(dx, dy)| c.get(centre.x + dx, centre.y + dy).a > 0)
+            .count() as i32
+    };
+    let mut best = (i32::MIN, at);
+    for dy in -2..=2_i32 {
+        for dx in -2..=2_i32 {
+            let centre = PixelPoint {
+                x: at.x + dx,
+                y: at.y + dy,
+            };
+            // The face's own box has to be covered; past that, the more behind it the better,
+            // and the nearer where the head is the better.
+            let reserved = covered(centre, 5, 3) == 11 * 7;
+            let score = i32::from(reserved) * 10_000 + covered(centre, 7, 6) * 4
+                - (dx.abs() + dy.abs()) * 3;
+            if score > best.0 {
+                best = (score, centre);
+            }
+        }
+    }
+    best.1
+}
+
+/// Where a four-pawed body is drawn in its frame while it is upright against a wall: its trunk as
+/// [`upright`] turns it, and its head, level, where that puts it.
+#[derive(Clone, Copy)]
+struct Upright {
+    /// The column the row under its feet is turned to, and the row its column 0 is turned to.
+    under: i32,
+    top: i32,
+    head: PixelPoint,
+}
+
+impl Upright {
+    /// Where a point of the body as it stands is once it is turned upright.
+    fn turn(self, at: PixelPoint) -> PixelPoint {
+        PixelPoint {
+            x: self.under + at.y,
+            y: self.top - at.x,
+        }
+    }
+}
+
+/// How a four-pawed body is turned upright against the wall for a frame of its climb, or of the
+/// start of its mantle: a quarter turn, head up and paws to the wall, placed so that the paws
+/// reach the wall's edge line and a little over it, and so that its forepaws at full reach are on
+/// the ledge the mantle's first frame hangs from. That keeps it in one place in its frame for the
+/// whole of the climb and the pull-up.
+fn upright(d: CreatureDesign, body: Body, pose: Pose) -> Upright {
+    // The edge line for a body that reaches this far (see `formiga_core::climb_grip_reach`):
+    // the paws' last two columns are over it.
+    let wall = FRAME_SIZE as i32 / 2 + 16;
+    let feet = feet_reach(d, body.floor);
+    let ledge = mantle_ledge(feet, 0, true);
+    // The far forepaw, reached two pixels up the wall, rests its lower edge on the ledge.
+    let (_, far_fore) = leg_roots(body, false);
+    // The far foot of a stick leg is drawn a row lower than anything else stands.
+    let lowest = feet + i32::from(d.classic.limbs == 2);
+    let mut place = Upright {
+        under: wall + 1 - lowest,
+        top: ledge + far_fore.x,
+        head: PixelPoint { x: 0, y: 0 },
+    };
+    place.head = place.turn(PixelPoint {
+        x: body.hx,
+        y: body.hy,
+    });
+    // A head craned forward goes up the wall with the turn; carried level, it also looks a
+    // little toward the wall it is climbing.
+    place.head.x += pose.lean.clamp(0, 1);
+    place
+}
+
+/// A four-pawed body upright against a wall: its trunk, legs and tail drawn as it stands and
+/// walks, and turned a quarter turn so that its paws are on the wall and its head is uppermost;
+/// and its head, with its ears and whatever else grows on it, drawn level over that, so the face
+/// it carries is the right way up.
+fn draw_upright(
+    c: &mut Canvas,
+    d: CreatureDesign,
+    p: Palette,
+    pose: Pose,
+    size: f32,
+    clip: BodyClip,
+    frame: u8,
+) -> PixelPoint {
+    // The trunk is measured standing, without the lean, which belongs to the head.
+    let standing = measure(d, Pose { lean: 0, ..pose }, size);
+    let place = upright(d, standing, pose);
+    let mut trunk = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+    draw_parts(
+        &mut trunk,
+        d,
+        p,
+        pose,
+        size,
+        clip,
+        frame,
+        standing,
+        Parts::Trunk,
+    );
+    for y in 0..FRAME_SIZE as i32 {
+        for x in 0..FRAME_SIZE as i32 {
+            let pixel = trunk.get(x, y);
+            if pixel.a > 0 {
+                let at = place.turn(PixelPoint { x, y });
+                c.set(at.x, at.y, pixel);
+            }
+        }
+    }
+    let head = Body {
+        hx: place.head.x,
+        hy: place.head.y,
+        ..standing
+    };
+    draw_parts(c, d, p, pose, size, clip, frame, head, Parts::Head)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn draw_parts(
+    c: &mut Canvas,
+    d: CreatureDesign,
+    p: Palette,
+    pose: Pose,
+    size: f32,
+    clip: BodyClip,
+    frame: u8,
+    body: Body,
+    parts: Parts,
+) -> PixelPoint {
     let k = d.classic;
     let long = d.body == BodyPlan::Long;
     // A blob is one soft mass carrying its own face, so it keeps a rounder minimum and
     // never grows the separate head oval every other plan draws.
     let blob = d.body == BodyPlan::Blob;
-    let body = measure(d, pose, size);
+    // A blob's ears and gleam ride its one mass, so they are part of its trunk.
+    let trunk = parts != Parts::Head;
+    let headed = parts != Parts::Trunk;
+    // Leant in to a wall, the legs and the paws in use are drawn after the lean, by
+    // `draw_leaning`.
+    let limbed = parts != Parts::Core;
     let Body {
         x,
         y,
@@ -61,7 +521,8 @@ pub(super) fn draw(
 
     // Tail and ears go behind the body and never through the reserved face area.
     let tx = x - rx + 1;
-    if k.tail > 0 {
+    if !trunk {
+    } else if k.tail > 0 {
         classic_tail(c, p, k.tail, tx, y, pose);
     } else {
         match d.tail {
@@ -99,12 +560,12 @@ pub(super) fn draw(
     let ear = ((f32::from(d.ear_size) * size).round().max(3.0) as i32 + pose.ear_perk.clamp(0, 2)
         - pose.ears_back.clamp(0, 3))
     .max(2);
-    if k.crown > 0 {
+    if k.crown > 0 && headed {
         classic_crown(c, p, k.crown, ear_cx, ear_span, ear_top, ear, pose);
     }
     // Wing-nubs and horns grow from behind the body and the head, which are drawn over their
     // roots, so they stay joined to the silhouette and never reach the reserved face.
-    if d.details.wings > 0 {
+    if d.details.wings > 0 && trunk {
         if long {
             for (dx, near) in [(1, false), (-2, true)] {
                 let root = PixelPoint {
@@ -125,7 +586,7 @@ pub(super) fn draw(
             }
         }
     }
-    if d.details.horns > 0 {
+    if d.details.horns > 0 && headed {
         // Inside the ears, so the two never cover one another, and in the belly's cream where
         // there is one.
         let reach = (ear_span - 4).max(2);
@@ -152,7 +613,7 @@ pub(super) fn draw(
         let ex = ear_cx + side * ear_span;
         let ey = ear_top;
         match d.ears {
-            _ if k.crown > 0 => {}
+            _ if k.crown > 0 || !headed => {}
             EarStyle::None => {}
             // A round ear has no height to grow, so it rides up instead, staying on the head.
             EarStyle::Round => oval(c, p, ex, ey - 1 - pose.ear_perk.clamp(0, 2), 3, 3, p.accent),
@@ -183,129 +644,138 @@ pub(super) fn draw(
         }
     }
     let limbs = limbs(clip, frame, body, d.body);
-    // A four-pawed body stands on four legs: the far pair in shade behind the body, and the near
-    // pair in front of it after the body is drawn.
-    if long {
-        four_legs(c, p, d, body, pose, clip, limbs, false);
-    }
-    if k.coat > 0 {
-        lit_oval(c, p, x, y, rx, ry, p.coat);
-        // A crescent of shade under a lit top, rather than a shaded lower half.
-        c.fill_ellipse(
-            x - 2,
-            y + ry / 2,
-            (rx - 2).max(2),
-            (ry / 3).max(2),
-            p.shadow,
-        );
-        c.fill_ellipse(x, y - 1, rx - 2, (ry - 2).max(2), p.coat);
-    } else {
-        oval(c, p, x, y, rx, ry, p.coat);
-        c.fill_ellipse(x, y + ry / 2, rx - 3, (ry / 2).max(3), p.shadow);
-    }
-    match d.marking {
-        _ if k.pattern > 0 => classic_pattern(c, p, d, x, y, rx - 1, ry - 1),
-        1 => c.fill_ellipse(x, y + 3, (rx - 4).max(3), (ry - 2).max(3), p.highlight),
-        2 => {
-            for dx in [-5, 0, 5] {
-                c.fill_ellipse(x + dx, y + 3, 1, 3, p.accent);
-            }
-        }
-        3 => {
-            for (dx, dy) in [(-5, 1), (3, 5), (5, -2)] {
-                c.fill_circle(x + dx, y + dy, 2, p.accent);
-            }
-        }
-        4 => c.fill_ellipse(x - 4, y + 2, 4, 4, p.accent),
-        5 => c.fill_ellipse(x, y + 4, rx - 3, 2, p.accent),
-        6 => {
-            c.fill_circle(x - 4, y + 4, 2, p.highlight);
-            c.fill_circle(x + 4, y + 4, 2, p.highlight);
-        }
-        _ => {}
-    }
-    if d.details.belly > 0 {
-        let belly = crate::palette::detail_color(&d, d.details.belly_color);
-        if long {
-            // Along the underside, toward the chest.
-            c.fill_ellipse(x + 2, y + ry / 2, (rx - 4).max(3), (ry / 3).max(2), belly);
-        } else {
-            c.fill_ellipse(x, y + 2, (rx - 4).max(3), (ry - 3).max(3), belly);
-        }
-    }
+    let arm = if k.limbs > 0 { classic_arm } else { draw_arm };
     let shoulder = |side: i32| shoulder(body, pose, side);
-    if long {
-        four_legs(c, p, d, body, pose, clip, limbs, true);
-    } else {
-        // Balled up in the air, the feet are drawn in under the body; leaping, drawn up off the
-        // ground as well.
-        let leap = airborne_feet(clip, pose);
-        let tucked = i32::from(clip == BodyClip::Action(ActionKind::Tossed)) * 2 + leap.min(1);
-        for ((side, step), limb) in [(-1, pose.step_a), (1, pose.step_b)].into_iter().zip(limbs) {
-            // A knee drawn up takes its foot up and a little out; a trailing leg hangs straight.
-            let knee = if side > 0 { pose.knee.clamp(0, 6) } else { 0 };
-            let trail = if side < 0 { pose.trail.clamp(0, 4) } else { 0 };
-            // A foot stays where it was put while a blob's mass sways over it.
-            let fx = x - sway(d, pose)
-                + side * (rx - 4 - tucked + pose.splay.clamp(0, 3) + knee / 2)
-                + step.clamp(-2, 2);
-            let lift = step.abs().min(2) + knee - trail + leap;
-            // Stick legs are drawn in shade, so they read as thin legs rather than coat.
-            let leg = if k.limbs == 2 { p.shadow } else { p.coat };
-            c.line(
-                x + side * (rx - 4),
-                y + ry - 2,
-                fx,
-                floor - 2 - lift,
-                2,
-                p.outline,
+    if trunk {
+        // A four-pawed body stands on four legs: the far pair in shade behind the body, and the near
+        // pair in front of it after the body is drawn.
+        if long {
+            four_legs(c, p, d, body, pose, clip, limbs, false);
+        }
+        if k.coat > 0 {
+            lit_oval(c, p, x, y, rx, ry, p.coat);
+            // A crescent of shade under a lit top, rather than a shaded lower half.
+            c.fill_ellipse(
+                x - 2,
+                y + ry / 2,
+                (rx - 2).max(2),
+                (ry / 3).max(2),
+                p.shadow,
             );
-            c.line(
-                x + side * (rx - 4),
-                y + ry - 2,
-                fx,
-                floor - 2 - lift,
-                1,
-                leg,
-            );
-            if k.limbs > 0 {
-                classic_foot(
-                    c,
-                    p,
-                    k.limbs,
-                    PixelPoint {
-                        x: fx,
-                        y: floor - 1 - lift,
-                    },
-                );
-            } else {
-                oval(c, p, fx, floor - 1 - lift, 3, 2, p.coat);
+            c.fill_ellipse(x, y - 1, rx - 2, (ry - 2).max(2), p.coat);
+        } else {
+            oval(c, p, x, y, rx, ry, p.coat);
+            c.fill_ellipse(x, y + ry / 2, rx - 3, (ry / 2).max(3), p.shadow);
+        }
+        match d.marking {
+            _ if k.pattern > 0 => classic_pattern(c, p, d, x, y, rx - 1, ry - 1),
+            1 => c.fill_ellipse(x, y + 3, (rx - 4).max(3), (ry - 2).max(3), p.highlight),
+            2 => {
+                for dx in [-5, 0, 5] {
+                    c.fill_ellipse(x + dx, y + 3, 1, 3, p.accent);
+                }
             }
-            if limb == Limb::Rest {
-                let at = shoulder(side);
-                if d.body == BodyPlan::Winged {
-                    // A folded wing hangs from the shoulder and its outline reaches six rows
-                    // below it, so a body settling onto its legs, as a sleeper does with each
-                    // breath, would carry the tip down past the feet. The wing comes to rest on
-                    // the ground instead.
-                    let lowest = feet_reach(d, floor) - 6;
-                    draw_wing(c, p, wing_style(d), at.x, at.y.min(lowest), side);
-                } else if k.limbs > 0 {
-                    classic_nub(c, p, at, side);
+            3 => {
+                for (dx, dy) in [(-5, 1), (3, 5), (5, -2)] {
+                    c.fill_circle(x + dx, y + dy, 2, p.accent);
+                }
+            }
+            4 => c.fill_ellipse(x - 4, y + 2, 4, 4, p.accent),
+            5 => c.fill_ellipse(x, y + 4, rx - 3, 2, p.accent),
+            6 => {
+                c.fill_circle(x - 4, y + 4, 2, p.highlight);
+                c.fill_circle(x + 4, y + 4, 2, p.highlight);
+            }
+            _ => {}
+        }
+        if d.details.belly > 0 {
+            let belly = crate::palette::detail_color(&d, d.details.belly_color);
+            if long {
+                // Along the underside, toward the chest.
+                c.fill_ellipse(x + 2, y + ry / 2, (rx - 4).max(3), (ry / 3).max(2), belly);
+            } else {
+                c.fill_ellipse(x, y + 2, (rx - 4).max(3), (ry - 3).max(3), belly);
+            }
+        }
+        if long {
+            four_legs(c, p, d, body, pose, clip, limbs, true);
+        } else if limbed {
+            // Balled up in the air, the feet are drawn in under the body; leaping, drawn up off
+            // the ground as well.
+            let leap = airborne_feet(clip, pose);
+            let tucked = i32::from(clip == BodyClip::Action(ActionKind::Tossed)) * 2 + leap.min(1);
+            for ((side, step), limb) in [(-1, pose.step_a), (1, pose.step_b)].into_iter().zip(limbs)
+            {
+                // A knee drawn up takes its foot up and a little out; a trailing leg hangs straight.
+                let knee = if side > 0 { pose.knee.clamp(0, 6) } else { 0 };
+                let trail = if side < 0 { pose.trail.clamp(0, 4) } else { 0 };
+                // A foot stays where it was put while the body sways over it. A stride that
+                // says how high its own feet are steps a pixel further than a shuffle does.
+                let reach = if pose.lifts.is_some() { 3 } else { 2 };
+                let fx = x - sway(d, pose)
+                    + side * (rx - 4 - tucked + pose.splay.clamp(0, 3) + knee / 2)
+                    + step.clamp(-reach, reach);
+                let stepped = pose.lifts.map_or(step.abs().min(2), |lifts| {
+                    lifts[usize::from(side > 0)].clamp(0, 5)
+                });
+                let lift = stepped + knee - trail + leap;
+                // Stick legs are drawn in shade, so they read as thin legs rather than coat.
+                let leg = if k.limbs == 2 { p.shadow } else { p.coat };
+                c.line(
+                    x + side * (rx - 4),
+                    y + ry - 2,
+                    fx,
+                    floor - 2 - lift,
+                    2,
+                    p.outline,
+                );
+                c.line(
+                    x + side * (rx - 4),
+                    y + ry - 2,
+                    fx,
+                    floor - 2 - lift,
+                    1,
+                    leg,
+                );
+                if k.limbs > 0 {
+                    classic_foot(
+                        c,
+                        p,
+                        k.limbs,
+                        PixelPoint {
+                            x: fx,
+                            y: floor - 1 - lift,
+                        },
+                    );
                 } else {
-                    oval(c, p, at.x, at.y, 2, 3, p.coat);
+                    oval(c, p, fx, floor - 1 - lift, 3, 2, p.coat);
+                }
+                if limb == Limb::Rest {
+                    let at = shoulder(side);
+                    if d.body == BodyPlan::Winged {
+                        // A folded wing hangs from the shoulder and its outline reaches six rows
+                        // below it, so a body settling onto its legs, as a sleeper does with each
+                        // breath, would carry the tip down past the feet. The wing comes to rest on
+                        // the ground instead.
+                        let lowest = feet_reach(d, floor) - 6;
+                        draw_wing(c, p, wing_style(d), at.x, at.y.min(lowest), side);
+                    } else if k.limbs > 0 {
+                        classic_nub(c, p, at, side);
+                    } else {
+                        oval(c, p, at.x, at.y, 2, 3, p.coat);
+                    }
                 }
             }
         }
     }
-    if !blob {
+    if !blob && headed {
         if k.coat > 0 {
             lit_oval(c, p, hx, hy, head, head - 1, p.coat);
         } else {
             oval(c, p, hx, hy, head, head - 1, p.coat);
         }
     }
-    if d.muzzle > 0 {
+    if d.muzzle > 0 && headed {
         c.fill_ellipse(
             hx,
             hy + 3,
@@ -315,7 +785,7 @@ pub(super) fn draw(
         );
     }
     // Candy coats are lit from above already, so only the modular one carries a painted gleam.
-    if k.coat == 0 {
+    if k.coat == 0 && headed {
         c.fill_ellipse(
             hx - 2,
             if blob { y - ry + 3 } else { hy - head + 3 },
@@ -326,11 +796,13 @@ pub(super) fn draw(
     }
     // A limb in use is the same limb carried out from where it rests, drawn last so a paw raised
     // to the face or across the chest stays in front of what it covers.
-    let arm = if k.limbs > 0 { classic_arm } else { draw_arm };
     for (side, limb) in [-1, 1].into_iter().zip(limbs) {
         let Limb::Reach(hand) = limb else {
             continue;
         };
+        if !trunk || !limbed {
+            continue;
+        }
         if long {
             // The far forepaw went up behind the body with the far legs; this is the near one.
             if side > 0 {
@@ -634,7 +1106,32 @@ pub(super) fn figure(
     frame: u8,
 ) -> Figure {
     let d = design.bounded();
-    let body = measure(d, pose, size);
+    let standing = standing_figure(d, pose, size, clip, frame);
+    if d.body == BodyPlan::Long || !pose.wall {
+        return standing;
+    }
+    // Leant in to a wall, everything it wears leans with it (see `draw_leaning`, which says
+    // exactly where the face is seated once the body is drawn).
+    let lean = Lean::of(measure(d, pose, size));
+    Figure {
+        face: lean.turn(standing.face),
+        crown: lean.turn(standing.crown),
+        neck: lean.turn(standing.neck),
+        chest: lean.turn(standing.chest),
+        hip: lean.turn(standing.hip),
+        back: lean.turn(standing.back),
+        ..standing
+    }
+}
+
+/// [`figure`] before any lean in to a wall.
+fn standing_figure(d: CreatureDesign, pose: Pose, size: f32, clip: BodyClip, frame: u8) -> Figure {
+    // Upright against a wall, the trunk is turned and the head is carried level over it.
+    let turned = (d.body == BodyPlan::Long && pose.wall).then(|| {
+        let standing = measure(d, Pose { lean: 0, ..pose }, size);
+        (standing, upright(d, standing, pose))
+    });
+    let body = turned.map_or_else(|| measure(d, pose, size), |(standing, _)| standing);
     let hand = near_hand(d, body, pose, clip, frame);
     let Body {
         x,
@@ -646,15 +1143,17 @@ pub(super) fn figure(
         head,
         floor,
     } = body;
+    let place = |at: PixelPoint| turned.map_or(at, |(_, place)| place.turn(at));
+    let (hx, hy) = turned.map_or((hx, hy), |(_, place)| (place.head.x, place.head.y));
     let face = PixelPoint { x: hx, y: hy };
-    let hip = PixelPoint {
+    let hip = place(PixelPoint {
         x: x - rx + 2,
         y: y + ry / 3,
-    };
-    let back = PixelPoint {
+    });
+    let back = place(PixelPoint {
         x: x - rx / 2 - 1,
         y: y - ry / 2,
-    };
+    });
     let floor = feet_reach(d, floor) - 1;
     if d.body == BodyPlan::Blob {
         // One mass with the face on it: the collar goes round the mass just below the face.
@@ -737,7 +1236,17 @@ fn measure(d: CreatureDesign, pose: Pose, size: f32) -> Body {
         rx = (rx + 2).clamp(8, 12);
         ry = (ry - 1).clamp(5, 9);
     }
-    let x = if long { 20 } else { 24 } + sway(d, pose);
+    let head = (f32::from(d.head) * size.sqrt()).round().max(7.0) as i32;
+    let x = if long {
+        20 + pose.forward.clamp(0, 9)
+    } else if pose.wall {
+        // Close in to the wall, the widest of it a paw's width short of the edge line, whatever
+        // its build, so the paws holding the wall are beside it rather than across it.
+        let widest = if blob { rx } else { rx.max(head) };
+        (CLIMB_WALL - 7 - widest).clamp(17, 25)
+    } else {
+        24 + sway(d, pose)
+    };
     // The floor is the same row in every clip. A bob or a lift moves the body over feet that
     // stay on it, the way a crouch already does, so a companion that sets off walking keeps the
     // ground it was standing on instead of rising a pixel or two above it for the length of the
@@ -766,7 +1275,9 @@ fn measure(d: CreatureDesign, pose: Pose, size: f32) -> Body {
     // statures, so a face turned to watch something stays inside the box the simulation keeps
     // faces clear by; the head itself still grows.
     let hx = if long {
-        x + 2 + (8.0 * size.min(1.05)).round() as i32
+        // A trunk carried forward over a ledge goes forward under a head that stays where it is,
+        // so the face keeps inside the same box.
+        x - pose.forward.clamp(0, 9) + 2 + (8.0 * size.min(1.05)).round() as i32
     } else {
         x
     } + if blob {
@@ -784,7 +1295,6 @@ fn measure(d: CreatureDesign, pose: Pose, size: f32) -> Body {
         BodyPlan::Blob => y - ry / 3,
     }
     .max(18);
-    let head = (f32::from(d.head) * size.sqrt()).round().max(7.0) as i32;
     // A head larger than a body that a crouch has squashed flat would reach past the feet, since
     // it hangs from the body's centre. Like everything else, it stops at the ground; its outline
     // reaches `head` rows below its centre.
@@ -805,13 +1315,13 @@ fn measure(d: CreatureDesign, pose: Pose, size: f32) -> Body {
     }
 }
 
-/// How far a blob's mass has gone over to one side of its feet: a pixel at most, only ever asked
-/// for by its stride (see `Pose::sway`). Every other plan stands over its feet.
+/// How far a body has gone over to one side of its feet: a pixel at most, only ever asked for by
+/// a stride (see `Pose::sway`). A four-pawed body stands between its feet and does not.
 fn sway(d: CreatureDesign, pose: Pose) -> i32 {
-    if d.body == BodyPlan::Blob {
-        pose.sway.clamp(-1, 1)
-    } else {
+    if d.body == BodyPlan::Long {
         0
+    } else {
+        pose.sway.clamp(-1, 1)
     }
 }
 
@@ -823,9 +1333,11 @@ fn feet_reach(d: CreatureDesign, floor: i32) -> i32 {
 
 /// Where a side's paw or wing sits folded against the body, and where it is carried out from.
 fn shoulder(body: Body, pose: Pose, side: i32) -> PixelPoint {
+    // Swung with a stride: the front paw forward and up as the back one goes back and down.
+    let swing = pose.swing.clamp(-2, 2);
     PixelPoint {
-        x: body.x + side * (body.rx - 1),
-        y: body.y + 3 - pose.appendage_lift.clamp(-2, 3),
+        x: body.x + side * (body.rx - 1) + swing.signum(),
+        y: body.y + 3 - pose.appendage_lift.clamp(-2, 3) - side * swing,
     }
 }
 
@@ -865,13 +1377,18 @@ pub(super) fn limbs(clip: BodyClip, frame: u8, body: Body, plan: BodyPlan) -> [L
         // comes down to the head as the body rises to it, and on the settle the two meet halfway,
         // ready for the other paw to reach.
         BodyClip::Action(ActionKind::ClimbWindow) => {
-            let (lead, held) = climb_grip(frame, hy);
+            // A blob has no head to reach above: its paws go up over the top of the one mass it
+            // is, from further down its side.
+            let from = if plan == BodyPlan::Blob {
+                hy.min(y - body.ry + 6)
+            } else {
+                hy
+            };
+            let (lead, other) = climb_grip(frame, from);
             let reaching = if frame % 6 < 3 { 1 } else { -1 };
             both(&|side| {
-                to(
-                    beside_head(side),
-                    if side == reaching { lead } else { held },
-                )
+                let at = if side == reaching { lead } else { other };
+                to(at.x, at.y)
             })
         }
         BodyClip::Action(ActionKind::PresentDiscovery) => {
@@ -897,11 +1414,19 @@ pub(super) fn limbs(clip: BodyClip, frame: u8, body: Body, plan: BodyPlan) -> [L
         BodyClip::Gesture(Gesture::Cheer) => {
             both(&|side| to(beside_head(side), hy - head - 2 - tick))
         }
-        // In the air, wings spread and the paws drawn in.
+        // In the air, wings spread, beating down as it comes down.
         BodyClip::Gesture(Gesture::Leap) if plan == BodyPlan::Winged => {
-            both(&|side| to(x + side * (rx + 5), y - 5 + tick * 2))
+            let beat = [-6, -4, -5, -2][usize::from(frame.min(3))];
+            both(&|side| to(x + side * (rx + 5), y + beat))
         }
-        BodyClip::Gesture(Gesture::Leap) => [Limb::Rest; 2],
+        // Thrown up with the spring, drawn in at the top, out to the sides for balance on the
+        // way down, and lower and wider still to meet the ground.
+        BodyClip::Gesture(Gesture::Leap) => match frame.min(3) {
+            0 => both(&|side| to(x + side * (rx + 2), y - 6)),
+            1 => [Limb::Rest; 2],
+            2 => both(&|side| to(x + side * (rx + 5), y - 2)),
+            _ => both(&|side| to(x + side * (rx + 4), y + 1)),
+        },
         BodyClip::Gesture(Gesture::Gasp) => both(&|side| to(x + side * (rx + 5), y - 5 - tick)),
         BodyClip::Gesture(Gesture::Cover) => {
             both(&|side| to(hx + side * 3, hy - 1 + if side > 0 { tick * 2 } else { 0 }))
@@ -1065,23 +1590,46 @@ pub(super) fn limbs(clip: BodyClip, frame: u8, body: Body, plan: BodyPlan) -> [L
         // in front of the chest, both paws planted flat on the ledge at the hips for the push,
         // and down at its sides once it stands. The ledge is where the world has it in each
         // frame: up at the chest, and then down at the feet.
-        BodyClip::Gesture(Gesture::Mantle) => match frame.min(2) {
-            0 => [to(x - 3, floor - 9), to(x + rx + 3, floor - 10)],
-            1 => [to(x - rx + 1, floor - 2), to(x + rx + 2, floor - 2)],
+        BodyClip::Gesture(Gesture::Mantle) => match frame.min(4) {
+            // Hung from the ledge, and pulled up on it: both paws hooked over its corner, the
+            // far one a little further in along it.
+            // The chest brought up over the edge, both paws still where they were, pressed down
+            // on the ledge now that it is at the waist.
+            0..=2 => {
+                let ledge = mantle_ledge(floor + 2, frame, false);
+                [to(CLIMB_WALL + 3, ledge - 3), to(CLIMB_WALL, ledge - 3)]
+            }
+            3 => [to(x - rx + 1, floor - 2), to(x + rx + 2, floor - 2)],
             _ => [Limb::Rest; 2],
         },
     }
 }
 
-/// How high the two paws of a climber hold on in a frame of its climb, the reaching paw and the
-/// other, for a head at row `hy`: one reached high while the other is down at the cheek, the
-/// reached one pulled down toward the head as the body comes up to it, and the other coming up
-/// on the settle, ready to reach in its turn.
-fn climb_grip(frame: u8, hy: i32) -> (i32, i32) {
+/// Where the two paws of a climber are in a frame of its climb, the one whose stroke it is and
+/// the other, for a head at row `hy`. The stroke's paw lands high on the wall, well above the
+/// head, and stays where it landed: each frame it is drawn lower by what the world has raised the
+/// body since (see `formiga_core::CLIMB_FRAME_RISE`), down to the cheek. The other paw holds the
+/// wall under it for the catch, a row lower again, and then lets go and comes up off the wall,
+/// past the face and on up to make the next catch.
+fn climb_grip(frame: u8, hy: i32) -> (PixelPoint, PixelPoint) {
+    let rise = formiga_core::CLIMB_FRAME_RISE.map(i32::from);
+    // The head is carried up past the paws on the pull, and the paws stay where they are.
+    let hy = hy + super::pose::CLIMB_LIFT[usize::from(frame % 3)];
+    let top = hy - rise[1] - rise[2];
+    let at = |x: i32, y: i32| PixelPoint { x, y };
     match frame % 3 {
-        0 => (hy - 10, hy + 1),
-        1 => (hy - 6, hy),
-        _ => (hy - 6, hy - 3),
+        0 => (
+            at(CLIMB_PAW, top),
+            at(CLIMB_PAW, top + rise.iter().sum::<i32>()),
+        ),
+        1 => (
+            at(CLIMB_PAW, top + rise[1]),
+            at(CLIMB_PAW - 3, top + rise[1] + 2),
+        ),
+        _ => (
+            at(CLIMB_PAW, top + rise[1] + rise[2]),
+            at(CLIMB_PAW - 2, top + 3),
+        ),
     }
 }
 
@@ -1150,7 +1698,12 @@ fn four_legs(
     // It lifts a leg only to walk, and not while a forepaw is busy: it stands on the other three.
     let walking = walks(clip) && limbs == [Limb::Rest; 2];
     let (hind, fore) = leg_roots(body, near);
-    let (hind_step, fore_step) = if near {
+    // Hung from a ledge and pulling up on it, both sides reach and hang together; walking, on
+    // the ground or up a wall, the far side is half a stride behind the near.
+    // A bound's forelegs go out together too, and its hind legs back.
+    let together = clip == BodyClip::Gesture(Gesture::Leap)
+        || (pose.wall && matches!(clip, BodyClip::Gesture(Gesture::Mantle)));
+    let (hind_step, fore_step) = if near || together {
         (pose.step_a, pose.step_b)
     } else {
         (-pose.step_a, -pose.step_b)
@@ -1180,10 +1733,17 @@ fn four_legs(
             }
             continue;
         }
+        // Four legs are tucked by how far the body has risen, whatever a pose says of two feet.
         let lift = leg_lift(step, walking)
             + if hind { knee - trail } else { 0 }
-            + airborne_feet(clip, pose);
-        let x = root.x + step.clamp(-2, 2) + if hind { knee / 2 } else { 0 };
+            + airborne_feet(
+                clip,
+                Pose {
+                    lifts: None,
+                    ..pose
+                },
+            );
+        let x = root.x + step.clamp(-3, 3) + if hind { knee / 2 } else { 0 };
         if k.limbs == 2 {
             // Stick legs, thin and in shade, on small forked feet.
             let foot = PixelPoint {
@@ -1213,10 +1773,11 @@ fn four_legs(
     }
 }
 
-/// How many rows a body's feet are drawn up off the ground in a frame: a leap tucks them up under
-/// it, a row past the lift it rises by, so highest on the way up. Every other clip stands on them.
+/// How many rows a body's feet are drawn up off the ground in a frame, besides what its pose says
+/// of each foot itself (`Pose::lifts`): a four-pawed body's leap tucks them up under it, a row
+/// past the lift it rises by. Every other clip stands on them.
 fn airborne_feet(clip: BodyClip, pose: Pose) -> i32 {
-    if clip == BodyClip::Gesture(Gesture::Leap) {
+    if clip == BodyClip::Gesture(Gesture::Leap) && pose.lifts.is_none() {
         pose.play_lift.clamp(0, 3) + 1
     } else {
         0
@@ -1324,15 +1885,8 @@ fn long_limbs(clip: BodyClip, frame: u8, body: Body) -> [Limb; 2] {
         BodyClip::Action(ActionKind::Dangle) => [to(hx - head - 1, 7), to(hx + head + 1, 7)],
         // The same strokes as a two-legged climber's, the far forepaw up behind the head and the
         // near one in front of the face; the hind legs brace in turn on the pulls.
-        BodyClip::Action(ActionKind::ClimbWindow) => {
-            let (lead, held) = climb_grip(frame, hy);
-            let (far, near) = if frame % 6 < 3 {
-                (held, lead)
-            } else {
-                (lead, held)
-            };
-            [to(hx - head - 1, far), to(hx + head + 1, near)]
-        }
+        // Upright on the wall, it climbs on all four paws: none is raised.
+        BodyClip::Action(ActionKind::ClimbWindow) => [rest; 2],
         BodyClip::Action(ActionKind::PresentDiscovery) => [rest, lift(near, 6, room - 1)],
         BodyClip::Action(ActionKind::Greet) => [rest, lift(near, 6, room - tick)],
         BodyClip::Action(ActionKind::SocialPlay) => [rest, lift(near, 6 + tick, room - 1)],
@@ -1404,15 +1958,18 @@ fn long_limbs(clip: BodyClip, frame: u8, body: Body) -> [Limb; 2] {
         ) => [rest; 2],
         // Topping out: both forepaws reached forward over the edge, up at the chest where the
         // ledge is, then planted on it ahead for the push, and down on all four once it stands.
-        BodyClip::Gesture(Gesture::Mantle) => match frame.min(2) {
-            0 => [
-                to(far.x + 4, body.floor - 9),
-                to(near.x + 5, body.floor - 10),
-            ],
-            1 => [
+        BodyClip::Gesture(Gesture::Mantle) => match frame.min(4) {
+            // Both forepaws on the ledge past its edge, the far one further along it.
+            2 => {
+                let ledge = mantle_ledge(body.floor + 2, 2, true);
+                let wall = FRAME_SIZE as i32 / 2 + 16;
+                [to(wall + 2, ledge - 2), to(wall, ledge - 3)]
+            }
+            3 => [
                 to(far.x + 3, body.floor - 1),
                 to(near.x + 4, body.floor - 1),
             ],
+            // Still upright on the wall for the hang and the pull-up, and stood at the last.
             _ => [rest; 2],
         },
     }
@@ -1601,7 +2158,10 @@ mod tests {
         size: f32,
     ) -> (Canvas, PixelPoint, Pose) {
         let p = crate::palette_for(&creature.appearance);
-        let pose = Pose::new(&creature.appearance, clip, frame, false);
+        // Posed as the design it is drawn as: a four-pawed body has poses of its own.
+        let mut posed = creature.appearance.clone();
+        posed.design = Some(d);
+        let pose = Pose::new(&posed, clip, frame, false);
         let mut c = Canvas::new(FRAME_SIZE, FRAME_SIZE);
         let anchor = draw(&mut c, d, p, pose, size, clip, frame);
         (c, anchor, pose)
@@ -1635,10 +2195,14 @@ mod tests {
                 }
             }
         }
+        let apart: Vec<(i32, i32)> = (0..FRAME_SIZE as i32)
+            .flat_map(|y| (0..FRAME_SIZE as i32).map(move |x| (x, y)))
+            .filter(|(x, y)| c.get(*x, *y).a > 0 && !seen[(y * FRAME_SIZE as i32 + x) as usize])
+            .collect();
         assert_eq!(
             seen.iter().filter(|v| **v).count(),
             count,
-            "disconnected part {label}"
+            "disconnected part {label}: {apart:?}"
         );
     }
 
@@ -1808,6 +2372,8 @@ mod tests {
                     // Actions that never used their paws still keep both folded.
                     if let BodyClip::Action(action) = clip {
                         let reaching = match action {
+                            // A four-pawed body goes up a wall on all four paws.
+                            ActionKind::ClimbWindow if plan == BodyPlan::Long => [false, false],
                             ActionKind::Dangle | ActionKind::ClimbWindow => [true, true],
                             // A four-pawed body stands on three paws to show what it found.
                             ActionKind::PresentDiscovery if plan == BodyPlan::Long => [false, true],
@@ -1835,6 +2401,11 @@ mod tests {
                     if plan == BodyPlan::Long {
                         continue;
                     }
+                    // Leant in to a wall, the body is turned from where this looks for it, and
+                    // both its paws are on the wall.
+                    if pose.wall {
+                        continue;
+                    }
                     for (side, limb) in [-1, 1].into_iter().zip(limbs) {
                         let at = shoulder(body, pose, side);
                         let raised = matches!(limb, Limb::Reach(hand) if hand.y <= at.y - 3);
@@ -1844,7 +2415,9 @@ mod tests {
                         // Just outside the body, below the shoulder, is covered by the folded
                         // paw or wing and by nothing else. Raising that limb has to clear it.
                         let below = if plan == BodyPlan::Winged { 4 } else { 2 };
-                        let probe = canvas.get(body.x + side * (body.rx + 1), at.y + below);
+                        // Two columns out from the shoulder it hangs from, wherever a stride has
+                        // swung that.
+                        let probe = canvas.get(at.x + side * 2, at.y + below);
                         assert_eq!(
                             probe.a > 0,
                             limb == Limb::Rest,
@@ -1954,7 +2527,8 @@ mod tests {
                                     && min_y > 0
                                     && max_x < FRAME_SIZE - 1
                                     && max_y < FRAME_SIZE - 1,
-                                "{label} leaves the frame"
+                                "{label} leaves the frame: columns {min_x} to {max_x}, rows {min_y} \
+                                 to {max_y}"
                             );
                         }
                     }
@@ -1980,6 +2554,10 @@ mod tests {
                 for clip in BodyClip::baked() {
                     for frame in 0..AnimationSpec::for_clip(clip).frames {
                         let (canvas, _, pose) = render(&creature, d, clip, frame, 1.0);
+                        // Leant in to a wall, the body is turned from where this looks for it.
+                        if pose.wall {
+                            continue;
+                        }
                         let body = measure(d, pose, 1.0);
                         for (side, limb) in [-1, 1].into_iter().zip(limbs(clip, frame, body, plan))
                         {
@@ -2003,7 +2581,8 @@ mod tests {
 
     /// A four-pawed body stands on both hind paws through everything it does, and on each
     /// forepaw whenever that paw is not in use: what another body does with a hand, it does with
-    /// a forepaw, and nothing lifts a hind leg.
+    /// a forepaw, and nothing lifts a hind leg. Up a wall it is the wall its paws are on (see
+    /// `a_four_pawed_body_goes_up_a_wall_upright_with_every_paw_on_it`).
     #[test]
     fn a_four_pawed_body_keeps_its_hind_paws_down_and_a_forepaw_down_until_it_uses_it() {
         let creature = preview();
@@ -2015,6 +2594,10 @@ mod tests {
                 for clip in BodyClip::baked() {
                     for frame in 0..AnimationSpec::for_clip(clip).frames {
                         let (canvas, _, pose) = render(&creature, d, clip, frame, size);
+                        // Up a wall its paws are on the wall, and in a leap on nothing.
+                        if pose.wall || clip == BodyClip::Gesture(Gesture::Leap) {
+                            continue;
+                        }
                         let body = measure(d, pose, size);
                         let paws = long_limbs(clip, frame, body);
                         for near in [false, true] {
@@ -2050,9 +2633,11 @@ mod tests {
     /// forepaws.
     #[test]
     fn a_four_pawed_body_always_stands_on_three_paws_or_more() {
-        let creature = preview();
+        let mut creature = preview();
         let mut d = creature.appearance.design.unwrap();
         d.body = BodyPlan::Long;
+        // Posed as the long body it is.
+        creature.appearance.design = Some(d);
         for clip in BodyClip::baked() {
             if matches!(
                 clip,
@@ -2077,6 +2662,164 @@ mod tests {
                     raised + lifted <= 1,
                     "{clip:?} frame {frame}: {raised} forepaws in use and {lifted} legs lifted"
                 );
+            }
+        }
+    }
+
+    /// A climber's paw stays where it gripped. The world raises the body by a set number of
+    /// pixels as each frame of a stroke comes, so the paw whose stroke it is is drawn lower in
+    /// the frame by exactly that many each time, all the way down from its catch to where it
+    /// holds under the other paw's catch, whatever the body does around it. Both paws hold the
+    /// wall on the side the body faces, on the edge line, and the body is drawn clear of them.
+    #[test]
+    fn a_climbing_paw_stays_where_it_gripped_while_the_body_goes_up_past_it() {
+        let creature = preview();
+        let rise = formiga_core::CLIMB_FRAME_RISE.map(i32::from);
+        let clip = BodyClip::Action(ActionKind::ClimbWindow);
+        for plan in BodyPlan::ALL
+            .into_iter()
+            .filter(|plan| *plan != BodyPlan::Long)
+        {
+            let mut d = creature.appearance.design.unwrap();
+            d.body = plan;
+            for size in [0.55, 0.85, 1.0, 1.15] {
+                let paws = |frame: u8| {
+                    let pose = Pose::new(&creature.appearance, clip, frame, false);
+                    let body = measure(d, pose, size);
+                    let reach = limbs(clip, frame, body, plan).map(|limb| match limb {
+                        Limb::Reach(at) => at,
+                        Limb::Rest => panic!("{plan:?} frame {frame}: a paw off the wall"),
+                    });
+                    (body, reach)
+                };
+                // The front paw's stroke is frames 0 to 2, and the back paw's 3 to 5.
+                for (first, side) in [(0_u8, 1_usize), (3, 0)] {
+                    let label = format!("{plan:?} size {size} stroke from frame {first}");
+                    let rows: Vec<i32> = (first..first + 4)
+                        .map(|frame| paws(frame % 6).1[side].y)
+                        .collect();
+                    assert_eq!(rows[1] - rows[0], rise[1], "{label}: onto the pull");
+                    assert_eq!(rows[2] - rows[1], rise[2], "{label}: onto the lock");
+                    assert_eq!(rows[3] - rows[2], rise[0], "{label}: onto the next catch");
+                    for frame in first..first + 3 {
+                        let (body, reach) = paws(frame);
+                        assert_eq!(reach[side].x, CLIMB_PAW, "{label}: on the edge line");
+                        let widest = if plan == BodyPlan::Blob {
+                            body.x + body.rx
+                        } else {
+                            (body.x + body.rx).max(body.hx + body.head)
+                        };
+                        assert!(
+                            widest + 1 < CLIMB_WALL - 2,
+                            "{label} frame {frame}: the body reaches column {widest}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// A two-legged body up against a wall faces it. Drawn square to the screen with only its
+    /// paws and feet gone to the wall, it read as standing in the air beside it, one leg hanging;
+    /// so the whole of it leans in, its head tipped toward the wall and its hips out from it, and
+    /// both its feet are on the wall, the lowest thing drawn being a foot there and never a leg
+    /// hung under the far side of the body.
+    #[test]
+    fn a_two_legged_body_leans_in_to_the_wall_it_climbs_with_both_feet_on_it() {
+        let creature = preview();
+        for plan in BodyPlan::ALL
+            .into_iter()
+            .filter(|plan| *plan != BodyPlan::Long)
+        {
+            for limbs in 0..=2 {
+                let mut d = creature.appearance.design.unwrap();
+                d.body = plan;
+                d.classic.limbs = limbs;
+                for size in [0.55, 0.85, 1.0, 1.15] {
+                    let frames = (0..AnimationSpec::for_action(ActionKind::ClimbWindow).frames)
+                        .map(|frame| (BodyClip::Action(ActionKind::ClimbWindow), frame))
+                        .chain(
+                            (0..=formiga_core::MANTLE_PULL_FRAMES)
+                                .map(|frame| (BodyClip::Gesture(Gesture::Mantle), frame)),
+                        );
+                    for (clip, frame) in frames {
+                        let (canvas, face, pose) = render(&creature, d, clip, frame, size);
+                        let label = format!("{plan:?} limbs {limbs} size {size} {clip:?} {frame}");
+                        assert!(pose.wall, "{label}");
+                        let body = measure(d, pose, size);
+                        // A head above the middle of its trunk is carried toward the wall by
+                        // the lean; a blob's face rides the middle and barely moves.
+                        if plan != BodyPlan::Blob && body.hy < body.y - 3 {
+                            assert!(face.x > body.hx, "{label}: the head is not tipped in");
+                        }
+                        let (_, _, _, bottom) = canvas.alpha_bounds().expect("drawn");
+                        let lowest: Vec<i32> = (0..FRAME_SIZE as i32)
+                            .filter(|x| canvas.get(*x, bottom as i32).a > 0)
+                            .collect();
+                        assert!(
+                            lowest.iter().all(|x| *x >= CLIMB_WALL - 14),
+                            "{label}: something hangs under it at columns {lowest:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// A four-pawed body goes up a wall upright: turned a quarter turn with its head uppermost
+    /// and all four paws on the wall, their tips over the window's edge line by the grip the
+    /// simulation hangs it out by, in every frame of the climb and of the mantle's pull-up. Its
+    /// head is carried level above the trunk. Hung from the ledge, a forepaw rests on top of it.
+    #[test]
+    fn a_four_pawed_body_goes_up_a_wall_upright_with_every_paw_on_it() {
+        let mut creature = preview();
+        // The edge line for a body hung out as far as a long one is, and the last column its
+        // paws' tips reach.
+        let wall = FRAME_SIZE as i32 / 2 + 16;
+        for limbs in 0..=2 {
+            let mut d = creature.appearance.design.unwrap();
+            d.body = BodyPlan::Long;
+            d.classic.limbs = limbs;
+            // Posed as the long body it is drawn as.
+            creature.appearance.design = Some(d);
+            for size in [0.55, 0.85, 1.0, 1.15] {
+                let frames = (0..AnimationSpec::for_action(ActionKind::ClimbWindow).frames)
+                    .map(|frame| (BodyClip::Action(ActionKind::ClimbWindow), frame))
+                    .chain(
+                        (0..formiga_core::MANTLE_PULL_FRAMES)
+                            .map(|frame| (BodyClip::Gesture(Gesture::Mantle), frame)),
+                    );
+                for (clip, frame) in frames {
+                    let (canvas, face, pose) = render(&creature, d, clip, frame, size);
+                    let label = format!("limbs {limbs} size {size} {clip:?} frame {frame}");
+                    assert!(pose.wall, "{label}");
+                    let (_, top, right, bottom) = canvas.alpha_bounds().expect("drawn");
+                    assert_eq!(right as i32, wall + 1, "{label}: the paws' reach");
+                    // The paws' tips are over the wall's edge line, up and down the length of the
+                    // trunk: a small body's, or a pair's mid-stride, are drawn one against another.
+                    let on_wall: Vec<i32> = (0..FRAME_SIZE as i32)
+                        .filter(|y| (wall..=wall + 1).any(|x| canvas.get(x, *y).a > 0))
+                        .collect();
+                    assert!(
+                        on_wall.len() >= 6 && on_wall[on_wall.len() - 1] - on_wall[0] >= 8,
+                        "{label}: paws on the wall at rows {on_wall:?}"
+                    );
+                    // Taller than it is wide, the head at the top of it.
+                    assert!(
+                        face.y < (top + bottom) as i32 / 2,
+                        "{label}: head at {face:?}"
+                    );
+                    if clip == BodyClip::Gesture(Gesture::Mantle) && frame == 0 {
+                        let standing = measure(d, Pose { lean: 0, ..pose }, size);
+                        let ledge = mantle_ledge(feet_reach(d, standing.floor), 0, true);
+                        let upper = on_wall[0];
+                        assert!(
+                            (ledge - 5..ledge).contains(&upper),
+                            "{label}: the upper forepaw, from row {upper}, rests on a ledge at \
+                             row {ledge}"
+                        );
+                    }
+                }
             }
         }
     }
@@ -2202,10 +2945,8 @@ mod tests {
         let mut d = creature.appearance.design.unwrap();
         d.body = BodyPlan::Blob;
         creature.appearance.design = Some(d);
-        for clip in [
-            BodyClip::Action(ActionKind::Traverse),
-            BodyClip::Action(ActionKind::Sprint),
-        ] {
+        // Its walk; it runs as every two-legged body does (see `Pose::stepping`).
+        for clip in [BodyClip::Action(ActionKind::Traverse)] {
             let pose = |frame| Pose::new(&creature.appearance, clip, frame, false);
             let x: Vec<i32> = (0..6).map(|frame| measure(d, pose(frame), 1.0).x).collect();
             // Over onto the front foot while the back one is up, and back again.
@@ -2220,10 +2961,27 @@ mod tests {
             let calm = Pose::new(&creature.appearance, clip, 0, true);
             assert_eq!(calm.sway, 0, "{clip:?} sways under reduced motion");
         }
-        // Every other plan stands over its feet.
+        // Every other two-legged plan goes over onto the foot it stands on as the other swings
+        // through, a pixel each way, and is over its feet when either lands; a four-pawed body
+        // stands between its feet and does not sway at all.
         let mut round = d;
         round.body = BodyPlan::Round;
         creature.appearance.design = Some(round);
+        let sways: Vec<i32> = (0..6)
+            .map(|frame| {
+                Pose::new(
+                    &creature.appearance,
+                    BodyClip::Action(ActionKind::Traverse),
+                    frame,
+                    false,
+                )
+                .sway
+            })
+            .collect();
+        assert_eq!(sways, [0, 1, 0, 0, -1, 0]);
+        let mut long = d;
+        long.body = BodyPlan::Long;
+        creature.appearance.design = Some(long);
         for frame in 0..6 {
             let pose = Pose::new(
                 &creature.appearance,
@@ -2231,7 +2989,58 @@ mod tests {
                 frame,
                 false,
             );
-            assert_eq!(pose.sway, 0);
+            assert_eq!(sway(long, pose), 0);
+        }
+    }
+
+    /// A two-legged body's walk is a walk rather than a march on the spot: each foot is planted
+    /// out ahead, goes back along the ground under the body while it is down, and comes forward
+    /// again off the ground. One foot or the other is always down at a walk, and a run has a beat
+    /// with both off it. Reduced motion holds the short step it always held, with both feet down.
+    #[test]
+    fn a_stride_plants_a_foot_ahead_and_carries_it_back_along_the_ground() {
+        let mut creature = preview();
+        let mut d = creature.appearance.design.unwrap();
+        d.body = BodyPlan::Upright;
+        creature.appearance.design = Some(d);
+        for (action, running) in [(ActionKind::Traverse, false), (ActionKind::Sprint, true)] {
+            let poses: Vec<Pose> = (0..6)
+                .map(|frame| {
+                    Pose::new(&creature.appearance, BodyClip::Action(action), frame, false)
+                })
+                .collect();
+            let feet = |pose: &Pose| {
+                let lifts = pose.lifts.expect("a stride says how high its feet are");
+                [(pose.step_a, lifts[0]), (pose.step_b, lifts[1])]
+            };
+            for foot in 0..2 {
+                let mut planted_ahead = false;
+                for frame in 0..6 {
+                    let (at, lift) = feet(&poses[frame])[foot];
+                    let (next_at, next_lift) = feet(&poses[(frame + 1) % 6])[foot];
+                    planted_ahead |= lift == 0 && at >= 3;
+                    if lift == 0 && next_lift == 0 {
+                        assert!(
+                            next_at < at,
+                            "{action:?} foot {foot}: slid forward on the ground"
+                        );
+                    }
+                    if lift > 0 && next_lift > 0 {
+                        assert!(
+                            next_at > at,
+                            "{action:?} foot {foot}: swung back in the air"
+                        );
+                    }
+                }
+                assert!(planted_ahead, "{action:?} foot {foot} never lands ahead");
+            }
+            let airborne = poses
+                .iter()
+                .filter(|pose| feet(pose).iter().all(|(_, lift)| *lift > 0))
+                .count();
+            assert_eq!(airborne, if running { 2 } else { 0 }, "{action:?}");
+            let still = Pose::new(&creature.appearance, BodyClip::Action(action), 0, true);
+            assert!(still.lifts.is_none() && still.sway == 0 && still.swing == 0);
         }
     }
 }

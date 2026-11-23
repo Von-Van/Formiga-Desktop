@@ -753,10 +753,10 @@ fn a_hop_shows_the_crouch_then_the_leap_then_the_landing() {
     };
     creature.state.presence.hop = Some(HopMoment::Gather(0.1));
     assert_eq!(shown(&creature).0, BodyClip::Gesture(Gesture::Crouch));
-    creature.state.presence.hop = Some(HopMoment::Flight(0.3));
-    assert_eq!(shown(&creature), (BodyClip::Gesture(Gesture::Leap), 0));
-    creature.state.presence.hop = Some(HopMoment::Flight(0.7));
-    assert_eq!(shown(&creature), (BodyClip::Gesture(Gesture::Leap), 1));
+    for (across, frame) in [(0.1, 0), (0.4, 1), (0.7, 2), (0.9, 3)] {
+        creature.state.presence.hop = Some(HopMoment::Flight(across));
+        assert_eq!(shown(&creature), (BodyClip::Gesture(Gesture::Leap), frame));
+    }
 
     // Touched down and standing: squashed on the touch, standing at the end, then resting.
     creature.state.action = ActionKind::Idle;

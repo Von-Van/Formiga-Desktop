@@ -888,7 +888,7 @@ fn landing_holds_standing_a_leap_has_its_own_frames_and_a_carry_hangs_still() {
     assert_eq!(landing.frame_at(0.55), 3);
     assert_eq!(landing.frame_at(30.0), 3, "landing holds its last frame");
     let leap = AnimationSpec::for_clip(Gesture::Leap);
-    assert_eq!(leap.frames, 2);
+    assert_eq!(leap.frames, 4);
     assert_eq!(
         BodyClip::baked()
             .filter(|clip| *clip == BodyClip::Gesture(Gesture::Leap))
@@ -921,10 +921,15 @@ fn landing_holds_standing_a_leap_has_its_own_frames_and_a_carry_hangs_still() {
             "{label}: a landing ends standing as a rest begins"
         );
         assert_ne!(body(genome, ActionKind::Landing.into(), 0), landed);
-        let [rising, falling] = [0, 1].map(|frame| body(genome, Gesture::Leap.into(), frame));
-        assert_ne!(rising, falling, "{label}: a leap rises and comes down");
-        for frame in [&rising, &falling] {
-            assert_ne!(frame, &landed, "{label}: a leap is not standing");
+        let leaping = [0, 1, 2, 3].map(|frame| body(genome, Gesture::Leap.into(), frame));
+        for (frame, drawn) in leaping.iter().enumerate() {
+            assert_ne!(drawn, &landed, "{label}: a leap is not standing");
+            for later in &leaping[frame + 1..] {
+                assert_ne!(
+                    drawn, later,
+                    "{label}: every part of a leap's arc is its own"
+                );
+            }
         }
         let carried: Vec<Canvas> = (0..4)
             .map(|frame| body(genome, ActionKind::Dragged.into(), frame))
@@ -1113,11 +1118,12 @@ fn reduced_motion_holds_each_clip_on_its_still_frame() {
 
 /// With motion on, the still frames change nothing: every frame is its own, and a clip that holds
 /// still on another frame still opens on its first: the snack held up before the first bite,
-/// the cup down, the first reach of a climb.
+/// and the cup down. A climb holds still on its first frame, the catch, with both paws on the
+/// wall.
 #[test]
 fn a_still_frame_changes_nothing_with_motion_on() {
     for (label, appearance) in still_frame_subjects() {
-        for action in [ActionKind::Eat, ActionKind::Drink, ActionKind::ClimbWindow] {
+        for action in [ActionKind::Eat, ActionKind::Drink] {
             let still = AnimationSpec::still_frame(action);
             assert_ne!(still, 0, "{action:?}");
             assert!(

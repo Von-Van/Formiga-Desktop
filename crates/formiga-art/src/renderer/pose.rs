@@ -4,6 +4,11 @@ use super::*;
 
 /// How far a creature shying away from the cursor carries its head away from it, in art pixels.
 pub(super) const AVOID_LEAN: i32 = 2;
+/// How far above where it hangs a climber's body is carried on each frame of a stroke, in art
+/// pixels: hung at full stretch on the catch, hauled up past its paw on the pull, and settled
+/// halfway back on the lock. The paws stay where they gripped, so they are placed from the head
+/// less this.
+pub(super) const CLIMB_LIFT: [i32; 3] = [0, 2, 1];
 
 #[derive(Clone, Copy, Default)]
 pub(super) struct Pose {
@@ -42,10 +47,27 @@ pub(super) struct Pose {
     /// Ears laid back flat against the head, in art pixels shorter than they stand: tucked in
     /// for a leap. Only a leap asks for it, so no other clip changes shape.
     pub(super) ears_back: i32,
-    /// The whole mass carried to one side over feet that stay where they are, in art pixels,
-    /// positive the way the body faces. Only a blob's stride asks for it: a blob has no head to
-    /// lean, so its weight going over onto the planted foot is the mass itself going over.
+    /// The whole body carried to one side over feet that stay where they are, in art pixels,
+    /// positive the way the body faces: its weight going over onto the foot it is standing on.
+    /// Only a stride asks for it.
     pub(super) sway: i32,
+    /// How far each foot is off the ground, the back one and the front, where a stride says so
+    /// itself. Without it a foot is lifted by as far as it has stepped out, which is right for a
+    /// shuffle on the spot; a stride plants a foot out ahead and carries it back along the ground
+    /// under the body, so where a foot is and whether it is down are two things.
+    pub(super) lifts: Option<[i32; 2]>,
+    /// The paws at its sides swung with the stride, in art pixels: the front one forward and up
+    /// as the back one goes back and down, and the other way for a negative swing. Only a
+    /// stride asks for it.
+    pub(super) swing: i32,
+    /// Up against a wall on the side it faces: the body is drawn close in to it, the paw on the
+    /// far side comes round from behind to hold it too, and the front foot is set against it
+    /// rather than under the body. Only a climb and the start of a mantle ask for it.
+    pub(super) wall: bool,
+    /// A four-pawed body carried forward in its frame by this many pixels, its feet with it: its
+    /// front half brought over the edge of a ledge it is hauling the rest of itself onto. Only
+    /// its mantle asks for it.
+    pub(super) forward: i32,
 }
 
 /// Keep-up, beat by beat, in time with [`ActionKind::SoloPlay`]'s four frames: caught against
@@ -103,8 +125,61 @@ impl Pose {
                 }
                 return pose;
             }
+            BodyClip::Gesture(Gesture::Mantle)
+                if formiga_core::climbs_on_all_fours(genome)
+                    && frame < formiga_core::MANTLE_PULL_FRAMES =>
+            {
+                // Still upright on the wall: both forepaws up over the ledge and the hind legs
+                // hung long under it, and then pulled up by the length of a foreleg, the hind
+                // paws walked up under the body.
+                return if frame == 0 {
+                    Self {
+                        step_a: -2,
+                        step_b: 2,
+                        tail_sway: -1,
+                        wall: true,
+                        ..Self::default()
+                    }
+                } else {
+                    Self {
+                        step_a: 1,
+                        step_b: -2,
+                        lean: 1,
+                        tail_sway: 1,
+                        ear_perk: 1,
+                        wall: true,
+                        ..Self::default()
+                    }
+                };
+            }
+            BodyClip::Gesture(Gesture::Mantle)
+                if formiga_core::climbs_on_all_fours(genome)
+                    && frame == formiga_core::MANTLE_PULL_FRAMES =>
+            {
+                // Down off the wall and level, its front half over the edge with both forepaws
+                // on the ledge and its hind legs still hanging behind.
+                let mut pose = Self {
+                    wall: false,
+                    forward: 6,
+                    ..Self::for_gesture(Gesture::Mantle, frame)
+                };
+                if reduce_motion {
+                    pose.calm();
+                }
+                return pose;
+            }
             BodyClip::Gesture(gesture) => {
                 let mut pose = Self::for_gesture(gesture, frame);
+                if gesture == Gesture::Leap && formiga_core::climbs_on_all_fours(genome) {
+                    // A four-pawed body bounds: stretched out full length as it springs, forelegs
+                    // forward and hind legs back; gathered under itself over the top; and its
+                    // forelegs put out ahead to land on, the hind ones coming down after.
+                    let (hind, fore) =
+                        [(-3, 3), (2, -2), (-1, 3), (0, 2)][usize::from(frame.min(3))];
+                    pose.step_a = hind;
+                    pose.step_b = fore;
+                    pose.lifts = None;
+                }
                 if reduce_motion {
                     pose.calm();
                 }
@@ -337,6 +412,9 @@ impl Pose {
                 },
                 _ => Self::resting(genome, 0),
             },
+            ActionKind::ClimbWindow if formiga_core::climbs_on_all_fours(genome) => {
+                Self::long_climb(frame)
+            }
             ActionKind::ClimbWindow => Self::climb(frame),
             // Hanging by its paws with its legs swinging slowly together, out to one side and
             // up a little, back through the middle, and out to the other, the tail following
@@ -427,37 +505,76 @@ impl Pose {
     }
 
     /// One frame of a climb up a window's side: a stroke with one paw, frames 0 to 2, and then
-    /// the same with the other. Each stroke is a reach, hanging low and stretched long with the
-    /// shoulders up; a pull, the body hauled two pixels up toward the paw with its head tucked
-    /// in, the leg on the reaching side bent up against the wall and the tail down; and a settle
-    /// onto the new grip, both legs hanging. The world raises the body on the pulls, frame for
-    /// frame (see `formiga_core::CLIMB_FRAMES_PER_SECOND`).
+    /// the same with the other. Each stroke is a catch, the paw landed high on the wall and the
+    /// body hung long under it, the front foot stepped up the wall and the back one low on it; a
+    /// pull, the body hauled up past the paw with its head tucked in, the front foot pushing
+    /// straight as the back one steps up, the tail down; and a lock, the paw down at the cheek
+    /// while the other reaches up for its own catch. The body is drawn leant in to the wall (see
+    /// `modular::draw_leaning`).
+    ///
+    /// The world raises the frame as each of these comes (see `formiga_core::CLIMB_FRAME_RISE`),
+    /// and the paws are drawn lower by as much. The body goes up past them a little further than
+    /// that on the pull and settles back through the lock ([`CLIMB_LIFT`]), which is all that
+    /// moves the head the paws are placed from: nothing else here may.
     fn climb(frame: u8) -> Self {
-        let lead = if frame % 6 < 3 { 1 } else { -1 };
+        let second = frame % 6 >= 3;
+        let play_lift = CLIMB_LIFT[usize::from(frame % 3)];
         match frame % 3 {
+            // The feet go up the wall in turn, both on it: as the front one steps up high for the
+            // catch the back one is low, pushing; on the pull they change over, the front one
+            // driving down straight; and through the lock the back one stays high while the front
+            // one starts up again. `step_a` is how far up the wall the back foot is.
             0 => Self {
-                bob: 1,
-                squash_y: 1,
+                play_lift,
                 appendage_lift: 3,
+                knee: if second { 2 } else { 3 },
+                tail_sway: -1,
+                lean: 1,
+                ear_perk: 1,
+                wall: true,
                 ..Self::default()
             },
             1 => Self {
+                play_lift,
                 squash_x: 1,
-                squash_y: -1,
-                play_lift: 2,
                 appendage_lift: 1,
-                step_a: if lead < 0 { -2 } else { 0 },
-                step_b: if lead > 0 { 2 } else { 0 },
+                step_a: if second { 2 } else { 3 },
                 tail_sway: 2,
-                ear_perk: -1,
+                wall: true,
                 ..Self::default()
             },
             _ => Self {
-                play_lift: 1,
+                play_lift,
                 appendage_lift: 2,
+                knee: 1,
+                step_a: 3,
                 tail_sway: 1,
+                wall: true,
                 ..Self::default()
             },
+        }
+    }
+
+    /// One frame of a four-pawed body's climb, which goes up the wall upright with all four paws
+    /// on it (see `modular::draw`): the same three beats as [`Self::climb`], a stroke for the near
+    /// forepaw and then one for the far. The forepaw whose stroke it is reaches up the wall as
+    /// the other comes back, the hind paws stepping against them; on the pull the legs change
+    /// over as the body goes up; and on the lock they gather under it.
+    fn long_climb(frame: u8) -> Self {
+        let lead = if frame % 6 < 3 { 1 } else { -1 };
+        let (hind, fore, lean, tail) = match frame % 3 {
+            0 => (-1, 2, 1, -1),
+            1 => (2, -2, 0, 2),
+            _ => (1, 0, 0, 1),
+        };
+        Self {
+            step_a: lead * hind,
+            step_b: lead * fore,
+            lean,
+            tail_sway: tail,
+            ear_perk: i32::from(frame.is_multiple_of(3)),
+            wall: true,
+            ..Self::default()
         }
     }
 
@@ -503,15 +620,28 @@ impl Pose {
             let near_hind = [1, 0, 0, -1, 0, 0][phase];
             let near_fore = [0, 0, 1, 0, 0, -1][phase];
             let down = phase % 3 == 1;
+            // A stride two pixels long at a walk and three at a run, the leg stepping forward
+            // lifted and its partner on the other side left that far behind on the ground, so
+            // the legs open and close under it. Reduced motion keeps the short step it held.
+            let reach = if reduce_motion { 1 + run } else { 2 + run };
+            // The head nods forward as a forepaw goes out, and comes back as the body dips.
+            let nod = i32::from(!reduce_motion && near_fore != 0);
             return Self {
                 bob: if down { bob } else { 0 },
-                squash_x: i32::from(down),
+                squash_x: i32::from(down) + i32::from(running && !reduce_motion && !down),
                 squash_y: -i32::from(down),
-                step_a: near_hind * (1 + run),
-                step_b: near_fore * (1 + run),
+                step_a: near_hind * reach,
+                step_b: near_fore * reach,
                 play_lift: i32::from(running && !down),
                 appendage_lift: run,
-                tail_sway: [1, 2, 1, -1, -2, -1][phase],
+                tail_sway: if running && !reduce_motion {
+                    [-2, -1, -2, -2, -1, -2][phase]
+                } else {
+                    [1, 2, 1, -1, -2, -1][phase]
+                },
+                lean: nod + i32::from(running && !reduce_motion),
+                ears_back: if running && !reduce_motion { 2 } else { 0 },
+                ear_perk: i32::from(!reduce_motion && !running && down),
                 ..Self::default()
             };
         }
@@ -522,6 +652,10 @@ impl Pose {
         // it is off the ground, and the mass goes over onto the planted foot while the other one
         // is up, so the walk reads as a waddle from one foot to the other. Reduced motion holds
         // the first frame of the walk it always held, with both feet down.
+        // A blob keeps the waddle from foot to foot that is its walk, and runs as everyone does.
+        if !reduce_motion && (running || !strides_as_blob(genome)) {
+            return Self::stepping(phase, bob, running);
+        }
         let blob = strides_as_blob(genome) && !reduce_motion;
         let left = if blob {
             [-2, -2, 0, 0, 0, 0]
@@ -549,6 +683,76 @@ impl Pose {
             lean: 1 + run,
             ear_perk: i32::from(top),
             sway: if blob { [1, 1, 0, -1, -1, 0][phase] } else { 0 },
+            ..Self::default()
+        }
+    }
+
+    /// One frame of a two-legged body's walk or run, `phase` of six: a step with the front foot,
+    /// frames 0 to 2, and then one with the back foot.
+    ///
+    /// A walking step is a contact, the stepping foot planted out ahead with the body sunk onto
+    /// it and the other just leaving the ground behind; a passing, the body up and over the
+    /// planted foot, its weight gone across onto it, as the other swings through high; and a
+    /// reach, the planted foot gone back under the body and the other out ahead, about to come
+    /// down. A planted foot goes back along the ground as the body goes on over it, and a lifted
+    /// one comes forward, which is what makes it a walk rather than a march on the spot. The paws
+    /// at its sides swing against the feet, the ears lift on the way up and the tail trails.
+    ///
+    /// A run is the same three beats pushed further: it lands crouched on the stepping foot with
+    /// the other flung out behind, drives up off it, and is in the air with both feet off the
+    /// ground, legs split, ears flat and paws thrown back, before it lands on the other foot.
+    fn stepping(phase: usize, bob: i32, running: bool) -> Self {
+        let beat = phase % 3;
+        // Where the stepping foot and the other are, and how far each is off the ground.
+        let (lead, other) = match (running, beat) {
+            (false, 0) => ((3, 0), (-2, 1)),
+            (false, 1) => ((1, 0), (0, 2)),
+            (false, _) => ((-1, 0), (2, 1)),
+            (true, 0) => ((3, 0), (-2, 3)),
+            (true, 1) => ((0, 0), (1, 3)),
+            (true, _) => ((-3, 2), (3, 2)),
+        };
+        let front_steps = phase < 3;
+        let (front, back) = if front_steps {
+            (lead, other)
+        } else {
+            (other, lead)
+        };
+        // Over onto the planted foot as the other swings through.
+        let over = if front_steps { 1 } else { -1 };
+        let swing = [-1, 0, 1, 1, 0, -1][phase];
+        if running {
+            return Self {
+                bob: if beat == 0 { bob.max(1) } else { 0 },
+                squash_x: [1, 0, -1][beat],
+                squash_y: [-1, 0, 1][beat],
+                step_a: back.0,
+                step_b: front.0,
+                lifts: Some([back.1, front.1]),
+                play_lift: [0, 1, 3][beat],
+                appendage_lift: 1,
+                tail_sway: [-2, -1, -2][beat],
+                lean: 2,
+                crouch: i32::from(beat == 0),
+                ears_back: 2,
+                sway: if beat == 1 { over } else { 0 },
+                swing: swing * 2,
+                ..Self::default()
+            };
+        }
+        Self {
+            bob: [bob, -1, 0][beat],
+            squash_x: [1, -1, 0][beat],
+            squash_y: [-1, 1, 0][beat],
+            step_a: back.0,
+            step_b: front.0,
+            lifts: Some([back.1, front.1]),
+            appendage_lift: i32::from(beat == 1),
+            tail_sway: [1, 2, 1, -1, -2, -1][phase],
+            lean: 1,
+            ear_perk: i32::from(beat == 1),
+            sway: if beat == 1 { over } else { 0 },
+            swing,
             ..Self::default()
         }
     }
@@ -600,6 +804,9 @@ impl Pose {
             // Steps half the size, the head hung forward and low, nothing lifted.
             pose.step_a /= 2;
             pose.step_b /= 2;
+            pose.lifts = pose.lifts.map(|lifts| lifts.map(|lift| lift.min(1)));
+            pose.swing = 0;
+            pose.sway = 0;
             pose.bob = bob.max(1);
             pose.play_lift = 0;
             pose.appendage_lift = -1;
@@ -663,6 +870,10 @@ impl Pose {
             trail: 0,
             ears_back: 0,
             sway: 0,
+            lifts: None,
+            swing: 0,
+            wall: false,
+            forward: 0,
         }
     }
 
@@ -676,20 +887,42 @@ impl Pose {
         let slow = usize::from(frame % 6);
         match gesture {
             // Topping out onto a ledge, a frame for each beat of it (see
-            // `formiga_core::MANTLE_FRAMES_PER_SECOND`): squat over the edge with the chest on it
-            // and the front knee drawn up to it; raised up on both paws for the push, the back leg
-            // still trailing below; and stood on the ledge, settling onto its legs.
-            Gesture::Mantle => match frame.min(2) {
+            // `formiga_core::MANTLE_FRAMES_PER_SECOND`): hung from the ledge by both paws, long
+            // and still against the wall; pulled up on them until the chin is over it, a foot
+            // scrabbling up the wall; squat over the edge with the chest on it and the front knee
+            // drawn up to it; raised up on both paws for the push, the back leg still trailing
+            // below; and stood on the ledge, settling onto its legs. The first three are beside
+            // the window, so they keep the height in the frame the ledge is drawn against.
+            Gesture::Mantle => match frame.min(4) {
                 0 => Self {
+                    appendage_lift: 3,
+                    tail_sway: -1,
+                    knee: 1,
+                    trail: 2,
+                    wall: true,
+                    ..Self::default()
+                },
+                1 => Self {
+                    squash_x: 1,
+                    appendage_lift: 3,
+                    tail_sway: 1,
+                    ear_perk: 1,
+                    knee: 4,
+                    trail: 1,
+                    wall: true,
+                    ..Self::default()
+                },
+                2 => Self {
                     squash_x: 1,
                     squash_y: -1,
                     appendage_lift: 1,
                     tail_sway: -1,
                     lean: 1,
                     knee: 5,
+                    wall: true,
                     ..Self::default()
                 },
-                1 => Self {
+                3 => Self {
                     play_lift: 2,
                     tail_sway: 1,
                     lean: 1,
@@ -827,6 +1060,10 @@ impl Pose {
                 trail: 0,
                 ears_back: 0,
                 sway: 0,
+                lifts: None,
+                swing: 0,
+                wall: false,
+                forward: 0,
             },
             // Breathing in, drawn up tall with the head tipped back as the paw comes up to the
             // mouth, held at the top, and settling down a little lower than it began. Played once:
@@ -1009,25 +1246,58 @@ impl Pose {
                     ..Self::default()
                 }
             }
-            // In the air: stretched out long with the paws drawn in and the ears laid back, the
-            // tail trailing as it rises, then a little less stretched and the tail up as it
-            // comes down.
-            Gesture::Leap => {
-                let rising = frame.is_multiple_of(2);
-                Self {
-                    squash_x: -i32::from(rising),
-                    squash_y: 1 + i32::from(rising),
-                    step_a: -1 - i32::from(rising),
-                    step_b: 1 + i32::from(rising),
-                    play_lift: 1 + i32::from(rising),
-                    appendage_lift: -1,
-                    tail_sway: if rising { -2 } else { 1 },
-                    lean: i32::from(rising),
+            // In the air, a frame for each part of the arc (see `leap_frame`): sprung up at full
+            // stretch, the legs trailing long under it, the ears laid back and the tail down;
+            // tucked at the top, knees drawn up into a body gone round; coming down opened out,
+            // legs apart and reaching, the ears and tail lifted by the air; and the feet put down
+            // to the ground under it, wide, ready for the touch. The feet are drawn where each
+            // says rather than a row past the lift (see `Pose::lifts`).
+            Gesture::Leap => match frame.min(3) {
+                0 => Self {
+                    squash_x: -1,
+                    squash_y: 2,
+                    step_a: 1,
+                    step_b: -1,
+                    lifts: Some([2, 2]),
+                    play_lift: 3,
+                    appendage_lift: 1,
+                    tail_sway: -2,
+                    lean: 1,
                     ear_perk: -1,
                     ears_back: 2,
                     ..Self::default()
-                }
-            }
+                },
+                1 => Self {
+                    squash_x: 1,
+                    squash_y: -1,
+                    lifts: Some([5, 5]),
+                    play_lift: 3,
+                    tail_sway: -1,
+                    ears_back: 1,
+                    ..Self::default()
+                },
+                2 => Self {
+                    squash_y: 1,
+                    step_a: -2,
+                    step_b: 2,
+                    lifts: Some([2, 2]),
+                    play_lift: 2,
+                    appendage_lift: 2,
+                    tail_sway: 2,
+                    ear_perk: 2,
+                    ..Self::default()
+                },
+                _ => Self {
+                    step_a: -2,
+                    step_b: 2,
+                    lifts: Some([0, 0]),
+                    play_lift: 1,
+                    appendage_lift: 1,
+                    tail_sway: 1,
+                    ear_perk: 1,
+                    ..Self::default()
+                },
+            },
             // Drawn up with the nose out, ears forward, the head bobbing in little sniffs.
             Gesture::Sniff => Self {
                 bob: 0,
@@ -1230,6 +1500,18 @@ const BREATH: [(i32, i32); 4] = [(0, 1), (1, 1), (1, 0), (0, 0)];
 /// body, for its hop overrides the stride's own lift.
 const SKIP_HOP: [i32; 6] = [0, 2, 1, 0, 2, 1];
 
+/// Which frame of the leap a hop shows `across` of the way over, from 0 to 1: sprung up for the
+/// first third of it, tucked over the top, opened out on the way down, and its feet put down for
+/// the last of it.
+pub(super) fn leap_frame(across: f32) -> u8 {
+    match across {
+        across if across < 0.3 => 0,
+        across if across < 0.55 => 1,
+        across if across < 0.82 => 2,
+        _ => 3,
+    }
+}
+
 /// Whether `phase` of a skip has it landed, feet on the ground.
 pub(super) fn skip_landing(phase: usize) -> bool {
     SKIP_HOP[phase % 6] == 0
@@ -1248,8 +1530,11 @@ pub(super) fn footfall(genome: &AppearanceGenome, phase: usize) -> bool {
         0
     } else if stretches_long(genome) {
         1
-    } else {
+    } else if strides_as_blob(genome) {
         2
+    } else {
+        // A step lands on its contact (see `Pose::stepping`).
+        0
     };
     phase % 3 == down
 }

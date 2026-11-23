@@ -51,7 +51,7 @@ fn ambient_animation_specs_and_shared_handhold_placement_are_exact() {
         assert_eq!(spec.frames, frames);
         assert_eq!(spec.fps, fps);
     }
-    assert_eq!(formiga_core::CLIMB_FRAMES_PER_SECOND, 6);
+    assert_eq!(formiga_core::CLIMB_FRAMES_PER_SECOND, 10);
     assert_eq!(
         AnimationSpec::for_action(ActionKind::ClimbWindow).frames,
         2 * formiga_core::CLIMB_STROKE_FRAMES
@@ -683,33 +683,37 @@ fn a_companion_walks_to_bed_and_lies_down_when_it_gets_there() {
     assert_eq!(face.eyelids, EyelidPose::Closed);
 }
 
-/// A climb tops out in a mantle of three frames played once, at the rate the world hauls the
-/// body up by: the chest over the edge and the push up while it hauls, the stand as it steps in.
-/// With reduced motion it holds still on the push up, which says what it is doing better than
-/// any other moment of it, and every other clip holds still on its first frame as before.
+/// A climb tops out in a mantle of five frames played once, at the rate the world brings the
+/// body up by: hung from the ledge and pulled up on it, the chest over the edge and the push up
+/// while it hauls, and the stand as it steps in. With reduced motion it holds still on the push
+/// up, which says what it is doing better than any other moment of it, and every other clip
+/// holds still on its first frame as before.
 #[test]
 fn a_mantle_plays_once_at_the_worlds_rate_and_holds_its_push_with_motion_reduced() {
     let spec = AnimationSpec::for_clip(Gesture::Mantle);
-    assert_eq!(spec.frames, 3);
+    assert_eq!(spec.frames, 5);
     assert_eq!(spec.fps, formiga_core::MANTLE_FRAMES_PER_SECOND);
     assert_eq!(spec.playback, PlaybackMode::Hold);
-    let haul_secs = f32::from(formiga_core::MANTLE_HAUL_FRAMES)
-        / f32::from(formiga_core::MANTLE_FRAMES_PER_SECOND);
+    let frame_secs = 1.0 / f32::from(formiga_core::MANTLE_FRAMES_PER_SECOND);
+    let pull_secs = f32::from(formiga_core::MANTLE_PULL_FRAMES) * frame_secs;
+    let haul_secs = f32::from(formiga_core::MANTLE_HAUL_FRAMES) * frame_secs;
     assert_eq!(spec.frame_at(0.0), 0);
-    assert_eq!(spec.frame_at(haul_secs * 0.75), 1);
-    assert_eq!(spec.frame_at(haul_secs + 0.01), 2);
-    assert_eq!(spec.frame_at(30.0), 2);
-    assert_eq!(AnimationSpec::still_frame(Gesture::Mantle), 1);
-    // Eating, drinking and the climb hold their own still frames (see `AnimationSpec::still_frame`);
-    // every other clip holds its first.
+    assert_eq!(spec.frame_at(pull_secs * 0.75), 1);
+    assert_eq!(spec.frame_at(pull_secs + 0.01), 2);
+    assert_eq!(spec.frame_at(pull_secs + haul_secs * 0.75), 3);
+    assert_eq!(spec.frame_at(pull_secs + haul_secs + 0.01), 4);
+    assert_eq!(spec.frame_at(30.0), 4);
+    assert_eq!(AnimationSpec::still_frame(Gesture::Mantle), 3);
+    // Eating and drinking hold their own still frames (see `AnimationSpec::still_frame`); every
+    // other clip holds its first, which for a climb is the catch, both paws on the wall.
     assert_eq!(AnimationSpec::still_frame(ActionKind::Eat), 1);
     assert_eq!(AnimationSpec::still_frame(ActionKind::Drink), 2);
-    assert_eq!(AnimationSpec::still_frame(ActionKind::ClimbWindow), 1);
+    assert_eq!(AnimationSpec::still_frame(ActionKind::ClimbWindow), 0);
     for clip in BodyClip::baked().filter(|clip| {
         !matches!(
             clip,
             BodyClip::Gesture(Gesture::Mantle)
-                | BodyClip::Action(ActionKind::Eat | ActionKind::Drink | ActionKind::ClimbWindow)
+                | BodyClip::Action(ActionKind::Eat | ActionKind::Drink)
         )
     }) {
         assert_eq!(AnimationSpec::still_frame(clip), 0, "{clip:?}");
@@ -728,9 +732,9 @@ fn a_mantle_plays_once_at_the_worlds_rate_and_holds_its_push_with_motion_reduced
                 "{family:?} mantle frame {frame} moves with motion reduced"
             );
         }
-        // Not the chest over the edge, which is the frame anything else would hold.
-        let chest = CreatureRenderer::render_body_frame(&genome, Gesture::Mantle, 0, false);
-        assert_ne!(held.canvas, chest.canvas, "{family:?}");
+        // Not the hang from the ledge, which is the frame anything else would hold.
+        let hang = CreatureRenderer::render_body_frame(&genome, Gesture::Mantle, 0, false);
+        assert_ne!(held.canvas, hang.canvas, "{family:?}");
     }
 }
 

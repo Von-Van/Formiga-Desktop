@@ -575,15 +575,17 @@ pub(super) fn draw_forelimbs(
         BodyFamily::SoftQuadruped => i32::from(genome.forelimbs.length).min(4),
         _ => i32::from(genome.forelimbs.length),
     };
-    let (left_target, mut right_target) = limb_targets(
-        limb_pose.left_root,
-        limb_pose.right_root,
-        limb_pose.clip,
-        limb_pose.frame,
-        length,
-        genome.forelimbs.rest_pose,
-        limb_pose.pose,
-    );
+    let (left_target, mut right_target) = wall_targets(genome, limb_pose).unwrap_or_else(|| {
+        limb_targets(
+            limb_pose.left_root,
+            limb_pose.right_root,
+            limb_pose.clip,
+            limb_pose.frame,
+            length,
+            genome.forelimbs.rest_pose,
+            limb_pose.pose,
+        )
+    });
     // A soft quadruped keeps its toy up back over its shoulders, away from the head it carries
     // out in front, so it catches it with the near paw drawn in under its chest.
     if limb_pose.family == BodyFamily::SoftQuadruped
@@ -689,6 +691,57 @@ pub(super) fn draw_quadruped_forelimbs(
     }
 }
 
+/// Where the two paws are on a frame that has them on a wall or on the ledge at the top of it,
+/// back paw first: the climb, and the mantle until the chest is over the edge. Both go to the
+/// wall on the side the body faces, as a modular climber's do, at the same rows: the paw whose
+/// stroke it is lands high and stays where it landed, drawn lower by what the world has raised
+/// the body since (see `formiga_core::CLIMB_FRAME_RISE`), while the other holds under it and
+/// then comes up off the wall for its own catch.
+fn wall_targets(
+    genome: &AppearanceGenome,
+    limb_pose: LimbPose,
+) -> Option<(PixelPoint, PixelPoint)> {
+    let LimbPose {
+        left_root,
+        right_root,
+        clip,
+        frame,
+        ..
+    } = limb_pose;
+    // The edge line, as far past the middle of the frame as this body is hung out from it.
+    let wall = FRAME_SIZE as i32 / 2 + formiga_core::climb_grip_reach(genome) as i32 - 2;
+    let at = |x: i32, y: i32| PixelPoint {
+        x: x.clamp(3, 44),
+        y: y.clamp(3, 44),
+    };
+    match clip {
+        BodyClip::Action(ActionKind::ClimbWindow) => {
+            let rise = formiga_core::CLIMB_FRAME_RISE.map(i32::from);
+            // The shoulders are carried up past the paws on the pull, and the paws stay.
+            let shoulder = left_root.y.min(right_root.y) + CLIMB_LIFT[usize::from(frame % 3)];
+            let top = shoulder - 13;
+            let paw = wall - 1;
+            let (lead, other) = match frame % 3 {
+                0 => (at(paw, top), at(paw, top + rise.iter().sum::<i32>())),
+                1 => (at(paw, top + rise[1]), at(paw - 3, top + rise[1] + 2)),
+                _ => (at(paw, top + rise[1] + rise[2]), at(paw - 2, top + 3)),
+            };
+            // These bodies are drawn side on, with the back paw behind the head: it cannot come
+            // round to the wall without crossing the face, so it keeps the stroke's time on its
+            // own side, up as the front paw comes down, and the front paw does the gripping.
+            let front = if frame % 6 < 3 { lead } else { other };
+            let back_row = if frame % 6 < 3 { other.y } else { lead.y };
+            Some((at(left_root.x - 2, back_row.max(top + 4)), front))
+        }
+        BodyClip::Gesture(Gesture::Mantle) if frame < formiga_core::MANTLE_PULL_FRAMES => {
+            let drop = i32::from(formiga_core::mantle_frame_drop(genome)[usize::from(frame)]);
+            let ledge = FRAME_SIZE as i32 - 5 - drop;
+            Some((at(wall + 3, ledge - 2), at(wall, ledge - 2)))
+        }
+        _ => None,
+    }
+}
+
 pub(super) fn limb_targets(
     left: PixelPoint,
     right: PixelPoint,
@@ -770,23 +823,12 @@ pub(super) fn limb_targets(
             ),
             _ => side_rest(),
         },
-        // A stroke with each paw, as a modular climber's (see `Pose::climb`): the back paw up
-        // behind the head and the front one in front of the face, the reaching one high while the
-        // other holds low, pulled down toward the body on the pull, and the other coming up on
-        // the settle.
-        ActionKind::ClimbWindow => {
-            let (lead, held) = match frame % 3 {
-                0 => (-length - 4, -length + 3),
-                1 => (-length - 1, -length + 3),
-                _ => (-length - 1, -length + 1),
-            };
-            let (back, front) = if frame % 6 < 3 {
-                (held, lead)
-            } else {
-                (lead, held)
-            };
-            offset_pair(left, right, ((-length + 1, back), (length - 1, front)))
-        }
+        // A climb's paws are on the wall: see `wall_targets`. This is what they do off it.
+        ActionKind::ClimbWindow => offset_pair(
+            left,
+            right,
+            ((-length + 1, -length - 1), (length - 1, -length - 1)),
+        ),
         ActionKind::Dangle => offset_pair(
             left,
             right,
@@ -988,12 +1030,13 @@ pub(super) fn gesture_limb_targets(
         ),
         // Topping out onto a ledge: both paws laid over the edge out in front, then planted flat
         // on it beside the body for the push, and back where they rest once it stands.
-        Gesture::Mantle => match frame.min(2) {
-            0 => (
+        // The hang and the pull-up before these are on the wall: see `wall_targets`.
+        Gesture::Mantle => match frame.min(4) {
+            0..=2 => (
                 at(middle - 1, left.y + 1),
                 at(right.x + length + 2, right.y),
             ),
-            1 => offset_pair(left, right, ((-1, length + 2), (2, length + 2))),
+            3 => offset_pair(left, right, ((-1, length + 2), (2, length + 2))),
             _ => resting(),
         },
         // One paw pushing at the ground beside it, and then the other.

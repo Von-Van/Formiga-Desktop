@@ -22,7 +22,7 @@ const TICK: f32 = 0.05;
 /// One sample every this many ticks: a tenth of a second.
 const TICKS_PER_SAMPLE: u32 = 2;
 /// How long a perch is shown once it has begun, in seconds.
-const PERCH_SHOWN: f32 = 2.0;
+const PERCH_SHOWN: f32 = 0.6;
 /// Each sample's view, in points from the window's top-left corner.
 const VIEW_LEFT: f32 = -50.0;
 const VIEW_RIGHT: f32 = 46.0;
@@ -78,6 +78,16 @@ fn climbers() -> Vec<(String, AppearanceGenome)> {
         appearance.design = Some(design);
         named.push((format!("PLAN {plan:?}").to_uppercase(), appearance));
     }
+    // The looks from before recipes, which are drawn side on by their own renderers, and the fox.
+    for (name, genome) in named.clone().into_iter().take(3) {
+        let mut classic = genome;
+        classic.design = None;
+        let family = name.split(' ').next().unwrap_or_default();
+        named.push((format!("{family} BEFORE RECIPES"), classic));
+    }
+    let mut fox = preview.appearance.clone();
+    fox.echo_fox = true;
+    named.push(("FOX".into(), fox));
     named
 }
 
@@ -207,8 +217,10 @@ fn doing(creature: &Creature) -> String {
     let body = BodyPresentation::for_creature(creature);
     if body.clip == formiga_art::BodyClip::Gesture(Gesture::Mantle) {
         return match body.frame {
-            0 => "MANTLE CHEST".into(),
-            1 => "MANTLE PUSH".into(),
+            0 => "MANTLE HANG".into(),
+            1 => "MANTLE PULL UP".into(),
+            2 => "MANTLE CHEST".into(),
+            3 => "MANTLE PUSH".into(),
             _ => "MANTLE STAND".into(),
         };
     }
@@ -555,7 +567,7 @@ mod tests {
                     mantle.push(body.frame);
                 }
             }
-            assert_eq!(mantle, [0, 1, 2], "{name}");
+            assert_eq!(mantle, [0, 1, 2, 3, 4], "{name}");
             assert_eq!(
                 stages,
                 [
