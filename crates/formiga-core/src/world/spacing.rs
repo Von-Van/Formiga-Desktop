@@ -1025,11 +1025,13 @@ impl World {
         };
         creature.state.action = ActionKind::Traverse;
         creature.state.action_elapsed = 0.0;
-        // Only as long as the walk itself takes. A step aside is not an errand, and holding the
-        // creature in it for longer would keep it out of whatever it would rather be doing.
+        // Only as long as the walk itself takes, easing in and out included. A step aside is
+        // not an errand, and holding the creature in it for longer would keep it out of
+        // whatever it would rather be doing.
         let speed = 24.0 + creature.personality.activity * 34.0;
         creature.state.action_duration =
-            ((target_x - creature.state.position.x).abs() / speed + 0.3).clamp(0.4, 4.0);
+            ((target_x - creature.state.position.x).abs() / speed + WALK_EASE_SECS + 0.3)
+                .clamp(0.4, 4.0);
         creature.state.facing_right = target_x >= creature.state.position.x;
         creature.state.velocity = Point::default();
         self.overlaps.start_step(id, target_x);
@@ -1061,7 +1063,14 @@ impl World {
         ) else {
             return false;
         };
-        let journey = build_window_journey(creature, target, surface, desktop);
+        let journey = build_window_journey(
+            creature,
+            target,
+            surface,
+            desktop,
+            &self.save.settings.habitat,
+            self.save.settings.display_scale,
+        );
         let next = journey.initial_action();
         self.window_journeys.insert(id, journey);
         self.window_routes.remove(&id);

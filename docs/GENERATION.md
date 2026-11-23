@@ -301,8 +301,9 @@ does not depend on a reference file or a temporary preview.
 What a creature owns is generated from bytes it already carries. `prop_variants(genome)` reads one
 signature out of the appearance genome and picks one of eight toys, one of four snacks, and one of
 three kinds of drinkware; none of them adds a gene, and a creature's belongings never change. They
-are baked into the same action atlas as the body, anchored to the paw or the mouth that is actually
-drawn through `modular::prop_hold`, so a toy is held in a real hand rather than at a guessed offset.
+are baked into the same action atlas as the body, anchored to the paw or the mouth that each frame
+actually draws (`RenderedBodyFrame::hands` and `mouth`), so a toy is held in a real hand rather
+than at a guessed offset.
 `prop-sheet` shows all fifteen against the bodies that carry them.
 
 Trinkets are a colony's, not a creature's. `formiga-core::trinkets` is the catalogue — a hundred
@@ -321,7 +322,9 @@ What a companion wears is a colony's finds too. Each of the twenty accessories i
 an acorn's cup, brass — with its dyed parts in that variant's colony colours, and outlined all round
 in one pass; any find can be worn as a pin. `renderer/accessories.rs` draws the piece onto every body frame as the atlas is
 baked, from the `Figure` the frame's body reports — the top of the head, the neck, the chest and the
-hip — so it adds no gene, no texture, and no quad.
+hip — so it adds no gene, no texture, and no quad. A companion of logical size 28 or smaller draws
+the moon clip, the shell necklace and the snail pack in plainer speck shapes, chosen by its size
+and not by anything generated; every larger companion's pieces are drawn exactly as before.
 
 ## Extending safely
 

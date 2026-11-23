@@ -211,6 +211,40 @@ fn templated(face: formiga_core::FaceGenome, template: &FaceTemplate) -> formiga
     }
 }
 
+/// Where the middle of this face's mouth is drawn, against the face anchor, in body-frame pixels
+/// facing right: the pixel every expression's mouth is drawn around. The face frame is centred
+/// on the anchor and drawn about its row 7 of 16, a row above the anchor, so this is the face's
+/// own eye row and mouth drop, read from the same layout [`draw_face`] draws by.
+pub(super) fn mouth_offset(genome: &AppearanceGenome) -> PixelPoint {
+    let design = genome.design.map(formiga_core::CreatureDesign::bounded);
+    let template = design
+        .filter(|design| design.face_template > 0)
+        .and_then(|design| FACE_TEMPLATES.get(usize::from(design.face_template) - 1));
+    let below = match template {
+        Some(template) => template.eye_dy + template.mouth_dy,
+        None => {
+            // Without a layout the eyes' row and size set how far down the mouth is, as
+            // `draw_face` measures it; a recipe's classic eyes sit a row up.
+            let (offset, size) = match design {
+                Some(design) => (
+                    -1,
+                    if matches!(design.classic.face, 3 | 5) {
+                        1
+                    } else {
+                        2
+                    },
+                ),
+                None => (
+                    i32::from(genome.face.vertical_offset),
+                    i32::from(genome.face.eye_size),
+                ),
+            };
+            offset + size + 3
+        }
+    };
+    PixelPoint { x: 0, y: below - 1 }
+}
+
 pub(super) fn draw_face(
     canvas: &mut Canvas,
     genome: &AppearanceGenome,
@@ -1145,12 +1179,14 @@ pub(super) fn mouth_inside(palette: Palette) -> Rgba {
     )
 }
 
+/// The face an action is drawn with when nothing about the creature itself says otherwise: on
+/// the sheets, the cards and the notebook's pictures. A stroll, or a ride on a window, is the
+/// face of standing about; only working a way through a gap is concentrating, and a run is
+/// determined.
 pub(super) fn expression_for_action(action: ActionKind) -> ExpressionKind {
     match action {
-        ActionKind::Idle => ExpressionKind::Neutral,
-        ActionKind::Traverse | ActionKind::SqueezeWindow | ActionKind::RideWindow => {
-            ExpressionKind::Focused
-        }
+        ActionKind::Idle | ActionKind::Traverse | ActionKind::RideWindow => ExpressionKind::Neutral,
+        ActionKind::SqueezeWindow => ExpressionKind::Focused,
         ActionKind::Sprint => ExpressionKind::Determined,
         ActionKind::Perch | ActionKind::Homebound => ExpressionKind::Content,
         ActionKind::Sleep => ExpressionKind::Sleepy,
@@ -1173,13 +1209,28 @@ pub(super) fn expression_for_action(action: ActionKind) -> ExpressionKind {
 }
 
 pub(super) fn default_eyelids(action: ActionKind, frame: u8) -> EyelidPose {
-    if action == ActionKind::Sleep {
+    if matches!(action, ActionKind::Sleep | ActionKind::Tossed) {
         EyelidPose::Closed
     } else if frame % 8 == 7 {
         EyelidPose::Half
     } else {
         EyelidPose::Open
     }
+}
+
+/// Whether a companion dangling from a ledge is glancing down at the drop this frame: on the
+/// frame of each swing of its legs where they come back through the middle (see `Pose::new`),
+/// and on the frame after it too when its attention is startled or worried by the hang.
+fn glancing_down(creature: &Creature) -> bool {
+    let frame = MotionSignature::for_creature(creature)
+        .frame(ActionKind::Dangle, creature.state.action_elapsed);
+    let worried = creature.state.attention.is_some_and(|pose| {
+        matches!(
+            pose.emotion,
+            formiga_core::AttentionEmotion::Startled | formiga_core::AttentionEmotion::Concerned
+        )
+    });
+    frame == 2 || (worried && frame == 3)
 }
 
 pub(super) fn resolve_expression(creature: &Creature) -> ExpressionKind {
@@ -1225,6 +1276,8 @@ pub(super) fn resolve_expression(creature: &Creature) -> ExpressionKind {
             Some(Gesture::Strut) => return ExpressionKind::Smug,
             Some(Gesture::Beg) => return ExpressionKind::Pleading,
             Some(Gesture::Swoon) => return ExpressionKind::Affectionate,
+            // Still the climb's own effort, whatever its attention is on.
+            Some(Gesture::Mantle) => return ExpressionKind::Determined,
             _ => {}
         }
         return match pose.emotion {
@@ -1326,6 +1379,10 @@ pub(super) fn resolve_expression(creature: &Creature) -> ExpressionKind {
 }
 
 pub(super) fn resolve_eyelids(creature: &Creature, at_cursor: bool) -> EyelidPose {
+    // Screwed shut while it tumbles through the air balled up.
+    if BodyClip::for_creature(creature) == BodyClip::Action(ActionKind::Tossed) {
+        return EyelidPose::Closed;
+    }
     if creature.state.attention.is_none()
         && let Some(eyelids) = creature.state.beat.and_then(super::beats::beat_eyelids)
     {
@@ -1437,6 +1494,11 @@ enum Looking {
 
 fn looking_at(creature: &Creature, cursor: CursorSnapshot, cursor_reactions: bool) -> Looking {
     let fixed = |gaze| Looking::Fixed(gaze);
+    // Hanging from a ledge, it glances down past its feet at the drop as its legs swing back
+    // through the middle, and for longer when the hang is a worrying one.
+    if creature.state.action == ActionKind::Dangle && glancing_down(creature) {
+        return fixed(GazeDirection::new(0, 1));
+    }
     if let Some(pose) = creature.state.attention {
         return fixed(GazeDirection::new(
             axis_direction(pose.target.x - creature.state.position.x, 10.0),
@@ -1488,7 +1550,8 @@ fn looking_at(creature: &Creature, cursor: CursorSnapshot, cursor_reactions: boo
                 },
             ));
         }
-        ActionKind::Dangle => return fixed(GazeDirection::new(0, 1)),
+        // Hanging from a hand or a ledge, it looks down at where it will be put.
+        ActionKind::Dangle | ActionKind::Dragged => return fixed(GazeDirection::new(0, 1)),
         ActionKind::PresentDiscovery => return fixed(GazeDirection::new(0, -1)),
         // A grump under the hand puts its nose in the air and looks away from it.
         ActionKind::PetReaction if creature.grumbles_when_petted() => {
@@ -1580,7 +1643,8 @@ fn glance_near(creature: &Creature, clock: f32) -> Option<Glance> {
 
 /// Where a creature's eyes go when nothing in particular has them: where it is going while it
 /// walks, and straight out while it rests, with now and then a glance — at a friend nearby, a
-/// sociable companion more often than a solitary one, or off to one side, down or up — a
+/// sociable companion more often than a solitary one, or off to one side, down or up, and
+/// mostly down over the edge while it sits up on a window — a
 /// companion walking with or waiting on a friend keeping an eye on them throughout, and one a
 /// friend is walking over to watching it come.
 ///
@@ -1625,6 +1689,16 @@ fn wandering_gaze(creature: &Creature, colony: &[Creature]) -> GazeDirection {
     if walking {
         // A walker glances out at the desk, or down at where its feet are going.
         return [GazeDirection::new(0, 0), GazeDirection::new(forward, 1)][pick % 2];
+    }
+    if state.action == ActionKind::Perch {
+        // Sat up on a window, it looks down over the edge more than anywhere: at the desk below,
+        // ahead and behind, and now and then out across it.
+        return [
+            GazeDirection::new(forward, 1),
+            GazeDirection::new(0, 1),
+            GazeDirection::new(-forward, 1),
+            GazeDirection::new(forward, 0),
+        ][pick % 4];
     }
     [
         GazeDirection::new(forward, 0),

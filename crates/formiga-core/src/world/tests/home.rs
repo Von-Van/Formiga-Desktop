@@ -196,6 +196,16 @@ fn home_descent_is_continuous_and_finishes_if_house_disappears() {
         world.save.creatures[0].state.surface.kind = SurfaceKind::WindowLedge;
         world.save.creatures[0].state.surface.window_key = Some(77);
         world.tick(created, 0.05, &desktop);
+        // A crouch where it stands to spring from, and then the hop down.
+        assert_eq!(world.save.creatures[0].state.action, ActionKind::Landing);
+        assert_eq!(world.save.creatures[0].state.position, start);
+        assert!(matches!(
+            world.save.creatures[0].state.presence.hop,
+            Some(HopMoment::Gather(_))
+        ));
+        for _ in 0..3 {
+            world.tick(created, 0.05, &desktop);
+        }
         let creature = &world.save.creatures[0];
         assert_eq!(creature.state.action, ActionKind::Landing);
         assert!(creature.state.position.y > start.y);
