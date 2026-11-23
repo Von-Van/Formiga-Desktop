@@ -4,14 +4,14 @@ use bytemuck::{Pod, Zeroable};
 use formiga_art::{
     AccessoryArt, AnimationSpec, BodyClip, BodyPresentation, COLONY_OBJECT_ATLAS_HEIGHT,
     COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE, ColonyObjectRenderer, CreatureRenderer,
-    FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement, HELD_CELL, HELD_SHEET_HEIGHT,
-    HELD_SHEET_WIDTH, HeldPlacement, HeldThing, MenuIcon, MenuLayout, MilestoneBubbleRenderer,
-    PixelPoint, PropAnchor, PropSprite, Rgba, SHELTER_SIZE, ShelterRenderer, SpriteRect,
-    TALK_BUBBLE, TALK_DETAIL, TALK_ICON, TALK_ICON_AT, TALK_SHEET_HEIGHT, TALK_SHEET_WIDTH,
-    TRINKET_ATLAS_HEIGHT, TRINKET_ATLAS_WIDTH, TRINKET_CELL, TRINKET_FRAME_GLINT,
-    TRINKET_FRAME_REST, TalkSheet, TrinketAnchor, TrinketAtlasRenderer, UI_ATLAS_HEIGHT,
-    UI_ATLAS_WIDTH, UiAtlasRenderer, VILLAGE_ATLAS_HEIGHT, VILLAGE_ATLAS_WIDTH, VillageCell,
-    VillageLook, WONDER_CELL_HEIGHT, WONDER_CELL_WIDTH, WONDER_GROUND, WONDER_MIDDLE,
+    FACE_FRAME_SIZE, FRAME_SIZE, FaceChange, FaceRenderState, FramePlacement, HELD_CELL,
+    HELD_SHEET_HEIGHT, HELD_SHEET_WIDTH, HeldPlacement, HeldThing, MenuIcon, MenuLayout,
+    MilestoneBubbleRenderer, PixelPoint, PropAnchor, PropSprite, Rgba, SHELTER_SIZE,
+    ShelterRenderer, SpriteRect, TALK_BUBBLE, TALK_DETAIL, TALK_ICON, TALK_ICON_AT,
+    TALK_SHEET_HEIGHT, TALK_SHEET_WIDTH, TRINKET_ATLAS_HEIGHT, TRINKET_ATLAS_WIDTH, TRINKET_CELL,
+    TRINKET_FRAME_GLINT, TRINKET_FRAME_REST, TalkSheet, TrinketAnchor, TrinketAtlasRenderer,
+    UI_ATLAS_HEIGHT, UI_ATLAS_WIDTH, UiAtlasRenderer, VILLAGE_ATLAS_HEIGHT, VILLAGE_ATLAS_WIDTH,
+    VillageCell, VillageLook, WONDER_CELL_HEIGHT, WONDER_CELL_WIDTH, WONDER_GROUND, WONDER_MIDDLE,
     WonderRenderer, wonder_frame, wonder_frames,
 };
 use formiga_art::{
@@ -298,6 +298,9 @@ pub struct OverlayRenderer {
     /// Which size each companion is shown at just now, as the app last worked it out from its
     /// footing (`formiga_art::shown_set_back`), so the overlay and the grab mask agree on it.
     set_back_shown: BTreeMap<CreatureId, bool>,
+    /// Each companion's blink-and-change between expressions, as the app last advanced it
+    /// (`formiga_art::FaceChange`).
+    face_changes: BTreeMap<CreatureId, FaceChange>,
     shelter: Option<ShelterGpu>,
     ground: Option<GroundGpu>,
     bubble: Option<BubbleGpu>,
@@ -579,6 +582,7 @@ impl OverlayRenderer {
             sprites: BTreeMap::new(),
             set_back_sprites: BTreeMap::new(),
             set_back_shown: BTreeMap::new(),
+            face_changes: BTreeMap::new(),
             shelter: None,
             ground: None,
             bubble: None,
@@ -696,6 +700,12 @@ impl OverlayRenderer {
     /// Which sizes the companions are shown at, from the app, once a tick.
     pub fn show_set_back(&mut self, shown: &BTreeMap<CreatureId, bool>) {
         self.set_back_shown.clone_from(shown);
+    }
+
+    /// Where each companion's blink-and-change between expressions stands, from the app, once a
+    /// tick.
+    pub fn show_face_changes(&mut self, changes: &BTreeMap<CreatureId, FaceChange>) {
+        self.face_changes.clone_from(changes);
     }
 
     /// Whether a companion is drawn at its set-back size: as the app last said, which waits for
@@ -907,6 +917,10 @@ impl OverlayRenderer {
                 save.settings.cursor_reactions,
                 save.settings.reduce_motion,
             );
+            let face_state = self
+                .face_changes
+                .get(&creature.id)
+                .map_or(face_state, |change| change.shown(face_state));
             let start = vertices.len();
             let (body, face, trinket, held, carried, tether) =
                 self.vertices_for(creature, save.settings.display_scale, sprite, face_state);

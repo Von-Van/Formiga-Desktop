@@ -25,7 +25,7 @@ use crate::updater::{
     check_companion, check_github, download_update,
 };
 use anyhow::{Context, Result};
-use formiga_art::{AnimationSpec, BodyPresentation, MenuIcon};
+use formiga_art::{AnimationSpec, BodyPresentation, FaceChange, MenuIcon};
 use formiga_core::*;
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
@@ -142,6 +142,9 @@ pub struct FormigaApp {
     interaction_proxies: BTreeMap<WindowId, InteractionProxy>,
     /// Which size each companion is shown at, after the last tick (see `carry_set_back`).
     set_back_shown: BTreeMap<CreatureId, bool>,
+    /// Each companion's blink-and-change between expressions, after the last tick (see
+    /// `carry_face_changes`).
+    face_changes: BTreeMap<CreatureId, FaceChange>,
     /// Each house of the village as it can be clicked, while Formiga Home is installed, and the
     /// native window over each.
     house_shapes: crate::houses::HouseShapes,
@@ -222,6 +225,7 @@ impl FormigaApp {
             settings_window: None,
             interaction_proxies: BTreeMap::new(),
             set_back_shown: BTreeMap::new(),
+            face_changes: BTreeMap::new(),
             house_shapes: Default::default(),
             house_proxies: BTreeMap::new(),
             wonder_shapes: crate::wonder_proxies::WonderShapes::default(),
@@ -753,6 +757,36 @@ impl FormigaApp {
             .collect();
         for overlay in self.overlays.values_mut() {
             overlay.show_set_back(&self.set_back_shown);
+        }
+    }
+
+    /// Move every companion's blink-and-change between expressions on by a tick
+    /// (`formiga_art::FaceChange`) and tell every overlay. One that starts or ends asks for a
+    /// frame at once, so the in-between face is on the desktop for exactly the tick it belongs
+    /// to however slowly the colony is being drawn. While a trip has the colony nothing is
+    /// remembered, so a face coming home cuts straight in.
+    fn carry_face_changes(&mut self) {
+        let was = std::mem::take(&mut self.face_changes);
+        let mut turned = false;
+        if let (Some(world), false) = (&self.world, self.colony_away()) {
+            let reduced = world.save.settings.reduce_motion;
+            for creature in world
+                .save
+                .creatures
+                .iter()
+                .chain(world.save.visitors.on_stage())
+            {
+                let mut change = was.get(&creature.id).copied().unwrap_or_default();
+                let before = change.changing();
+                turned |= change.advance(creature, reduced) != before;
+                self.face_changes.insert(creature.id, change);
+            }
+        }
+        for overlay in self.overlays.values_mut() {
+            overlay.show_face_changes(&self.face_changes);
+        }
+        if turned {
+            self.request_overlay_redraw();
         }
     }
 
@@ -1377,6 +1411,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
         }
         if ticked {
             self.carry_set_back();
+            self.carry_face_changes();
             self.sync_interaction_proxies(event_loop);
             self.sync_house_proxies(event_loop);
             self.sync_wonder_proxies(event_loop);

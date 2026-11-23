@@ -3,6 +3,7 @@
 use super::*;
 
 mod belongings;
+mod face_change;
 mod faces;
 mod frames;
 mod liveliness;
