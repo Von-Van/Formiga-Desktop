@@ -642,9 +642,10 @@ starts the cooldown.
 ### Between the big moments
 
 Most of what a companion is drawn doing is walking about, resting and sleeping, so how those look
-sets how alive it feels more than any single clip. Five things keep them, and everything else it
-does, from reading as loops or as one another; none adds a saved field, and only the repertoire and
-the chores add frames to the atlas or to what is presented.
+sets how alive it feels more than any single clip. Six things keep them, and everything else it
+does, from reading as loops or as one another; none adds a saved field, only the repertoire and
+the chores add frames to the atlas, and only they and the bridge between clips add to the frames
+presented.
 
 **Feet that agree with where it is going.** An action says what a creature is about, not always
 whether it is moving: a walk to a friend reaches its mark with time left on the walk, and a
@@ -758,6 +759,32 @@ keeps; `CreatureRenderer::resolve_face_state_among` takes the colony for the fri
 to. Under reduced motion the eyes do not wander and look out as they always have; blinks are
 unchanged. A creature the world has never ticked — on a review sheet, say — is drawn and blinks
 exactly as before, so the sheets still show each action's own clip.
+
+**A bridge between clips.** A change of clip used to cut on a frame boundary: a walk that stopped
+on a high stride dropped straight into the rest, and a fright in mid-stride flung the arms up in
+one frame. Where the next clip's outline sits more than `BRIDGE_ROWS` (three) rows higher or lower
+at the crown or the feet than the frame shown last, the overlay now passes through the plain
+settle, frame 0 of the rest, for one presentation tick on the way (`formiga_art::ClipBridge`,
+`renderer/bridge.rs`). Three rows is more than a walk's own bob moves the crown from one stride to
+the next, so only a change that jumps further than the loops already do is bridged. Nothing is
+bridged within a clip, so a loop going round or a one-shot clip holding its last frame cuts as it
+always has; nor from or to the settle itself, which most rests are on and which would only be
+held a tick longer; nor from or to a body off its feet or asleep (held, thrown, climbing,
+hanging, asleep curled, sprawled or loafed, or sat on a wonder), nor into or out of a landing,
+an impact that has to land on its tick; nor from or to a frame with
+something in its paws, which the settle would drop for the tick; nor on the tick straight after
+a bridge; nor at all under reduced motion. `BodyPresentation::for_creature` stays a pure function
+of the creature, and nothing in the world or the save changes: the memory of the last frame and
+its outline is a `ClipBridge` per companion that `FormigaApp::carry_clip_bridges` advances once a
+tick, reading each frame's outline from the silhouette rows the atlas already keeps for the
+display the companion is on, and whether it is holding anything through `held_now`, as the
+overlay draws it. It hands the bridges to every overlay and to the grab proxies, so the picture,
+the bubble over the crown and the grab mask show the settle on the same tick. A bridge that starts
+or ends asks for a frame at once, so the settle is on the desktop for exactly its tick whatever
+cadence the colony is drawn at. Every reason a change passes through the settle is one arm of
+`bridge_reason`, named by a `BridgeReason`. `formiga-tools bridge-sheet` draws every body walking,
+startled in mid-stride, walking on and coming to rest, a frame every twentieth of a second, the
+old cut over what the overlay draws now with each bridged tick on an amber ground.
 
 ## Lived-experience projection
 
