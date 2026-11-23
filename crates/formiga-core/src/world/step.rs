@@ -196,6 +196,7 @@ impl World {
                     .window_journeys
                     .get_mut(&creature.id)
                     .expect("validated journey exists");
+                journey.set_steady(self.save.settings.reduce_motion);
                 let step = journey.advance(dt);
                 (
                     step,
@@ -258,6 +259,17 @@ impl World {
                 face_toward(&mut creature.state, held, going);
             }
             creature.state.position = step.position;
+            if step.action == ActionKind::ClimbWindow
+                && matches!(
+                    self.window_journeys.get(&creature.id),
+                    Some(WindowJourney::Climb(_))
+                )
+            {
+                // The climb's clip is drawn from this, and its rise from the journey's own count
+                // of the same moment: kept the same number, so the frame drawn and the height it
+                // is drawn at never fall a tick apart.
+                creature.state.action_elapsed = into;
+            }
             if step.action != previous_action {
                 Self::emit(
                     &mut self.events,

@@ -24,7 +24,44 @@ All notable changes are documented here.
 
 ### Changed
 
-- The test ceiling on a full colony's creature textures, counted as if no two frames were alike, is 16 MiB instead of 15 MiB, so the animation pass's new clips fit. A real colony of six still uses about 11.3 MB.
+- Companions walk and run rather than march on the spot. A two-legged companion's feet used to
+  lift out to their own sides and come back down where they were, the same for a walk and a run
+  but for speed lines. Now each foot is planted out ahead, goes back along the ground as the body
+  passes over it, and swings forward off the ground; the body sinks onto each step, rises over
+  the planted foot and leans a pixel across onto it, the paws at its sides swing against the
+  feet, and the ears and tail follow. A run lands crouched with the other leg flung up behind,
+  drives off, and is in the air with both feet off the ground, ears flat and paws back. A blob
+  keeps its waddle to walk and runs like the others. A four-pawed companion takes strides twice as
+  long, its legs opening and closing under it and its head nodding with its forepaws, and runs
+  stretched out with its ears back. Every clip has the frames it had, so nothing costs more.
+- A hop looks like a hop in the air. Its leap was two frames a pixel or two apart, close to
+  standing; it is four now, one for each part of the arc: sprung up at full stretch with the paws
+  thrown up and the legs trailing, tucked into a ball over the top, opened out with paws and legs
+  spread on the way down, and feet put down wide for the touch. A winged companion beats its wings
+  down as it falls and a four-pawed one bounds, stretched out and then gathered. The two new
+  frames fit in cells each creature's texture already had spare.
+- The colony's atlases may use more memory. The test ceiling for a full colony with no two frames
+  alike is 32 MiB, up from 15, and 5.5 MB for one companion, up from 4.5: the animation pass's
+  frames together passed the old ceiling. A full colony at its most would use 16.3 MB today.
+- A climbing companion holds on to what it climbs. Its paws used to go up either side of its head,
+  one on the window's edge and one in the air, while each pull carried the body twenty or thirty
+  pixels up past paws drawn to move four, so the grip slid up the wall with it. Now both paws hold
+  the window's edge, one above the other, the far one coming round from behind the head, and a
+  foot is set against the wall; a paw lands high, stays exactly where it landed while the body
+  hauls up past it, and lets go only once the other has caught. The body faces what it climbs: it
+  leans in to the wall as one piece, head tipped toward it and hips out, where it used to be drawn
+  square to the screen as if standing in the air; and both its feet are on the wall, stepping up
+  in turn, where one leg used to hang under it. It is drawn clear of its paws, so they no longer
+  cover its face. A four-pawed companion goes up the
+  wall upright on all four paws, head uppermost and face level, instead of floating up it lying
+  flat. The climb stops with the paws on the ledge: the companion hangs from the ledge, pulls
+  itself up until its chin is over it, brings its chest over the edge with both paws pressed down
+  on the ledge, and then pushes up and steps in as before. It used to climb on until its feet were
+  nearly level with the ledge, holding on to nothing above the top of the window. Every companion
+  climbs at the same speed for its size, a little slower than before at the default size, and a
+  ledge low enough to reach from the floor is pulled up onto without the hang. With reduced motion
+  the climb still holds one frame and rises steadily. `formiga-tools climb-sheet` also shows the
+  three looks from before recipes and the fox.
 - A companion climbs up the side of a window a paw at a time. The climb was four nearly identical
   frames, the paws alternating three pixels while the body slid up at a steady speed out of step
   with them; it is six frames now, a reach, a pull and a settle with one paw and then the other,

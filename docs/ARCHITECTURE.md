@@ -349,12 +349,29 @@ bytes it already carries, so two companions resting side by side are not in step
 stored to say so. The first frame is the plain settle, and it is the only frame reduced motion
 draws.
 
-A body facing the screen walks as a waddle: one foot up and out, down, then the other, the body
-squashing as both feet land. A blob's feet are tucked under the one mass it is, so each foot comes
-up the whole two pixels for both frames it is off the ground, and the mass sways a pixel over onto
-the planted foot while the other is up (`Pose::sway`, which only a blob's stride sets, over feet
-that stay where they were put). A skip and a trudge are that stride with a mood in it and carry the
-same waddle; reduced motion holds the walk's first frame as before, both feet down.
+A two-legged body facing the screen walks in steps rather than marching on the spot
+(`Pose::stepping`): six frames, a step with the front foot and then one with the back. Each step
+is a contact, the stepping foot planted three pixels out ahead with the body sunk onto it and the
+other just leaving the ground behind; a passing, the body up and over the planted foot and a pixel
+across onto it (`Pose::sway`, over feet that stay where they were put) as the other swings through
+high; and a reach, the planted foot gone back under the body and the other out ahead about to come
+down. A planted foot goes back along the ground from frame to frame and a lifted one comes forward,
+so where a foot is and whether it is down are two things: a stride says how high each foot is
+itself (`Pose::lifts`), where a shuffle on the spot lifts a foot by as far as it has stepped out.
+The paws at its sides swing against the feet (`Pose::swing`, the front one forward and up as the
+back one goes back and down), the ears lift on the passing and the tail trails. A run is the same
+three beats pushed further: it lands crouched on the stepping foot with the other flung up behind,
+drives up off it, and is in the air with both feet off the ground and its legs split, ears laid
+flat, paws thrown back and head two pixels forward, before it lands on the other foot. A blob's
+feet are tucked under the one mass it is, so its walk is a waddle from foot to foot: each foot
+comes up the whole two pixels for both frames it is off the ground, and the mass sways over onto
+the planted one; it runs as the others do. A four-pawed body lifts one paw at a time, near hind,
+near fore, far hind, far fore, two pixels forward at a walk and three at a run, the partner on the
+other side left that far behind on the ground so the legs open and close under it; its head nods
+forward as each forepaw goes out, and at a run it is stretched long with its ears back and tail
+out. A skip and a trudge are the walk with a mood in it: a skip lands on the walk's contacts, and a
+trudge takes steps half the size with nothing lifted or swung. Reduced motion holds the walk's
+first frame as it always was, both feet down.
 
 Every standing clip puts the feet on one row, and nothing a body folds against itself or drops
 goes below the lowest row its feet reach. A folded wing, a head over a body squashed flat by a
@@ -530,14 +547,31 @@ little, back through the middle and out to the other, the tail following a beat 
 staying where they hold the ledge; as the legs come back through the middle it glances down at the
 drop (`glancing_down` in `renderer/face.rs`), and for a frame longer when its attention is startled
 or worried. Climbing's six are
-a stroke with one paw and then the other, each a reach (hanging low, one paw high beside the head
-and the other down at the cheek), a pull (the body up two pixels with its head tucked, the leg on
-the reaching side bent up against the wall, the tail down, a glint of effort) and a settle onto the
-new grip. A four-pawed body's forepaws take the strokes in turn, the near one in front of the face
-and the far one behind the head, its hind legs bracing in turn; a winged one's wings open half
-way on the pull. Upward window transfers are staged as ordinary traversal to the outside of the
-window's nearer side, a vertical climb averaging 44–62 points a second, and a 0.7-second mantle;
-downward transfers keep the existing hop, which lands as a hop does. The climb goes up beside the
+a stroke with one paw and then the other, each a catch (the paw landed high on the wall above the
+head, the body hung long under it, the other paw holding a row below the cheek), a pull (the body
+hauled up past the paw with a glint of effort, the foot on the wall pushing straight, the tail
+down, while the other paw lets go and comes up off the wall) and a lock (the paw down at the cheek,
+the other nearly up to its own catch). Both paws hold the wall on the side the body faces, on the
+window's edge line: `Pose::wall` places the body close in to the wall and clear of the paws
+(`measure`), and `modular::draw_leaning` draws it facing the wall rather than the screen. The trunk
+and head, with everything that grows on them, are drawn as they stand (`Parts::Core`) and leant in
+to the wall as one piece, sixteen degrees about the middle of the trunk (`Lean`), so the head tips
+toward the wall and the hips come out from it; the turn is done in whole numbers, each pixel
+looking back from nine points across itself, so an edge stays even, a thin stalk stays joined and
+every machine draws the same. The limbs are drawn straight afterwards, out to the wall from where
+the lean has put the shoulders and hips: the far paw from behind the body, so that only its end
+shows past the head, and both feet on the wall, the front one with its sole on the edge line and
+the back one brought round under the body to the wall just short of it, in shade, the two stepping
+up in turn so that neither hangs. The face is seated where the leant head is behind it
+(`seat_face`). A winged body holds on with its wings the same way. A four-pawed body goes up the wall upright with all four paws on it:
+`modular::draw_upright` draws its trunk, legs and tail as they stand and walk (`Parts::Trunk`),
+turns them a quarter turn so the paws are on the wall and the head uppermost (`upright`), and draws
+the head and what grows on it level over that (`Parts::Head`), so its face is the right way up;
+its legs step up the wall in turn (`Pose::long_climb`). The looks from before recipes, which are
+drawn side on, stroke the wall with the front paw and keep the back one on its own side
+(`classic::wall_targets`). Upward window transfers are staged as ordinary traversal to the outside
+of the window's nearer side, a vertical climb of 40 art pixels a second, and a mantle of a little
+over a second; downward transfers keep the existing hop, which lands as a hop does. The climb goes up beside the
 window, hung from the paw gripping its edge, so none of the body is over the window until it tops
 out: the frame's middle is `climb_grip_reach` art pixels out from the edge line, less a two-pixel
 grip (`CLIMB_GRIP_OVER_EDGE`), turned into points for the display the window is on the way
@@ -549,30 +583,55 @@ the frames of generated companions of every kind. A side with no habitat beside 
 against the side of its display, or of the habitat) is climbed five points inside the edge line, as
 every climb once was, and one with a little room hangs as far out as the whole companion is still
 drawn (`climb_track`). From the moment it reaches the wall until it stands on the ledge a climb
-faces the window (`WindowJourney::facing_right`), whichever way the walk to it went. The climb rises a paw at a time rather than
-sliding up at a steady speed: `climb_progress` in `world/journeys.rs` gives each frame of a stroke
-a share of the rise (0.08 on the reach, 1 on the pull, 0.3 on the settle, never none, so a climbing
-journey never holds still and reads as a pause), normalised over the climb so it starts, ends and
-takes as long as the steady climb did. The world knows only the clip's rate and stroke length
-(`CLIMB_FRAMES_PER_SECOND`, `CLIMB_STROKE_FRAMES`, which `AnimationSpec` reads for the climb), not
-its frames. The two keep step because they count from the same instant: a journey that changes a
-creature's action sets `action_elapsed` from `WindowJourney::action_elapsed` (how far past the
-wall the climb already is, a fraction of a tick) rather than zero, and `MotionSignature::frame`
-plays the climb on that clock without a companion's own tempo and phase.
+faces the window (`WindowJourney::facing_right`), whichever way the walk to it went.
 
-The climb tops out in a mantle of its own, `Gesture::Mantle`, three frames played once at
-`MANTLE_FRAMES_PER_SECOND` (5): the chest over the edge with the forearms laid on it and the front
-knee drawn up to it (`Pose::knee`); the push, raised on both paws planted flat on the ledge, the
-back leg still trailing below it (`Pose::trail`), with a glint of effort; and standing on the ledge
-with a little settle. It begins 10 points below the ledge. The haul is the first
-`MANTLE_HAUL_FRAMES` frames: a little straight up beside the window with the chest at the edge and
-the forearm already over it, then the push, which heaves the body up and over the edge to
-`MANTLE_PUSH_OVER_EDGE` pixels inside it, where the back paw planted at the hip is on the ledge too
-(`ClimbJourney::over_x`, never past where it will stand). Most of the push, up and across, is made
-the moment the paws plant and the rest eases onto the ledge (`haul_rise`, `haul_across`), so the
-planted paws stay where they were planted rather than the body sliding past them for the length of
-a frame. The step in is the third frame, level along the ledge the rest of the short way to where
-it stands, 18 points in from the edge, carried in by the push and coming to a stop.
+The climb is paced in the pixels its paws are drawn in, so that a paw stays where it gripped. Each
+stroke is `CLIMB_STROKE_FRAMES` (3) frames at `CLIMB_FRAMES_PER_SECOND` (10), and the body rises by
+`CLIMB_FRAME_RISE` art pixels as each frame comes: 1 onto the catch, 7 onto the pull and 4 onto the
+lock, twelve a stroke. The art draws the stroke's paw lower in the frame by exactly as much from
+each frame to the next (`modular::climb_grip`, `classic::wall_targets`), from eleven rows above the
+head at its catch down to a row below the cheek, where it holds under the other paw's catch; so in
+desktop pixels the paw does not move while the body goes up past it. `climb_rise` in
+`world/journeys.rs` makes nearly all of each rise the moment the frame changes and creeps a little
+(`CLIMB_CREEP`) while it shows, never none, so a climbing journey never holds still and reads as a
+pause. The body is carried a pixel or two further up than that on the pull and settles back on the
+lock (`pose::CLIMB_LIFT`), which the paws are placed clear of. Because the stroke is drawn, the
+speed is the same for every companion, in art pixels: `ClimbJourney::pixel` is the points to an art
+pixel where it is drawn, and a larger companion climbs faster in points. With reduced motion the
+climb is one still frame, so it rises steadily at the same speed instead
+(`WindowJourney::set_steady`). The frame and the height keep step because they are the same number:
+`World::step` sets `action_elapsed` from `WindowJourney::action_elapsed` on every tick of a climb,
+and `MotionSignature::frame` plays the climb on that clock without a companion's own tempo and
+phase. `a_climb_goes_up_as_its_frames_come_so_its_paws_hold_where_they_grip` and
+`a_climbing_companion_is_as_high_as_the_frame_its_clip_shows` in `formiga-core`, and
+`a_climbing_paw_stays_where_it_gripped_while_the_body_goes_up_past_it` in `formiga-art`, hold the
+two sides to each other.
+
+The climb stops with the paws on the ledge and the body hung under it, and tops out in a mantle of
+its own, `Gesture::Mantle`, five frames played once at `MANTLE_FRAMES_PER_SECOND` (5): hung from
+the ledge by both paws hooked over its corner; pulled up on them until the chin is over it, a foot
+scrabbling up the wall; the chest brought up over the edge, both paws pressed down on the ledge
+and the front knee drawn up to it (`Pose::knee`); the push, raised on both paws planted flat on the
+ledge, the back leg still trailing below it (`Pose::trail`), with a glint of effort; and standing
+on the ledge with a little settle. The first `MANTLE_PULL_FRAMES` are the pull-up, straight up
+beside the window: `mantle_frame_drop` says how far below the ledge the feet are on each of the
+first three frames, in art pixels (30, 20 and 10; 23, 19 and 10 for a four-pawed body, whose
+forepaws are nearer its feet and which pulls up by the length of a foreleg). The simulation holds
+the companion that far under the ledge on those frames, rising as each comes the way a climb's
+strokes do (`mantle_drop`), and the art draws the ledge that far above the feet
+(`modular::mantle_ledge`), so the paws drawn on the ledge are on the ledge the desktop shows. A
+four-pawed body is still upright for the pull-up, both forepaws over the ledge and the hind legs
+hung long, and comes down level for the chest, carried forward in its frame (`Pose::forward`) so
+its front half and both forepaws are over the edge. A ledge too low to hang under from the floor is
+taken from as far into the mantle as it can be reached (`ClimbJourney::mantle_skip`). The haul is
+the next `MANTLE_HAUL_FRAMES` frames: a little straight up with the chest at the edge, then the
+push, which heaves the body up and over the edge to `MANTLE_PUSH_OVER_EDGE` pixels inside it, where
+the back paw planted at the hip is on the ledge too (`ClimbJourney::over_x`, never past where it
+will stand). Most of the push, up and across, is made the moment the paws plant and the rest eases
+onto the ledge (`haul_rise`, `haul_across`), so the planted paws stay where they were planted
+rather than the body sliding past them for the length of a frame. The step in is the last frame,
+level along the ledge the rest of the short way to where it stands, 18 points in from the edge,
+carried in by the push and coming to a stop.
 Nothing of it is a landing: the action stays `ClimbWindow`, which keeps the climb's face, cadence
 and every check that treats a climber as carried, and the journey's step carries the pose
 (`JourneyStep::pose`). `strike_journey_pose` shows it on every tick the journey hauls or steps the
@@ -603,10 +662,15 @@ turned a little nose up (`renderer::tumble`), which loops at six frames a second
 The turn is drawn the way RotSprite turns pixel art — scaled up eight times by Scale2x and each
 turned pixel taking the colour under its middle, with any coat pixel left on the turned edge given
 the colour of the outline that passed through it — so it invents no colour and keeps the outline
-whole; a sculpted form's fine painting is turned with it. A hop has a two-frame leap, the last
-gesture in the atlas: stretched out long with the feet drawn up under it, the paws in and the ears
-laid back (`Pose::ears_back`), rising with the tail trailing, then a little less stretched with the
-tail up as it comes down; a winged body spreads its wings. The landing is played once and held
+whole; a sculpted form's fine painting is turned with it. A hop has a four-frame leap, the last
+gesture in the atlas, a frame for each part of its arc: sprung up at full stretch with the paws
+thrown up, the legs trailing long under it, the ears laid back (`Pose::ears_back`) and the tail
+down; tucked at the top, knees drawn up into a body gone round and the paws in; opened out coming
+down, legs apart and reaching, paws out to the sides, the ears and tail lifted by the air; and the
+feet put down to the ground under it, wide, for the touch. Each frame says where its own feet are
+(`Pose::lifts`). A winged body spreads its wings and beats them down as it falls, and a four-pawed
+one bounds: stretched out with forelegs forward and hind legs back, gathered under itself over the
+top, and its forelegs put out ahead to land on. The landing is played once and held
 (`PlaybackMode::Hold`): squashed low and wide on the touch with the legs folding, drawn back up, a
 pixel past standing with the ears up, and standing on exactly the frame a rest starts from, so the
 cut to whatever comes next does not show. Being carried hangs still rather than bobbing: drawn out a
@@ -641,13 +705,14 @@ meal stopped repeating frames — and much less under reduced motion, where each
 frame. That frame is the clip's still frame (`AnimationSpec::still_frame`), the moment that says
 best what the clip is doing: the first for nearly every clip, play's among them with the toy at
 the paw, but the snack up at the mouth with a bite out of it for eating, the cup tipped to the
-mouth for drinking and a pull, one paw above the other, for a climb, and the push up for a mantle. Every frame of a clip is drawn
+mouth for drinking, and the push up for a mantle; a climb holds its first, the catch, with both paws on the wall. Every frame of a clip is drawn
 as that one under reduced motion, the held thing and the marks around the body included, so the
 clip bakes one cell; `formiga-tools activity-sheet --reduced` draws the clips as reduced motion
-shows them. With no two frames alike they would be 2,626,560 bytes, which is what the budgets hold: below a 4,500,000-byte
-test limit per creature, raised deliberately from 1.5 MB so the pose vocabulary has room to grow
-without the budget moving each time, and a full colony of six under 16 MiB, raised from 10 MiB in
-0.62.0 for the new poses and faces and from 15 MiB in 0.68.0 for the animation pass's new clips.
+shows them. With no two frames alike they would be 2,718,720 bytes, which is what the budgets hold: below a 5,500,000-byte
+test limit per creature, raised deliberately so the pose vocabulary has room to grow without the
+budget moving each time, and a full colony of six under 32 MiB. The colony ceiling was 10 MiB until
+0.62.0 and 15 MiB until the animation pass, whose frames together passed it; the owner allows the
+colony's atlases up to about 50 MiB and prefers them between 30 and 40.
 
 Gestures — cheer, gasp, cover, worry, crouch, heave, balance, reach, bop, and watch; the stretch and
 yawn a habit or a yawn going round shows; the huff, swoon, beg, strut, peek and stomp a
@@ -799,8 +864,9 @@ from whatever is carrying the creature through a hop — its own window journey 
 run-up is done, and only until the far edge is caught), a wonder it is on its way to, or the hop up
 onto a roof or back down — and turns a flight that has stopped into `Down`, which lasts as long as
 it keeps its feet, until something picks it up, throws it, or it sets off on another hop.
-`BodyPresentation::hopping` draws a gather as the crouch, a flight as the leap — its rising frame for
-the first half of the way across and its falling one for the rest — and the first half second down
+`BodyPresentation::hopping` draws a gather as the crouch, a flight as the leap — its four frames in
+turn by how far across it is (`pose::leap_frame`): sprung up for the first third, tucked over the
+top, opened out on the way down and feet put down for the last of it — and the first half second down
 as the landing played through to standing while it stands there; a hop it meant to take is not
 shaken off afterwards, as being set down from a hand or a throw still is. A plain hop from standing
 — a route's hop down or along, a hop down to walk home or to a wonder, and the hop up onto a roof

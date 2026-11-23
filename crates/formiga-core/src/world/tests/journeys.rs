@@ -281,11 +281,25 @@ fn upward_window_routes_stage_traverse_climb_mantle_and_perch() {
     let WindowJourney::Climb(climb) = &journey else {
         panic!("upward transfer should climb");
     };
+    // A stroke of the climb is twelve art pixels and three frames at ten a second, whoever
+    // climbs: the paws are drawn that far apart, so the climb cannot go faster and keep them
+    // where they grip.
     let climb_speed = climb.approach.distance(climb.climb_end) / climb.climb_duration;
-    assert!((44.0..=62.0).contains(&climb_speed));
-    assert_eq!(climb.climb_end.y, bounds.y + MANTLE_LIFT_POINTS);
+    let stroke: f32 = CLIMB_FRAME_RISE.iter().map(|rise| f32::from(*rise)).sum();
+    let paced =
+        stroke * climb.pixel * f32::from(CLIMB_FRAMES_PER_SECOND) / f32::from(CLIMB_STROKE_FRAMES);
+    assert!(
+        (climb_speed - paced).abs() < paced * 0.05,
+        "{climb_speed} against {paced}"
+    );
+    // It stops hung from the ledge at arms' length, and the mantle takes it from there: the
+    // pull-up, the haul and the step in.
+    let drops = mantle_frame_drop(&creature.appearance).map(f32::from);
+    assert_eq!(climb.climb_end.y, bounds.y + drops[0] * climb.pixel);
+    assert_eq!(climb.chest.y, bounds.y + drops[2] * climb.pixel);
+    assert_eq!(climb.mantle_skip, 0);
     assert_eq!(climb.target.y, bounds.y);
-    assert_eq!(climb.mantle_duration, 0.7);
+    assert!((climb.mantle_duration - 1.1).abs() < 1e-5);
 
     let mut stages = Vec::new();
     let mut last = JourneyStep {
@@ -511,12 +525,14 @@ fn a_window_too_narrow_to_stand_on_is_no_landing_at_all() {
 /// A climb used to go up a track five points inside the window's side, so half the body or more
 /// was over the window the whole way up, and its hands never met the edge. It goes up the outside
 /// now, hung beside the window by the paw gripping its edge — as far out as that paw reaches in
-/// the art, at whatever size the companion is drawn — and only crosses the edge at the top: its
-/// chest comes up to the edge straight up beside the window, the push heaves it up and over onto
-/// the ledge, and it steps the rest of the way in level along the ledge, a short way, not a slide.
+/// the art, at whatever size the companion is drawn — and only crosses the edge at the top: it
+/// pulls itself up from the ledge and brings its chest up to the edge straight up beside the
+/// window, the push heaves it up and over onto the ledge, and it steps the rest of the way in
+/// level along the ledge, a short way, not a slide.
 #[test]
 fn a_climb_hangs_beside_the_window_by_its_edge_and_crosses_it_on_the_push() {
     let created = datetime!(2026-01-01 0:00 UTC);
+    let pull_secs = f32::from(MANTLE_PULL_FRAMES) / f32::from(MANTLE_FRAMES_PER_SECOND);
     let haul_secs = f32::from(MANTLE_HAUL_FRAMES) / f32::from(MANTLE_FRAMES_PER_SECOND);
     let bounds = DesktopRect {
         x: 400.0,
@@ -601,9 +617,9 @@ fn a_climb_hangs_beside_the_window_by_its_edge_and_crosses_it_on_the_push() {
             if step.pose.is_some() {
                 // How far into the mantle this step is, as the art counts its frames.
                 let into = journey.action_elapsed();
-                if into < haul_secs / 2.0 {
+                if into < pull_secs + haul_secs / 2.0 {
                     chest.push(step.position);
-                } else if into < haul_secs {
+                } else if into < pull_secs + haul_secs {
                     push.push(step.position);
                 } else {
                     stepping.push(step.position);
@@ -787,21 +803,34 @@ fn a_climb_begun_on_demand_runs_every_stage_and_perches() {
     assert_eq!(creature.state.surface.window_key, Some(96));
 }
 
-/// Which beat of a stroke a climb is on `into` seconds in: 0 the reach, 1 the pull, 2 the
-/// settle, as the art draws them at the climb's own rate.
-fn climb_beat(into: f32) -> u32 {
-    (into * f32::from(CLIMB_FRAMES_PER_SECOND)) as u32 % u32::from(CLIMB_STROKE_FRAMES)
+/// How far a climb has risen by the time the frame its clip shows `into` seconds in has come, in
+/// art pixels: the sum of what each frame it has come to takes, counted here apart from the code
+/// that paces the climb.
+fn climb_frame_rise(into: f32) -> f32 {
+    let frame = (into * f32::from(CLIMB_FRAMES_PER_SECOND)) as usize;
+    let per_stroke = usize::from(CLIMB_STROKE_FRAMES);
+    (1..=frame)
+        .map(|coming| f32::from(CLIMB_FRAME_RISE[coming % per_stroke]))
+        .sum()
 }
 
-/// A climb goes up a paw at a time instead of sliding up the window's side at a steady speed: it
-/// rises mostly on the pulls and hardly at all on the reaches, yet it starts where it did, gets
-/// to the top of its climb at the same moment, and never slips back down.
+/// A climb goes up a paw at a time instead of sliding up the window's side at a steady speed.
+/// The art draws the paw that holds the wall lower against the body by a set number of pixels
+/// from each frame to the next, so the body has to be up by exactly that many when the frame
+/// comes: it is, to within a pixel, on every tick, at any size, and it is never still on the wall
+/// and never slips. It stops hung under the ledge, where the mantle takes over.
 #[test]
-fn a_climb_rises_on_its_pulls_and_keeps_its_time_and_ends() {
+fn a_climb_goes_up_as_its_frames_come_so_its_paws_hold_where_they_grip() {
     let created = datetime!(2026-01-01 0:00 UTC);
     let mut desktop = desktop();
     let world = World::new([33; 32], created, &desktop);
-    for (lift, offset) in [(120.0, -40.0), (260.0, 30.0), (60.0, -8.0)] {
+    for (lift, offset, display_scale) in [
+        (120.0, -40.0, 3),
+        (260.0, 30.0, 3),
+        (60.0, -8.0, 3),
+        (200.0, -40.0, 4),
+        (200.0, -40.0, 2),
+    ] {
         let mut creature = world.save.creatures[0].clone();
         let start = creature.state.position;
         let bounds = DesktopRect {
@@ -835,75 +864,70 @@ fn a_climb_rises_on_its_pulls_and_keeps_its_time_and_ends() {
             },
             &desktop,
             &world.save.settings.habitat,
-            world.save.settings.display_scale,
+            display_scale,
         );
         let WindowJourney::Climb(climb) = journey.clone() else {
             panic!("an upward transfer climbs");
         };
+        let case = format!("{lift} up at display scale {display_scale}");
+        assert_eq!(
+            climb.pixel,
+            f32::from(display_scale) / desktop.monitors[0].scale_factor,
+            "{case}"
+        );
+        let height = (climb.approach.y - climb.climb_end.y) / climb.pixel;
         let climb_end_at = climb.approach_duration + climb.climb_duration;
-        let speed = climb.approach.distance(climb.climb_end) / climb.climb_duration;
-        // One tick of the steady climb this one replaces.
-        let one_tick = speed * 0.05;
         let mut elapsed = 0.0;
         let mut climbing: Vec<(f32, Point)> = Vec::new();
         let mut after = None;
-        for _ in 0..400 {
+        for _ in 0..600 {
             let step = journey.advance(0.05);
             elapsed += 0.05;
             if elapsed >= climb.approach_duration && elapsed < climb_end_at {
-                assert_eq!(step.action, ActionKind::ClimbWindow);
+                assert_eq!(step.action, ActionKind::ClimbWindow, "{case}");
+                assert!(step.pose.is_none(), "{case}: a mantle before the top");
                 climbing.push((elapsed - climb.approach_duration, step.position));
             } else if elapsed >= climb_end_at && after.is_none() {
-                after = Some(step.position);
+                after = Some(step);
             }
             if step.complete {
                 break;
             }
         }
-        let (first_into, first) = climbing[0];
-        let (_, last) = *climbing.last().expect("a climb takes ticks");
-        // Starts where the steady climb did, a tick's rise at most from the bottom of the wall.
-        assert_eq!(first.x, climb.approach.x);
-        assert!(climb.approach.y - first.y <= one_tick, "{lift}: {first:?}");
-        assert!(first_into < 0.05);
-        // Gets to the top of the climb on the same tick as the steady climb, and not before.
+        // A ledge only a little higher than a companion hangs from is a stroke's climb.
         assert!(
-            last.y > climb.climb_end.y,
-            "{lift}: up before the climb was over"
+            climbing.len() >= if height > 24.0 { 8 } else { 2 },
+            "{case}"
         );
-        assert!(
-            after.expect("the haul follows").y <= climb.climb_end.y + 0.01,
-            "{lift}: not up by the end of the climb"
-        );
-        // Never slips back, and never stands still on the wall.
         let mut previous = climb.approach.y;
-        let mut rise = [0.0_f32; 3];
-        let mut ticks = [0_u32; 3];
-        let mut was = 0.0;
         for (into, at) in &climbing {
-            assert!(at.y < previous, "{lift}: stood still or slipped at {into}");
-            assert_eq!(at.x, climb.approach.x);
-            // Each tick's rise counted to the beat in the middle of it.
-            let beat = climb_beat((*into + was) / 2.0) as usize;
-            rise[beat] += previous - at.y;
-            ticks[beat] += 1;
+            assert!(at.y < previous, "{case}: stood still or slipped at {into}");
+            assert_eq!(at.x, climb.approach.x, "{case}");
             previous = at.y;
-            was = *into;
+            let risen = (climb.approach.y - at.y) / climb.pixel;
+            let drawn_for = climb_frame_rise(*into).min(height);
+            assert!(
+                (0.0..1.0).contains(&(risen - drawn_for)),
+                "{case}: {risen} pixels up at {into}, on a frame drawn for {drawn_for}"
+            );
         }
-        let per_tick = |beat: usize| rise[beat] / ticks[beat].max(1) as f32;
+        // The mantle begins hung under the ledge, where the climb left it.
+        let after = after.expect("the mantle follows");
+        assert!(after.pose.is_some(), "{case}");
         assert!(
-            per_tick(1) > 2.0 * per_tick(2) && per_tick(2) > per_tick(0),
-            "{lift}: the rise per tick on reach, pull, settle was {:?}",
-            [per_tick(0), per_tick(1), per_tick(2)]
+            (0.0..climb.pixel).contains(&(climb.climb_end.y - after.position.y)),
+            "{case}: the mantle began at {:?}, not {:?}",
+            after.position,
+            climb.climb_end
         );
     }
 }
 
-/// The hands drawn and the rise agree in a running colony: the climb's clip counts from the
-/// action's own elapsed time, which starts the moment the journey reached the wall, so the body
-/// goes up on the ticks the clip shows a pull.
+/// The paws drawn and the rise agree in a running colony: the climb's clip is drawn from the
+/// action's own elapsed time, which the world keeps the same number as its journey's count of the
+/// climb, so on every tick the body is up by what the frame showing was drawn for.
 #[test]
-fn a_climbing_companion_rises_on_the_frames_its_clip_pulls() {
+fn a_climbing_companion_is_as_high_as_the_frame_its_clip_shows() {
     let created = datetime!(2026-01-01 0:00 UTC);
     let mut desktop = desktop();
     let world = World::new([41; 32], created, &desktop);
@@ -940,10 +964,10 @@ fn a_climbing_companion_rises_on_the_frames_its_clip_pulls() {
         relative_x: 0.5,
     };
     assert!(world.begin_window_climb(id, 98, &desktop));
-    let mut rise = [0.0_f32; 3];
-    let mut ticks = [0_u32; 3];
-    let mut last: Option<(f32, f32)> = None;
-    for _ in 0..300 {
+    let pixel = f32::from(world.save.settings.display_scale) / desktop.monitors[0].scale_factor;
+    let mut ticks = 0;
+    let mut last: Option<f32> = None;
+    for _ in 0..400 {
         now += Duration::milliseconds(50);
         world.tick(now, 0.05, &desktop);
         let creature = world
@@ -952,35 +976,35 @@ fn a_climbing_companion_rises_on_the_frames_its_clip_pulls() {
             .iter()
             .find(|creature| creature.id == id)
             .expect("the climber");
-        let climbing = creature.state.action == ActionKind::ClimbWindow
-            && creature.state.position.y > floor - 220.0 + MANTLE_LIFT_POINTS + 0.01;
-        if !climbing {
-            if last.is_some() {
+        let mantling = creature
+            .state
+            .attention
+            .is_some_and(|pose| pose.gesture == Some(Gesture::Mantle));
+        if creature.state.action != ActionKind::ClimbWindow || mantling {
+            if ticks > 0 {
                 break;
             }
             continue;
         }
         let (elapsed, y) = (creature.state.action_elapsed, creature.state.position.y);
-        if let Some((was_elapsed, was_y)) = last {
-            assert!((elapsed - was_elapsed - 0.05).abs() < 1e-4);
-            let beat = climb_beat(elapsed - 0.025) as usize;
-            rise[beat] += was_y - y;
-            ticks[beat] += 1;
+        if let Some(was) = last {
+            assert!((elapsed - was - 0.05_f32).abs() < 1e-4);
         } else {
             assert!(
                 elapsed < 0.05,
                 "the clip starts with the climb, {elapsed} in"
             );
         }
-        last = Some((elapsed, y));
+        last = Some(elapsed);
+        let risen = (floor - y) / pixel;
+        let drawn_for = climb_frame_rise(elapsed);
+        assert!(
+            (0.0..1.0).contains(&(risen - drawn_for)),
+            "{risen} pixels up at {elapsed}, on a frame drawn for {drawn_for}"
+        );
+        ticks += 1;
     }
-    assert!(ticks.iter().all(|count| *count > 0), "{ticks:?}");
-    let per_tick = |beat: usize| rise[beat] / ticks[beat] as f32;
-    assert!(
-        per_tick(1) > 2.0 * per_tick(2) && per_tick(2) > per_tick(0),
-        "the rise per tick on reach, pull, settle was {:?}",
-        [per_tick(0), per_tick(1), per_tick(2)]
-    );
+    assert!(ticks > 20, "climbed for {ticks} ticks");
 }
 
 /// A world with one window 120 points above the floor and its one companion beside it, set off
@@ -1028,14 +1052,16 @@ fn climbing_world(reduce_motion: bool) -> (World, DesktopSnapshot, OffsetDateTim
 
 /// Topping out is a mantle of its own rather than a hop's landing: from the tick the climb
 /// reaches the top of the window's side until the companion stands on the ledge, it shows the
-/// mantle and nothing else — never the landing a hop ends in — hauling itself up on the
-/// mantle's first two frames, stepping in on its third, and letting go of it as it perches. It
+/// mantle and nothing else — never the landing a hop ends in — pulling itself up on the mantle's
+/// first two frames, hauling itself over on the next two, stepping in on its last, and letting
+/// go of it as it perches. It
 /// faces the window it climbed onto the whole way, and with reduced motion it mantles the same.
 #[test]
 fn topping_out_shows_the_mantle_every_tick_and_never_a_landing() {
     for reduce_motion in [false, true] {
         let (mut world, desktop, mut now, floor) = climbing_world(reduce_motion);
-        let haul_secs = f32::from(MANTLE_HAUL_FRAMES) / f32::from(MANTLE_FRAMES_PER_SECOND);
+        let haul_secs = f32::from(MANTLE_PULL_FRAMES + MANTLE_HAUL_FRAMES)
+            / f32::from(MANTLE_FRAMES_PER_SECOND);
         let frame = |elapsed: f32| (elapsed * f32::from(MANTLE_FRAMES_PER_SECOND)) as u32;
         let mut topped_out = false;
         let mut frames = Vec::new();
@@ -1065,11 +1091,11 @@ fn topping_out_shows_the_mantle_every_tick_and_never_a_landing() {
                 );
                 assert_eq!(creature.state.attention.map(|pose| pose.hanging), Some(0.0));
                 let into = creature.state.action_elapsed;
-                // The haul is the first two frames, which bring it up to the ledge, and the step
-                // in along the ledge the third.
+                // The pull-up and the haul are the first four frames, which bring it up to the
+                // ledge, and the step in along the ledge the fifth.
                 let hauling = creature.state.position.y > floor - 120.0;
                 assert_eq!(hauling, into < haul_secs, "{into}");
-                frames.push(frame(into).min(2));
+                frames.push(frame(into).min(4));
             } else {
                 assert_ne!(gesture, Some(Gesture::Mantle), "{reduce_motion}");
             }
@@ -1090,7 +1116,7 @@ fn topping_out_shows_the_mantle_every_tick_and_never_a_landing() {
         }
         assert!(topped_out && perched, "{reduce_motion}");
         frames.dedup();
-        assert_eq!(frames, [0, 1, 2], "{reduce_motion}");
+        assert_eq!(frames, [0, 1, 2, 3, 4], "{reduce_motion}");
     }
 }
 

@@ -179,7 +179,8 @@ pub fn turns(clip: BodyClip) -> bool {
 /// Whether a clip has the body up on its feet, where the standing settle can go between it and
 /// another. Held in the hand, thrown, climbing or hanging it is off the ground; a landing is an
 /// impact, which has to land on its tick; asleep, a sit up in the settle would read as waking;
-/// sat on a wonder, the settle would stand in the seat.
+/// sat on a wonder, the settle would stand in the seat. A mantle tops out a climb and a leap is
+/// in the air, so neither is on its feet either.
 pub fn stands(clip: BodyClip) -> bool {
     match clip {
         BodyClip::Action(action) => !matches!(
@@ -193,7 +194,12 @@ pub fn stands(clip: BodyClip) -> bool {
         ),
         BodyClip::Gesture(gesture) => !matches!(
             gesture,
-            Gesture::Sprawl | Gesture::Loaf | Gesture::Sit | Gesture::Scoot
+            Gesture::Sprawl
+                | Gesture::Loaf
+                | Gesture::Sit
+                | Gesture::Scoot
+                | Gesture::Mantle
+                | Gesture::Leap
         ),
     }
 }

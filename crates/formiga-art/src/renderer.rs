@@ -452,11 +452,15 @@ impl AnimationSpec {
             Gesture::Chew => (2, 4),
             // Head back, mouth open, and down it goes.
             Gesture::Gulp => (4, 6),
-            // Chest over, push up, stand: the haul is the first two frames and the step in the
-            // third, at the rate the world times them by.
-            Gesture::Mantle => (3, formiga_core::MANTLE_FRAMES_PER_SECOND),
-            // Rising, and coming down: a hop picks the frame by how far across it is.
-            Gesture::Leap => (2, 4),
+            // Hang, pull up, chest over, push up, stand: the pull-up is the first two frames, the
+            // haul the next two and the step in the last, at the rate the world times them by.
+            Gesture::Mantle => (
+                formiga_core::MANTLE_PULL_FRAMES + formiga_core::MANTLE_HAUL_FRAMES + 1,
+                formiga_core::MANTLE_FRAMES_PER_SECOND,
+            ),
+            // Sprung up, tucked over the top, opened out coming down and feet put down to land: a
+            // hop picks the frame by how far across it is.
+            Gesture::Leap => (4, 4),
         };
         Self {
             frames,
@@ -479,15 +483,15 @@ impl AnimationSpec {
     /// doing: the first for nearly every clip, play among them, whose first frame has the toy at
     /// the paw already. Eating holds the snack up at the mouth with a bite out of it rather than
     /// away from the face before the first bite, drinking the cup tipped to the mouth rather than
-    /// held down, and a climb a pull, one paw above the other, rather than the first reach with
-    /// both up together, and a mantle the push up, which says what it is doing better than any
-    /// other moment of it. Under reduced motion every frame of a clip is drawn as this one, so the
+    /// held down, and a mantle the push up, which says what it is doing better than any other
+    /// moment of it. A climb holds its first frame, the catch, with both paws on the wall, one
+    /// above the other. Under reduced motion every frame of a clip is drawn as this one, so the
     /// atlas bakes the clip as one cell of it.
     pub fn still_frame(clip: impl Into<BodyClip>) -> u8 {
         match clip.into() {
-            BodyClip::Action(ActionKind::Eat | ActionKind::ClimbWindow) => 1,
+            BodyClip::Action(ActionKind::Eat) => 1,
             BodyClip::Action(ActionKind::Drink) => 2,
-            BodyClip::Gesture(Gesture::Mantle) => 1,
+            BodyClip::Gesture(Gesture::Mantle) => formiga_core::MANTLE_PULL_FRAMES + 1,
             _ => 0,
         }
     }
@@ -975,7 +979,7 @@ impl BodyPresentation {
     }
 
     /// A hop as the world last saw it (see [`formiga_core::HopMoment`]): crouched to spring, then
-    /// up in the air — rising on the leap's first frame and coming down on its second — and once
+    /// up in the air — the leap's four frames taken in turn as it goes across — and once
     /// down, the landing played through from the touch to standing, as long as it stands there.
     fn hopping(creature: &Creature, motion: MotionSignature) -> Option<Self> {
         let state = &creature.state;
@@ -992,7 +996,7 @@ impl BodyPresentation {
             )),
             HopMoment::Flight(across) if hopping => Some(shown(
                 BodyClip::Gesture(Gesture::Leap),
-                u8::from(across >= 0.5),
+                pose::leap_frame(across),
             )),
             HopMoment::Down(since) => {
                 let landing = AnimationSpec::for_action(ActionKind::Landing);
@@ -1693,7 +1697,7 @@ impl CreatureRenderer {
         let palette = crate::palette_for(genome);
         let pose = Pose::new(genome, clip, frame, reduce_motion);
         let figure = if let Some(design) = genome.design {
-            modular::draw(
+            let face = modular::draw(
                 &mut canvas,
                 design,
                 palette,
@@ -1702,7 +1706,12 @@ impl CreatureRenderer {
                 clip,
                 frame,
             );
-            modular::figure(design, pose, scale(genome), clip, frame)
+            // The face is where the drawing put it, which for a body leant in to a wall is known
+            // only once it is drawn.
+            Figure {
+                face,
+                ..modular::figure(design, pose, scale(genome), clip, frame)
+            }
         } else {
             match genome.family {
                 BodyFamily::Blob => draw_blob(&mut canvas, genome, palette, pose, clip, frame),
