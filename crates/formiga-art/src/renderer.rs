@@ -43,6 +43,9 @@ pub use props::{DRINK_KINDS, SNACK_KINDS, TOY_KINDS, prop_variants};
 
 pub const FRAME_SIZE: u32 = 48;
 pub const FACE_FRAME_SIZE: u32 = 16;
+/// The light outer half of the optional two-tone outline ([`CreatureRenderer::outline_frame`]): a
+/// pale, faintly warm rim, faint enough that on pale wallpaper it is barely there.
+pub const OUTLINE_RIM: Rgba = Rgba::new(236, 234, 222, 96);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PixelPoint {
@@ -1423,10 +1426,14 @@ impl CreatureRenderer {
         canvas
     }
 
-    /// Draw a soft edge in the transparent pixels immediately around a creature, so it stays
-    /// readable on bright or busy wallpaper. This reads only the frame's own alpha — never the
-    /// desktop behind it — and writes only inside the existing frame, so the silhouette used for
-    /// clicking and dragging is unchanged. Edges stay one pixel and hard, never blurred.
+    /// Draw a two-tone edge in the transparent pixels around a creature, so it stays readable on
+    /// bright, busy or dark wallpaper: a soft dark ring hugging the silhouette, and outside it a
+    /// faint light rim ([`OUTLINE_RIM`]). On pale wallpaper the rim is lighter than nothing much
+    /// and the dark ring does the work; on dark wallpaper, where the ring vanishes, the rim is what
+    /// shows. No rim is drawn below the frame's lowest drawn row, so it never lightens the shadow
+    /// under the feet. This reads only the frame's own alpha — never the desktop behind it — and
+    /// writes only inside the existing frame, so the silhouette used for clicking and dragging is
+    /// unchanged. Edges stay one pixel and hard, never blurred.
     pub fn outline_frame(canvas: &mut Canvas) {
         Self::outline_frame_in_detail(canvas, 1);
     }
@@ -1482,6 +1489,43 @@ impl CreatureRenderer {
                 (at / width) as i32,
                 Rgba::new(18, 26, 22, alpha),
             );
+        }
+        // The light rim: one more edge's width out, all the way round the dark ring. Like the
+        // ring, a pixel beside it along a row or a column is a full rim pixel and one touching it
+        // only across a corner a softer one, so the rim rounds its corners as the ring does.
+        let Some(lowest) = (0..height)
+            .rev()
+            .find(|&y| solid[y * width..(y + 1) * width].iter().any(|&s| s))
+        else {
+            return;
+        };
+        let ring: Vec<bool> = (0..width * height)
+            .map(|at| !solid[at] && around[at])
+            .collect();
+        let mut ring_along_row = vec![false; width * height];
+        for y in 0..height {
+            let row = near(&|x| ring[y * width + x], width);
+            ring_along_row[y * width..(y + 1) * width].copy_from_slice(&row);
+        }
+        for x in 0..width {
+            let column = near(&|y| ring[y * width + x], height);
+            let square = near(&|y| ring_along_row[y * width + x], height);
+            for y in 0..height {
+                let at = y * width + x;
+                if solid[at] || around[at] || !square[y] || y > lowest {
+                    continue;
+                }
+                let alpha = if ring_along_row[at] || column[y] {
+                    OUTLINE_RIM.a
+                } else {
+                    OUTLINE_RIM.a / 2
+                };
+                canvas.set(
+                    x as i32,
+                    y as i32,
+                    Rgba::new(OUTLINE_RIM.r, OUTLINE_RIM.g, OUTLINE_RIM.b, alpha),
+                );
+            }
         }
     }
 

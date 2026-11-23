@@ -110,11 +110,13 @@ impl ShadowGrounds<'_> {
 
     /// Where a companion's shadow goes this frame: under its feet on whatever it is standing on,
     /// on the ground below while it is off it, or nowhere while it is carried, or with nothing
-    /// under it to land on. `frame_top` and `contact` are where its frame and its contact point
-    /// are drawn, and `silhouette_bottom` is the row just past the frame's lowest drawn one.
+    /// under it to land on. `placed` is where it stands this frame, in desktop points;
+    /// `frame_top` and `contact` are where its frame and its contact point are drawn, and
+    /// `silhouette_bottom` is the row just past the frame's lowest drawn one.
     pub(super) fn spot(
         &self,
         creature: &Creature,
+        placed: formiga_core::Point,
         silhouette_bottom: u8,
         (local_x, contact_y): (f32, f32),
         frame_top: f32,
@@ -127,10 +129,10 @@ impl ShadowGrounds<'_> {
         let feet_y = frame_top + f32::from(silhouette_bottom) * unit;
         let (origin, scale_factor) = (self.monitor.bounds, self.monitor.scale_factor);
         // How far up the display standing back in the village draws it: nought elsewhere.
-        let set_back = contact_y - self.snap((creature.state.position.y - origin.y) * scale_factor);
+        let set_back = contact_y - self.snap((placed.y - origin.y) * scale_factor);
         let ground_y = if may_be_off_the_ground(creature) {
             let feet = formiga_core::Point {
-                x: creature.state.position.x,
+                x: placed.x,
                 y: origin.y + (feet_y - set_back) / scale_factor,
             };
             let ground =

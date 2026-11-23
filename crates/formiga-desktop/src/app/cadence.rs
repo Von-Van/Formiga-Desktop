@@ -28,6 +28,27 @@ pub(super) fn world_needs_frequent_window_scan(world: &World, button_down: bool)
     })
 }
 
+/// How often the window list is read while a window could be moving under somebody.
+pub(super) const FREQUENT_WINDOW_READ: Duration = Duration::from_millis(250);
+
+/// The next tick's interval when the window list is due to be read every
+/// [`FREQUENT_WINDOW_READ`] (`last_read` is the last read, if so): the colony's own `interval`,
+/// brought forward to when that read is due. A window list is read only on a tick, so a colony
+/// ticking every 200 ms would otherwise read it every 400 ms — a rider on a dragged window
+/// jumping two and a half times a second rather than four. It adds at most four wakeups a second,
+/// only while somebody is on a window that could be moving.
+pub(super) fn tick_interval_for_reads(
+    interval: Duration,
+    last_read: Option<Instant>,
+    last_tick: Instant,
+) -> Duration {
+    let Some(last_read) = last_read else {
+        return interval;
+    };
+    let read_due = (last_read + FREQUENT_WINDOW_READ).saturating_duration_since(last_tick);
+    interval.min(read_due.max(MOVING_INTERVAL))
+}
+
 pub(super) fn world_has_spatial_motion(world: &World) -> bool {
     if world.save.settings.paused {
         return false;
@@ -46,6 +67,11 @@ pub(super) fn world_has_spatial_motion(world: &World) -> bool {
         .chain(world.save.visitors.on_stage())
         .any(formiga_art::prop_in_motion)
     {
+        return true;
+    }
+    // A rider on a window being dragged is carried along between window reads, which is only
+    // seen if there are frames between them.
+    if super::rides::anyone_riding_a_moving_window(world) {
         return true;
     }
     world.save.creatures.iter().any(|creature| {

@@ -717,3 +717,89 @@ fn every_companion_is_the_same_echo_fox_in_every_clip() {
         CreatureRenderer::render_body_frame(&foxes[0], ActionKind::Idle, 0, false).canvas,
     );
 }
+
+/// The two-tone outline stays in the frame's own silhouette neighbourhood: it never touches a
+/// pixel the creature draws, its dark ring lies right against the silhouette, its light rim one
+/// edge's width further out and no further, and no rim is ever drawn below the lowest row the
+/// creature draws, where it would lighten the shadow under the feet. At a finer detail every
+/// distance is that many pixels.
+#[test]
+fn the_outline_rim_hugs_the_silhouette_and_never_goes_below_the_feet() {
+    let check = |plain: &Canvas, edged: &Canvas, detail: i32, what: &str| {
+        let (width, height) = (plain.width() as i32, plain.height() as i32);
+        let solid = |x: i32, y: i32| {
+            (0..width).contains(&x) && (0..height).contains(&y) && plain.get(x, y).a > 16
+        };
+        // How far, square-wise, the nearest drawn pixel is: 0 on the creature itself.
+        let distance = |x: i32, y: i32| {
+            (0..=2 * detail + 1)
+                .find(|&reach| {
+                    (-reach..=reach).any(|dy| (-reach..=reach).any(|dx| solid(x + dx, y + dy)))
+                })
+                .unwrap_or(i32::MAX)
+        };
+        let lowest = (0..height)
+            .rev()
+            .find(|&y| (0..width).any(|x| solid(x, y)))
+            .expect("a creature to outline");
+        let mut rim = 0;
+        for y in 0..height {
+            for x in 0..width {
+                let (before, after) = (plain.get(x, y), edged.get(x, y));
+                if solid(x, y) {
+                    assert_eq!(before, after, "{what}: the creature's own pixel at {x},{y}");
+                    continue;
+                }
+                if before == after || after.a == 0 {
+                    continue;
+                }
+                let away = distance(x, y);
+                if (after.r, after.g, after.b) == (OUTLINE_RIM.r, OUTLINE_RIM.g, OUTLINE_RIM.b) {
+                    rim += 1;
+                    assert!(after.a <= OUTLINE_RIM.a, "{what}: a faint rim at {x},{y}");
+                    assert!(
+                        away > detail && away <= 2 * detail,
+                        "{what}: rim {away} px from the silhouette at {x},{y}"
+                    );
+                    assert!(y <= lowest, "{what}: rim under the feet at {x},{y}");
+                } else {
+                    assert!(away <= detail, "{what}: ring {away} px out at {x},{y}");
+                }
+            }
+        }
+        assert!(rim > 0, "{what}: a rim to see");
+    };
+    for family in [
+        BodyFamily::Blob,
+        BodyFamily::Hopper,
+        BodyFamily::SoftQuadruped,
+    ] {
+        for action in ActionKind::ALL {
+            for frame in 0..AnimationSpec::for_action(action).frames.min(2) {
+                let plain =
+                    CreatureRenderer::render_body_frame(&genome(family), action, frame, true)
+                        .canvas;
+                let mut edged = plain.clone();
+                CreatureRenderer::outline_frame(&mut edged);
+                check(&plain, &edged, 1, &format!("{family:?} {action:?} {frame}"));
+            }
+        }
+    }
+    // A finer bake: the same shape at two pixels to the unit.
+    let unit = CreatureRenderer::render_body_frame(
+        &genome(BodyFamily::SoftQuadruped),
+        ActionKind::Idle,
+        0,
+        true,
+    )
+    .canvas;
+    let mut fine = Canvas::new(unit.width() * 2, unit.height() * 2);
+    for y in 0..fine.height() as i32 {
+        for x in 0..fine.width() as i32 {
+            fine.set(x, y, unit.get(x / 2, y / 2));
+        }
+    }
+    let mut edged = fine.clone();
+    CreatureRenderer::outline_frame_in_detail(&mut edged, 2);
+    check(&fine, &edged, 2, "detail 2");
+}

@@ -189,7 +189,7 @@ pub struct AppearancePreferences {
     pub theme: ThemeChoice,
     /// Percent of the base text size: 100 to 150, in steps of ten.
     pub text_scale: u8,
-    /// A subtle cached outline behind sprites, for bright or busy wallpaper.
+    /// A subtle cached two-tone outline behind sprites, for bright, busy or dark wallpaper.
     pub sprite_outline: bool,
 }
 

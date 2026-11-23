@@ -561,11 +561,12 @@ pub fn appearance_controls(ui: &mut Ui, save: &SaveFile, outcome: &mut SettingsO
         });
         ui.checkbox(
             &mut appearance.sprite_outline,
-            "Outline creatures for busy wallpaper",
+            "Outline creatures for busy or dark wallpaper",
         )
         .on_hover_text(
-            "Draws a soft edge behind each creature so it stays readable on bright or detailed \
-             backgrounds. It never changes where you can click.",
+            "Draws a soft dark edge with a faint light rim outside it, so each creature stays \
+             readable on bright, detailed or dark backgrounds. It never changes where you can \
+             click.",
         );
     });
     if appearance != save.companion.appearance {

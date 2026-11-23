@@ -48,6 +48,7 @@ mod habitat_editor;
 mod hill;
 mod house;
 mod menus;
+mod rides;
 mod settings_window;
 mod trips;
 mod updates;
@@ -135,6 +136,8 @@ pub struct FormigaApp {
     observation_epoch: Instant,
     window_sample: Option<WindowSample>,
     window_scan_initialized: bool,
+    /// How far past the last window read riders on a dragged window are carried: `rides`.
+    ride_carry: rides::RideCarry,
     last_display_scan: Instant,
     log_dir: PathBuf,
     current_cursor: CursorSnapshot,
@@ -216,6 +219,7 @@ impl FormigaApp {
             observation_epoch: Instant::now(),
             window_sample: None,
             window_scan_initialized: false,
+            ride_carry: rides::RideCarry::default(),
             last_display_scan: two_seconds_ago(),
             log_dir,
             current_cursor: CursorSnapshot::default(),
@@ -423,7 +427,12 @@ impl FormigaApp {
         if !world.save.settings.visible || !drawing {
             return Duration::from_millis(250);
         }
-        world_tick_interval(world)
+        let frequent = world_needs_frequent_window_scan(world, platform::left_button_down());
+        tick_interval_for_reads(
+            world_tick_interval(world),
+            frequent.then_some(self.last_window_scan),
+            self.last_tick,
+        )
     }
 
     fn snapshot(&mut self) -> DesktopSnapshot {
@@ -437,7 +446,7 @@ impl FormigaApp {
             world_needs_frequent_window_scan(world, platform::left_button_down())
         });
         let scan_interval = if frequent_window_scan {
-            Duration::from_millis(250)
+            FREQUENT_WINDOW_READ
         } else {
             Duration::from_secs(1)
         };
@@ -498,10 +507,17 @@ impl FormigaApp {
             return true;
         }
         self.check_for_companions();
+        let read_before = self.window_sample;
         let desktop = self.snapshot();
         self.follow_who_is_indoors(&desktop);
         self.current_cursor = desktop.cursor;
         let left_button_down = platform::left_button_down();
+        if self.window_sample != read_before {
+            self.ride_carry.read();
+        } else {
+            self.ride_carry
+                .advance(dt, left_button_down, desktop.cursor.velocity);
+        }
         let mut offer_answers = Vec::new();
         if let Some(world) = &mut self.world {
             if world.is_interacting() {
@@ -1309,6 +1325,11 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                         Some((staged, train)) => (staged, *train),
                         None => (&world.save, None),
                     };
+                    let carried = if on_trip {
+                        Vec::new()
+                    } else {
+                        self.ride_carry.offsets(world)
+                    };
                     let ui = if on_trip {
                         OverlayUi {
                             bubbles: &[],
@@ -1319,6 +1340,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                             village,
                             wonders: &[],
                             train,
+                            carried: &[],
                         }
                     } else {
                         OverlayUi {
@@ -1330,6 +1352,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
                             village,
                             wonders: &wonders,
                             train: None,
+                            carried: &carried,
                         }
                     };
                     if let Err(error) = overlay.render(
