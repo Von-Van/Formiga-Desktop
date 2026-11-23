@@ -336,6 +336,13 @@ bytes it already carries, so two companions resting side by side are not in step
 stored to say so. The first frame is the plain settle, and it is the only frame reduced motion
 draws.
 
+A body facing the screen walks as a waddle: one foot up and out, down, then the other, the body
+squashing as both feet land. A blob's feet are tucked under the one mass it is, so each foot comes
+up the whole two pixels for both frames it is off the ground, and the mass sways a pixel over onto
+the planted foot while the other is up (`Pose::sway`, which only a blob's stride sets, over feet
+that stay where they were put). A skip and a trudge are that stride with a mood in it and carry the
+same waddle; reduced motion holds the walk's first frame as before, both feet down.
+
 Every standing clip puts the feet on one row, and nothing a body folds against itself or drops
 goes below the lowest row its feet reach. A folded wing, a head over a body squashed flat by a
 crouch, and crumbs all stop there; that row is one below the floor for the classic feet and two for
@@ -2691,7 +2698,10 @@ recognition.
 Save version 12 adds optional `CreatureDesign` recipes to appearance and immutable origin. New
 generation uses an independent `modular-design-v1` stream, leaving legacy gene streams intact.
 Five body plans and six ear styles compose independently with bounded tails, proportions, muzzle
-patches, markings, and two RGB colors. The blob plan draws no separate head and carries the face on
+patches, markings, and two RGB colors. The two stalk tails (recipe tail 2, and 3 with a club on the end)
+trail out behind from the rump, below where the paws rest, rising a row or two, in the coat's shade
+with only the tip in the accent; drawn up from the shoulder in the accent, they read as a paw
+raised beside the body in every clip, and a greeting's raised paw did not read as a wave. The blob plan draws no separate head and carries the face on
 its body; it occupies the last index so earlier recipes and codes decode unchanged. The renderer reserves a large face with round eyes and a
 mouth, draws connected rounded bodies and paired limbs, and keeps appendages in the existing
 48×48 frame. Mini bodies scale down while retaining readable large faces. Colors are softened

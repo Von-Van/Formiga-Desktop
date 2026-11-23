@@ -335,6 +335,13 @@ and not by anything generated; every larger companion's pieces are drawn exactly
   add a generator edition rather than change what an existing one draws from a seed.
 - Preserve atlas dimensions, clip counts, and the colony creature limit unless a separate resource
   budget change is intended. Generation must not introduce an idle worker or retain source pixels.
+- Change how a part is drawn, rather than which part a seed chooses, only as a deliberate drawing
+  change that every recipe carrying the part shows: the recipe and its code stay byte for byte, and
+  nothing else moves. The stalk tails (tail 2, and 3 with its club) are one: they used to be held
+  up from the shoulder in the accent colour and now trail out behind from the rump in the coat's
+  shade with an accent tip, on every companion whose recipe has one; and a blob plan's walk, run,
+  skip and trudge sway its mass over the planted foot and lift each foot two pixels for both frames
+  it is up. Every other frame of every recipe and every recipe-less look draws exactly as before.
 - Run workspace tests and review `generation-sheet`, `classic-sheet`, `contact-sheet`,
   `cuteness-sheet`, `face-sheet`, `temperament-sheet`, and `animation-preview`. Automated coverage
   includes all body/ear/tail combinations and every combination of classic body parts at extreme
