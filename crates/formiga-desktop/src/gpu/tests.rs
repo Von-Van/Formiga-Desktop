@@ -915,9 +915,9 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     // climb's two more frames, the mantle's three and the toss's two, which fit in cells the last
     // row had spare, and with the leap's two, which take the two cells being carried gave up when
     // it stopped bobbing and came to repeat its frames; 1,797,120 with the breathing, one row
-    // more (a seated breath's second loop is its first but for the tail); and 1,889,280 with a
-    // squeeze's two pinched frames, one row more again.
-    assert_eq!(total_bytes, 1_889_280);
+    // more (a seated breath's second loop is its first but for the tail), and still that with a
+    // squeeze's two pinched frames, which fill cells the last row had spare.
+    assert_eq!(total_bytes, 1_797_120);
     assert_eq!(full_layout_bytes(), 2_626_560);
     // Tripled in 0.58.0 so the pose vocabulary has somewhere to grow: the budget is what
     // stops a creature costing more than a creature should, not what stops it having poses.
