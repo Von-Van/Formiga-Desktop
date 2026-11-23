@@ -847,7 +847,7 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     let total_bytes = atlas.body_pixels.len() + atlas.face_pixels.len();
     eprintln!("layered atlas: {total_bytes} bytes, baked in {bake_time:?}");
     // 108 action frames — six of them the climb, a stroke with each paw, and two the toss's own —
-    // and 132 gesture frames — three of them the mantle a climb tops out with, eight the seat and
+    // and 130 gesture frames — three of them the mantle a climb tops out with, eight the seat and
     // the sled wonders brought in 0.66.0, twenty-eight a companion's own repertoire (a wash, a shake, a sniff, two
     // more ways to sleep and two more ways to walk), sixteen the chores and a pet leaned into,
     // fourteen the nibble, chomp, chew and gulp of a meal, and two a hop's leap through the air —
@@ -859,7 +859,7 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     // nothing read: 1,824,768 bytes with the temperament poses and their faces. Since 0.62.0 a
     // frame or face that comes out the same as one already baked shares its cell — a held pose,
     // eyes shut whichever way they would be looking — and the trinket cells are gone.
-    assert_eq!(total_animation_frames(), 240);
+    assert_eq!(total_animation_frames(), 238);
     // 1,244,160 until 0.66.0, when the walk, the run, the greeting and the meal stopped repeating
     // frames they had shared and the texture grew by a row of ten cells, to 1,336,320;
     // 1,244,160 again from 0.66.1, whose scoot along on a leaf sled repeats two of its four
@@ -871,7 +871,7 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     // it stopped bobbing and came to repeat its frames; and 1,797,120 with the breathing, one row
     // more: a seated breath's second loop is its first but for the tail.
     assert_eq!(total_bytes, 1_797_120);
-    assert_eq!(full_layout_bytes(), 2_534_400);
+    assert_eq!(full_layout_bytes(), 2_626_560);
     // Tripled in 0.58.0 so the pose vocabulary has somewhere to grow: the budget is what
     // stops a creature costing more than a creature should, not what stops it having poses.
     assert!(full_layout_bytes() <= 4_500_000);

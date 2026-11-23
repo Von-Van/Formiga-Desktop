@@ -563,7 +563,7 @@ collection; the only durable record is the scrapbook's one first-find row per va
 The renderer caches one gaze-free 48×48 body atlas and one 16×16 layered face texture per creature.
 The face texture holds fifteen expressions — the yawn's, eyes screwed shut and the mouth wide, and
 since 0.62.0 grumpy, smug and pleading for the poses a temperament strikes — each in nine gaze
-directions and three eyelid states. The body atlas holds 222 frames: 96 for actions and 126 for
+directions and three eyelid states. The body atlas holds 238 frames: 108 for actions and 130 for
 thirty-seven gesture poses. A toss has two frames of its own, appended after every earlier action clip:
 balled up in the air, legs folded under, head and tail tucked and the eyes shut, and the same ball
 turned a little nose up (`renderer::tumble`), which loops at six frames a second until the landing.
@@ -594,7 +594,7 @@ before its own repertoire of washing, shaking, sniffing and the other ways it sl
 its chores, its pet, the four ways it eats a meal and its breathing as it sits and sleeps added six
 rows of cells, 1.34 MB in 0.66.0 alone, when the walk, the run, the greeting and the
 meal stopped repeating frames — and much less under reduced motion, where each clip holds one
-frame. With no two frames alike they would be 2,534,400 bytes, which is what the budgets hold: below a 4,500,000-byte
+frame. With no two frames alike they would be 2,626,560 bytes, which is what the budgets hold: below a 4,500,000-byte
 test limit per creature, raised deliberately from 1.5 MB so the pose vocabulary has room to grow
 without the budget moving each time, and a full colony of six under 16 MiB, raised from 10 MiB in
 0.62.0 for the new poses and faces and from 15 MiB in 0.68.0 for the animation pass's new clips.
