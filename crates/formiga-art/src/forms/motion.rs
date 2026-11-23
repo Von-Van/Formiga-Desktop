@@ -161,7 +161,7 @@ pub(crate) fn pose(plan: Plan, clip: BodyClip, frame: u8, reduce_motion: bool) -
     // In the air on a hop: the whole figure up off its ground with every foot drawn up, stretched
     // out nose first, the tail trailing and the ears back, then levelling out to come down.
     if clip == BodyClip::Gesture(Gesture::Leap) {
-        let rising = frame % 2 == 0;
+        let rising = frame.is_multiple_of(2);
         pose.lift = if rising { 3.0 } else { 2.0 };
         pose.raise = [1.0; 4];
         pose.step = if rising {
