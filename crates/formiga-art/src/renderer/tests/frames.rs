@@ -4,6 +4,7 @@
 use super::*;
 use formiga_core::{DesktopRect, DesktopSnapshot, MonitorInfo, World};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 
 #[test]
 fn every_family_renders_inside_frame() {
@@ -716,4 +717,431 @@ fn every_companion_is_the_same_echo_fox_in_every_clip() {
         CreatureRenderer::render_body_frame(&plain, ActionKind::Idle, 0, false).canvas,
         CreatureRenderer::render_body_frame(&foxes[0], ActionKind::Idle, 0, false).canvas,
     );
+}
+
+/// A climb goes up the outside of a window's side with its frame's middle as far out from the edge
+/// line as `formiga_core::climb_grip_reach` says its paw on that side reaches, less a grip, so the
+/// paw is drawn on the edge and the body beside the window. The simulation cannot see the art, so
+/// this holds the estimate to the frames: across generated companions of every kind, the furthest
+/// a climb draws on the side it faces — its paws, and for a long body the forepaw out ahead —
+/// sits on the estimate for the typical companion of each kind, and within a few pixels of it for
+/// nearly all of them, so the paw lands on the edge or a little over it rather than short of it
+/// or far across the window.
+#[test]
+fn a_climbing_paw_reaches_as_far_as_the_simulation_climbs_by() {
+    const CENTRE: i32 = FRAME_SIZE as i32 / 2;
+    let desktop = DesktopSnapshot::default();
+    let spec = AnimationSpec::for_action(ActionKind::ClimbWindow);
+    // How far past the middle of its frame a companion's climb draws on the side it faces: the
+    // middle one of its frames, so a single frame's ear or flick of a tail does not decide it.
+    let reach = |genome: &AppearanceGenome| {
+        let mut furthest: Vec<i32> = (0..spec.frames)
+            .map(|frame| {
+                let body = CreatureRenderer::render_body_frame(
+                    genome,
+                    ActionKind::ClimbWindow,
+                    frame,
+                    false,
+                );
+                let (_, _, right, _) = body.canvas.alpha_bounds().expect("a climber is drawn");
+                right as i32 + 1 - CENTRE
+            })
+            .collect();
+        furthest.sort_unstable();
+        furthest[furthest.len() / 2]
+    };
+    let mut by_estimate: BTreeMap<i32, Vec<i32>> = BTreeMap::new();
+    for index in 0..120_u8 {
+        let mut seed = [index; 32];
+        seed[1] = index.wrapping_mul(37);
+        let modular =
+            World::preview_adult(seed, time::OffsetDateTime::UNIX_EPOCH, &desktop).appearance;
+        let mut classic = modular.clone();
+        classic.design = None;
+        let mut fox = modular.clone();
+        fox.echo_fox = true;
+        for genome in [modular, classic, fox] {
+            let estimate = formiga_core::climb_grip_reach(&genome) as i32;
+            by_estimate
+                .entry(estimate)
+                .or_default()
+                .push(reach(&genome));
+        }
+    }
+    for (estimate, mut drawn) in by_estimate {
+        drawn.sort_unstable();
+        let typical = drawn[drawn.len() / 2];
+        let near = drawn.iter().filter(|r| (**r - estimate).abs() <= 3).count();
+        assert!(
+            (typical - estimate).abs() <= 1,
+            "companions climbing at {estimate} pixels draw out to {typical}"
+        );
+        assert!(
+            near * 10 >= drawn.len() * 9,
+            "only {near} of {} companions climbing at {estimate} pixels draw within 3 of it: \
+             {drawn:?}",
+            drawn.len()
+        );
+    }
+}
+
+/// A thrown companion is drawn balled up and tumbling, not as it hangs from a hand. The toss has
+/// two frames of its own in the atlas on every kind of body — an original family, each modular
+/// plan, the Echo Fox and a sculpted form — unlike any frame of being carried and unlike each
+/// other: the second is the first turned, with no colour the first does not have. Reduced motion
+/// holds the ball still, and the face drawn with it has its eyes shut.
+#[test]
+fn a_toss_has_tucked_frames_of_its_own() {
+    let tossed = BodyClip::Action(ActionKind::Tossed);
+    assert_eq!(tossed.body(), tossed, "a toss is baked under its own name");
+    assert_eq!(
+        BodyClip::baked().filter(|clip| *clip == tossed).count(),
+        1,
+        "a toss has one clip in the atlas"
+    );
+    let spec = AnimationSpec::for_clip(tossed);
+    assert_eq!((spec.frames, spec.playback), (2, PlaybackMode::Loop));
+
+    let mut subjects: Vec<(String, AppearanceGenome)> = [
+        BodyFamily::Blob,
+        BodyFamily::Hopper,
+        BodyFamily::SoftQuadruped,
+    ]
+    .into_iter()
+    .map(|family| (format!("{family:?}"), genome(family)))
+    .collect();
+    for plan in formiga_core::BodyPlan::ALL {
+        let mut modular = genome(BodyFamily::Blob);
+        let mut design = formiga_core::CreatureDesign::modular([29; 32], 0, None);
+        design.body = plan;
+        modular.design = Some(design);
+        subjects.push((format!("{plan:?}"), modular));
+    }
+    subjects.push((
+        "Echo Fox".into(),
+        AppearanceGenome {
+            echo_fox: true,
+            ..genome(BodyFamily::Hopper)
+        },
+    ));
+    let mut sculpted = genome(BodyFamily::Blob);
+    sculpted.sculpt = Some(formiga_core::forms::Sculpt::starter(
+        formiga_core::forms::Plan::CompactQuadruped,
+    ));
+    subjects.push(("sculpted".into(), sculpted));
+
+    let colours = |canvas: &Canvas| {
+        canvas
+            .pixels()
+            .iter()
+            .filter(|pixel| pixel.a > 0)
+            .map(|pixel| (pixel.r, pixel.g, pixel.b, pixel.a))
+            .collect::<std::collections::HashSet<_>>()
+    };
+    for (label, genome) in &subjects {
+        let carried: Vec<Canvas> = (0..AnimationSpec::for_action(ActionKind::Dragged).frames)
+            .map(|frame| {
+                CreatureRenderer::render_body_frame(genome, ActionKind::Dragged, frame, false)
+                    .canvas
+            })
+            .collect();
+        let [ball, turned] = [0, 1]
+            .map(|frame| CreatureRenderer::render_body_frame(genome, tossed, frame, false).canvas);
+        assert_ne!(
+            ball, turned,
+            "{label}: the second frame of a toss is turned"
+        );
+        for frame in [&ball, &turned] {
+            assert!(
+                !carried.contains(frame),
+                "{label}: a toss is drawn as being carried"
+            );
+        }
+        assert!(
+            colours(&turned).is_subset(&colours(&ball)),
+            "{label}: turning the ball invents a colour"
+        );
+        assert_eq!(
+            CreatureRenderer::render_body_frame(genome, tossed, 1, true).canvas,
+            CreatureRenderer::render_body_frame(genome, tossed, 0, true).canvas,
+            "{label}: reduced motion holds the ball still"
+        );
+    }
+    for frame in 0..spec.frames {
+        assert_eq!(
+            default_eyelids(ActionKind::Tossed, frame),
+            EyelidPose::Closed
+        );
+    }
+}
+
+/// Landing is played once and held: squashed on the touch, back up, a little past, and standing
+/// on the very frame a rest starts from, so the cut to whatever comes next does not show. A leap
+/// has two frames of its own, rising and coming down, unlike any frame of standing or landing.
+/// Carried, a companion hangs still: no frame of being carried bobs, and the hang sways a pixel
+/// over and back at most.
+#[test]
+fn landing_holds_standing_a_leap_has_its_own_frames_and_a_carry_hangs_still() {
+    let landing = AnimationSpec::for_action(ActionKind::Landing);
+    assert_eq!((landing.frames, landing.playback), (4, PlaybackMode::Hold));
+    assert_eq!(landing.frame_at(0.0), 0);
+    assert_eq!(landing.frame_at(0.55), 3);
+    assert_eq!(landing.frame_at(30.0), 3, "landing holds its last frame");
+    let leap = AnimationSpec::for_clip(Gesture::Leap);
+    assert_eq!(leap.frames, 2);
+    assert_eq!(
+        BodyClip::baked()
+            .filter(|clip| *clip == BodyClip::Gesture(Gesture::Leap))
+            .count(),
+        1
+    );
+    let mut subjects: Vec<(String, AppearanceGenome)> = [
+        BodyFamily::Blob,
+        BodyFamily::Hopper,
+        BodyFamily::SoftQuadruped,
+    ]
+    .into_iter()
+    .map(|family| (format!("{family:?}"), genome(family)))
+    .collect();
+    for plan in formiga_core::BodyPlan::ALL {
+        let mut modular = genome(BodyFamily::Blob);
+        let mut design = formiga_core::CreatureDesign::modular([29; 32], 0, None);
+        design.body = plan;
+        modular.design = Some(design);
+        subjects.push((format!("{plan:?}"), modular));
+    }
+    let body = |genome: &AppearanceGenome, clip: BodyClip, frame: u8| {
+        CreatureRenderer::render_body_frame(genome, clip, frame, false).canvas
+    };
+    for (label, genome) in &subjects {
+        let landed = body(genome, ActionKind::Landing.into(), 3);
+        assert_eq!(
+            landed,
+            body(genome, ActionKind::Idle.into(), 0),
+            "{label}: a landing ends standing as a rest begins"
+        );
+        assert_ne!(body(genome, ActionKind::Landing.into(), 0), landed);
+        let [rising, falling] = [0, 1].map(|frame| body(genome, Gesture::Leap.into(), frame));
+        assert_ne!(rising, falling, "{label}: a leap rises and comes down");
+        for frame in [&rising, &falling] {
+            assert_ne!(frame, &landed, "{label}: a leap is not standing");
+        }
+        let carried: Vec<Canvas> = (0..4)
+            .map(|frame| body(genome, ActionKind::Dragged.into(), frame))
+            .collect();
+        assert_eq!(carried[0], carried[1], "{label}");
+        assert_eq!(carried[2], carried[3], "{label}");
+        let rows = |canvas: &Canvas| {
+            let (_, top, _, bottom) = canvas.alpha_bounds().expect("drawn");
+            (top, bottom)
+        };
+        assert!(
+            carried.iter().all(|frame| rows(frame) == rows(&carried[0])),
+            "{label}: being carried does not bob"
+        );
+    }
+}
+
+/// The two-tone outline stays in the frame's own silhouette neighbourhood: it never touches a
+/// pixel the creature draws, its dark ring lies right against the silhouette, its light rim one
+/// edge's width further out and no further, and no rim is ever drawn below the lowest row the
+/// creature draws, where it would lighten the shadow under the feet. At a finer detail every
+/// distance is that many pixels.
+#[test]
+fn the_outline_rim_hugs_the_silhouette_and_never_goes_below_the_feet() {
+    let check = |plain: &Canvas, edged: &Canvas, detail: i32, what: &str| {
+        let (width, height) = (plain.width() as i32, plain.height() as i32);
+        let solid = |x: i32, y: i32| {
+            (0..width).contains(&x) && (0..height).contains(&y) && plain.get(x, y).a > 16
+        };
+        // How far, square-wise, the nearest drawn pixel is: 0 on the creature itself.
+        let distance = |x: i32, y: i32| {
+            (0..=2 * detail + 1)
+                .find(|&reach| {
+                    (-reach..=reach).any(|dy| (-reach..=reach).any(|dx| solid(x + dx, y + dy)))
+                })
+                .unwrap_or(i32::MAX)
+        };
+        let lowest = (0..height)
+            .rev()
+            .find(|&y| (0..width).any(|x| solid(x, y)))
+            .expect("a creature to outline");
+        let mut rim = 0;
+        for y in 0..height {
+            for x in 0..width {
+                let (before, after) = (plain.get(x, y), edged.get(x, y));
+                if solid(x, y) {
+                    assert_eq!(before, after, "{what}: the creature's own pixel at {x},{y}");
+                    continue;
+                }
+                if before == after || after.a == 0 {
+                    continue;
+                }
+                let away = distance(x, y);
+                if (after.r, after.g, after.b) == (OUTLINE_RIM.r, OUTLINE_RIM.g, OUTLINE_RIM.b) {
+                    rim += 1;
+                    assert!(after.a <= OUTLINE_RIM.a, "{what}: a faint rim at {x},{y}");
+                    assert!(
+                        away > detail && away <= 2 * detail,
+                        "{what}: rim {away} px from the silhouette at {x},{y}"
+                    );
+                    assert!(y <= lowest, "{what}: rim under the feet at {x},{y}");
+                } else {
+                    assert!(away <= detail, "{what}: ring {away} px out at {x},{y}");
+                }
+            }
+        }
+        assert!(rim > 0, "{what}: a rim to see");
+    };
+    for family in [
+        BodyFamily::Blob,
+        BodyFamily::Hopper,
+        BodyFamily::SoftQuadruped,
+    ] {
+        for action in ActionKind::ALL {
+            for frame in 0..AnimationSpec::for_action(action).frames.min(2) {
+                let plain =
+                    CreatureRenderer::render_body_frame(&genome(family), action, frame, true)
+                        .canvas;
+                let mut edged = plain.clone();
+                CreatureRenderer::outline_frame(&mut edged);
+                check(&plain, &edged, 1, &format!("{family:?} {action:?} {frame}"));
+            }
+        }
+    }
+    // A finer bake: the same shape at two pixels to the unit.
+    let unit = CreatureRenderer::render_body_frame(
+        &genome(BodyFamily::SoftQuadruped),
+        ActionKind::Idle,
+        0,
+        true,
+    )
+    .canvas;
+    let mut fine = Canvas::new(unit.width() * 2, unit.height() * 2);
+    for y in 0..fine.height() as i32 {
+        for x in 0..fine.width() as i32 {
+            fine.set(x, y, unit.get(x / 2, y / 2));
+        }
+    }
+    let mut edged = fine.clone();
+    CreatureRenderer::outline_frame_in_detail(&mut edged, 2);
+    check(&fine, &edged, 2, "detail 2");
+}
+
+/// The bodies the still-frame tests draw: the three original families, a run of modular ones,
+/// and the Echo Fox.
+fn still_frame_subjects() -> Vec<(String, AppearanceGenome)> {
+    let mut cases: Vec<(String, AppearanceGenome)> = [
+        BodyFamily::Blob,
+        BodyFamily::Hopper,
+        BodyFamily::SoftQuadruped,
+    ]
+    .into_iter()
+    .map(|family| (format!("classic {family:?}"), genome(family)))
+    .collect();
+    for seed in 0..16u8 {
+        let mut modular = genome(BodyFamily::Blob);
+        modular.design = Some(formiga_core::CreatureDesign::generated([seed; 32], 0, None));
+        cases.push((format!("modular seed {seed}"), modular));
+    }
+    cases.push((
+        "echo fox".to_owned(),
+        AppearanceGenome {
+            echo_fox: true,
+            ..genome(BodyFamily::Hopper)
+        },
+    ));
+    cases
+}
+
+/// With motion reduced every clip is one picture, whichever of its frames is asked for, and it is
+/// the clip's still frame: what it holds is what the moving clip holds on that frame. For eating
+/// that is the snack up at the mouth with a bite out of it rather than held away before the
+/// first bite, for drinking the cup tipped to the mouth rather than held down, and for play the
+/// toy at the paw.
+#[test]
+fn reduced_motion_holds_each_clip_on_its_still_frame() {
+    for (label, appearance) in still_frame_subjects() {
+        for clip in BodyClip::baked() {
+            let spec = AnimationSpec::for_clip(clip);
+            let still = AnimationSpec::still_frame(clip);
+            assert!(
+                still < spec.frames,
+                "{clip:?} holds frame {still} of {}",
+                spec.frames
+            );
+            let held = CreatureRenderer::render_body_frame(&appearance, clip, still, true);
+            for frame in 0..spec.frames {
+                assert!(
+                    CreatureRenderer::render_body_frame(&appearance, clip, frame, true) == held,
+                    "{label} {clip:?} frame {frame} is not its still frame {still}"
+                );
+            }
+            let moving = CreatureRenderer::render_body_frame(&appearance, clip, still, false);
+            assert_eq!(
+                held.held.map(|held| held.thing),
+                moving.held.map(|held| held.thing),
+                "{label} {clip:?} holds something other than its frame {still} does"
+            );
+        }
+        let held = |action: ActionKind, frame: u8, reduce_motion: bool| {
+            CreatureRenderer::render_body_frame(&appearance, action, frame, reduce_motion)
+                .held
+                .expect("the clip holds something")
+        };
+        let first = held(ActionKind::Eat, 0, false);
+        let mouthful = held(ActionKind::Eat, 0, true);
+        assert!(
+            matches!(mouthful.thing, HeldThing::Snack { bite, .. } if bite > 0)
+                && mouthful.at.y < first.at.y,
+            "{label} eats with the snack held away: {mouthful:?} against {first:?}"
+        );
+        assert!(
+            matches!(
+                held(ActionKind::Drink, 0, true).thing,
+                HeldThing::Cup { tipped: true, .. }
+            ),
+            "{label} drinks with the cup down"
+        );
+        assert_eq!(
+            held(ActionKind::SoloPlay, 0, true).thing,
+            held(ActionKind::SoloPlay, 0, false).thing,
+            "{label} plays with the toy away from the paw"
+        );
+    }
+}
+
+/// With motion on, the still frames change nothing: every frame is its own, and a clip that holds
+/// still on another frame still opens on its first: the snack held up before the first bite,
+/// the cup down, the first reach of a climb.
+#[test]
+fn a_still_frame_changes_nothing_with_motion_on() {
+    for (label, appearance) in still_frame_subjects() {
+        for action in [ActionKind::Eat, ActionKind::Drink, ActionKind::ClimbWindow] {
+            let still = AnimationSpec::still_frame(action);
+            assert_ne!(still, 0, "{action:?}");
+            assert!(
+                CreatureRenderer::render_body_frame(&appearance, action, 0, false)
+                    != CreatureRenderer::render_body_frame(&appearance, action, still, false),
+                "{label} {action:?} opens on its still frame with motion on"
+            );
+        }
+        let opening = |action: ActionKind| {
+            CreatureRenderer::render_body_frame(&appearance, action, 0, false)
+                .held
+                .expect("the clip holds something")
+                .thing
+        };
+        assert!(
+            matches!(opening(ActionKind::Eat), HeldThing::Snack { bite: 0, .. }),
+            "{label}"
+        );
+        assert!(
+            matches!(
+                opening(ActionKind::Drink),
+                HeldThing::Cup { tipped: false, .. }
+            ),
+            "{label}"
+        );
+    }
 }

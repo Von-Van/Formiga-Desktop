@@ -1,18 +1,21 @@
-//! Review sheet for the on-desktop UI art: thought bubbles and the right-click creature menu.
+//! Review sheet for the on-desktop UI art: thought bubbles, the right-click creature menu, the
+//! shadow every companion stands on, and the optional two-tone outline.
 //!
 //! Everything is drawn at 4x nearest neighbour over three backgrounds — light, dark, and a busy
-//! checker — because the overlay has no say in what is behind it. The last section repeats the
+//! checker — because the overlay has no say in what is behind it. The outline is drawn over a
+//! near-black fourth as well, the wallpaper its light rim is for. The last section repeats the
 //! full bubbles and the menus at 2x, which is the smallest scale anyone runs the companion at
 //! and therefore the only scale that really decides whether an icon reads.
 
 use anyhow::{Context, Result};
 use formiga_art::{
-    BUBBLE_ANCHOR, BUBBLE_CELL, Canvas, CreatureRenderer, LABEL_TAB_GAP, LABEL_TAB_HEIGHT,
-    MENU_STRIP_HEIGHT, MenuIcon, MenuLayout, SpriteRect, UiAtlasRenderer,
+    BUBBLE_ANCHOR, BUBBLE_CELL, Canvas, ContactShadow, CreatureRenderer, FramePlacement,
+    LABEL_TAB_GAP, LABEL_TAB_HEIGHT, MENU_STRIP_HEIGHT, MenuIcon, MenuLayout, ShadowGround,
+    SpriteRect, UiAtlasRenderer,
 };
 use formiga_core::{
-    ActionKind, BubbleGrowth, BubbleIcon, Creature, DesktopRect, DesktopSnapshot, DisplayKey,
-    MonitorInfo, World,
+    ActionKind, AppearanceGenome, BubbleGrowth, BubbleIcon, Creature, DesktopRect, DesktopSnapshot,
+    DisplayKey, MonitorInfo, World,
 };
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
@@ -123,6 +126,134 @@ const GROWTHS: [(&str, BubbleGrowth); 3] = [
 
 const BACKGROUNDS: [Background; 3] = [Background::Light, Background::Dark, Background::Busy];
 
+/// One shadow scene, in art pixels: a companion standing on the line a third of the way up.
+const SHADOW_SCENE: (u32, u32) = (56, 64);
+/// The line its feet stand on, from the top of a scene.
+const SHADOW_GROUND: i32 = 52;
+
+/// What stands on its shadow in each scene: the clip and frame, which way it faces, how far its
+/// feet are off the ground (art pixels, beyond whatever the frame itself lifts them), and what the
+/// ground is. `None` for the ground is a companion being carried, which has no shadow.
+type ShadowScene = (&'static str, ActionKind, u8, bool, f32, Option<ShadowStage>);
+
+const SHADOW_SCENES: [ShadowScene; 11] = [
+    (
+        "stand",
+        ActionKind::Idle,
+        0,
+        true,
+        0.0,
+        Some(ShadowStage::Floor),
+    ),
+    (
+        "ledge",
+        ActionKind::Idle,
+        1,
+        true,
+        0.0,
+        Some(ShadowStage::Ledge),
+    ),
+    (
+        "walk",
+        ActionKind::Traverse,
+        1,
+        true,
+        0.0,
+        Some(ShadowStage::Floor),
+    ),
+    (
+        "run",
+        ActionKind::Sprint,
+        2,
+        true,
+        0.0,
+        Some(ShadowStage::Floor),
+    ),
+    (
+        "sleep",
+        ActionKind::Sleep,
+        0,
+        false,
+        0.0,
+        Some(ShadowStage::Floor),
+    ),
+    (
+        "land",
+        ActionKind::Landing,
+        0,
+        true,
+        0.0,
+        Some(ShadowStage::Floor),
+    ),
+    (
+        "hop low",
+        ActionKind::Landing,
+        1,
+        true,
+        6.0,
+        Some(ShadowStage::Floor),
+    ),
+    (
+        "hop high",
+        ActionKind::Landing,
+        1,
+        true,
+        22.0,
+        Some(ShadowStage::Floor),
+    ),
+    (
+        "left",
+        ActionKind::Idle,
+        0,
+        false,
+        0.0,
+        Some(ShadowStage::Floor),
+    ),
+    (
+        "village",
+        ActionKind::Idle,
+        0,
+        true,
+        0.0,
+        Some(ShadowStage::Village),
+    ),
+    ("carried", ActionKind::Dragged, 0, true, 0.0, None),
+];
+
+/// The outline band's scenes: which of its companions (the sheet's own, the darkest coat and the
+/// palest of a fixed handful of seeds), whether it is outlined, and the scene it stands in.
+const OUTLINE_SCENES: [(usize, bool, ShadowScene); 10] = [
+    (0, false, SHADOW_SCENES[0]),
+    (0, true, SHADOW_SCENES[0]),
+    (1, false, SHADOW_SCENES[0]),
+    (1, true, SHADOW_SCENES[0]),
+    (2, false, SHADOW_SCENES[0]),
+    (2, true, SHADOW_SCENES[0]),
+    (1, true, SHADOW_SCENES[1]),
+    (1, true, SHADOW_SCENES[3]),
+    (1, true, SHADOW_SCENES[6]),
+    (1, true, SHADOW_SCENES[9]),
+];
+
+/// The outline is judged on near-black wallpaper too, where its dark ring is lost.
+const OUTLINE_BACKGROUNDS: [Background; 4] = [
+    Background::Light,
+    Background::Dark,
+    Background::Night,
+    Background::Busy,
+];
+
+/// What a shadow scene's companion stands on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ShadowStage {
+    /// The wallpaper itself, as on the habitat's floor.
+    Floor,
+    /// The top of a window.
+    Ledge,
+    /// The village's grass.
+    Village,
+}
+
 pub fn run(path: PathBuf) -> Result<()> {
     let atlas = UiAtlasRenderer::render();
     let creature = sample_creature();
@@ -132,12 +263,18 @@ pub fn run(path: PathBuf) -> Result<()> {
     let menu_band = HEADER + MENUS.len() as u32 * MENU_SCENE.1 * SCALE + BAND_GAP;
     let moment_band = HEADER + MOMENT_SCENE.1 * SCALE + BAND_GAP;
     let small_band = HEADER + 116 + BAND_GAP;
-    let height = 8 + 3 * (bubble_band + menu_band + moment_band + small_band) + 8;
+    let shadow_band = HEADER + SHADOW_SCENE.1 * SCALE + NAME_ROW + BAND_GAP;
+    let height = 8
+        + 3 * (bubble_band + menu_band + moment_band + small_band + shadow_band)
+        + OUTLINE_BACKGROUNDS.len() as u32 * shadow_band
+        + 8;
+    let cast = outline_cast(&creature);
 
     let mut painter = Painter {
         sheet: Sheet::new(SHEET_WIDTH, height),
         atlas: &atlas,
         frame: &frame,
+        creature: &creature,
     };
     let mut y = 8;
     for background in BACKGROUNDS {
@@ -151,6 +288,12 @@ pub fn run(path: PathBuf) -> Result<()> {
     }
     for background in BACKGROUNDS {
         y = painter.small_band(background, y);
+    }
+    for background in BACKGROUNDS {
+        y = painter.shadow_band(background, y);
+    }
+    for background in OUTLINE_BACKGROUNDS {
+        y = painter.outline_band(background, &cast, y);
     }
 
     let sheet = painter.sheet;
@@ -176,6 +319,7 @@ struct Painter<'a> {
     sheet: Sheet,
     atlas: &'a Canvas,
     frame: &'a Canvas,
+    creature: &'a Creature,
 }
 
 impl Painter<'_> {
@@ -362,6 +506,134 @@ impl Painter<'_> {
         y + 116 + BAND_GAP
     }
 
+    /// The shadow under a companion, on the wallpaper, on a window's top, on the village's grass,
+    /// stepping, asleep, landing and in the air, and none while it is carried: each laid out the
+    /// way the overlay lays it, from the same measure of the frame's feet.
+    fn shadow_band(&mut self, background: Background, top: u32) -> u32 {
+        self.sheet
+            .header(top, &format!("contact shadow 4x on {}", background.name()));
+        let y = top + HEADER;
+        let shadows = ContactShadow::sheet();
+        let genome = self.creature.appearance.clone();
+        for (index, scene) in SHADOW_SCENES.into_iter().enumerate() {
+            let x = GUTTER + index as u32 * SHADOW_SCENE.0 * SCALE;
+            self.shadow_scene(background, &shadows, (x, y), &genome, false, scene);
+            self.sheet
+                .text(x + 8, y + SHADOW_SCENE.1 * SCALE + 4, scene.0, 3, INK);
+        }
+        y + SHADOW_SCENE.1 * SCALE + NAME_ROW + BAND_GAP
+    }
+
+    /// The optional outline, off and on, on three coats — the sheet's own, the darkest and the
+    /// palest — and then on the darkest on a window's top, running, in the air and in the
+    /// village: each on its shadow, as the overlay draws it.
+    fn outline_band(&mut self, background: Background, cast: &[Creature; 3], top: u32) -> u32 {
+        self.sheet
+            .header(top, &format!("outline 4x on {}", background.name()));
+        let y = top + HEADER;
+        let shadows = ContactShadow::sheet();
+        for (index, (who, outline, scene)) in OUTLINE_SCENES.into_iter().enumerate() {
+            let x = GUTTER + index as u32 * SHADOW_SCENE.0 * SCALE;
+            let genome = &cast[who].appearance;
+            self.shadow_scene(background, &shadows, (x, y), genome, outline, scene);
+            let name = if outline {
+                format!("{} edged", scene.0)
+            } else {
+                format!("{} plain", scene.0)
+            };
+            self.sheet
+                .text(x + 8, y + SHADOW_SCENE.1 * SCALE + 4, &name, 3, INK);
+        }
+        y + SHADOW_SCENE.1 * SCALE + NAME_ROW + BAND_GAP
+    }
+
+    fn shadow_scene(
+        &mut self,
+        background: Background,
+        shadows: &Canvas,
+        (x, y): (u32, u32),
+        genome: &AppearanceGenome,
+        outline: bool,
+        (_, action, frame, facing_right, height, stage): ShadowScene,
+    ) {
+        let (width, scene_height) = (SHADOW_SCENE.0 * SCALE, SHADOW_SCENE.1 * SCALE);
+        self.sheet
+            .fill(x, y, width, scene_height, background.base());
+        background.decorate(&mut self.sheet, x, y, width, scene_height);
+        let scale = SCALE as i32;
+        let ground = y as i32 + SHADOW_GROUND * scale;
+        match stage {
+            // A window's top: its title bar under the line, a shade darker along the edge.
+            Some(ShadowStage::Ledge) => {
+                let (left, right) = (x + 4 * SCALE, x + width - 4 * SCALE);
+                let below = ground as u32;
+                self.sheet.fill(
+                    left,
+                    below,
+                    right - left,
+                    y + scene_height - below,
+                    [236, 236, 238, 255],
+                );
+                self.sheet
+                    .fill(left, below, right - left, SCALE, [196, 198, 204, 255]);
+            }
+            // The grass along the front of the village, its front edge on the ground line, in
+            // the ground's own greens.
+            Some(ShadowStage::Village) => {
+                let back = (ground - formiga_art::GROUND_BAND * scale) as u32;
+                self.sheet.fill(
+                    x,
+                    back,
+                    width,
+                    formiga_art::GROUND_BAND as u32 * SCALE,
+                    [124, 168, 90, 255],
+                );
+                self.sheet
+                    .fill(x, ground as u32 - SCALE, width, SCALE, [78, 124, 62, 255]);
+            }
+            _ => {}
+        }
+        let mut picture = CreatureRenderer::render_frame(genome, action, frame, facing_right);
+        let mut body = CreatureRenderer::render_body_frame(genome, action, frame, true).canvas;
+        // Outlined as the overlay bakes it: the body's edge, measured for the shadow after it.
+        if outline {
+            CreatureRenderer::outline_frame(&mut picture);
+            CreatureRenderer::outline_frame(&mut body);
+        }
+        let baseline = CreatureRenderer::resting_baseline(genome, true);
+        let contact_row = -FramePlacement::for_action(action, baseline).origin_y;
+        let bottom = body
+            .alpha_bounds()
+            .map_or(0, |(_, _, _, bottom)| bottom as i32 + 1);
+        let centre = SHADOW_SCENE.0 as i32 / 2;
+        let frame_left = x as i32 + (centre - formiga_art::FRAME_SIZE as i32 / 2) * scale;
+        let frame_top = ground - (contact_row + height.round() as i32) * scale;
+        if let Some(stage) = stage
+            && let Some(feet) = ContactShadow::feet(&body)
+        {
+            let lift = (contact_row - bottom) as f32 + height;
+            let ground_kind = if stage == ShadowStage::Village {
+                ShadowGround::Village
+            } else {
+                ShadowGround::Desktop
+            };
+            if let Some(mut shadow) = ContactShadow::under(feet, lift.max(0.0)) {
+                if !facing_right {
+                    shadow = shadow.mirrored();
+                }
+                self.sheet.blit(
+                    shadows,
+                    shadow.cell(ground_kind),
+                    frame_left + (shadow.left() * SCALE as f32) as i32,
+                    ground - ground_kind.above_contact() as i32 * scale,
+                    SCALE,
+                );
+            }
+        }
+        self.sheet
+            .blit_canvas(&picture, frame_left, frame_top, SCALE);
+    }
+
     fn bubble_scene(
         &mut self,
         background: Background,
@@ -472,6 +744,11 @@ fn icon_name(icon: BubbleIcon) -> String {
 fn sample_creature() -> Creature {
     let mut seed = [0_u8; 32];
     seed.copy_from_slice(&Sha256::digest(b"formiga-ui-sheet"));
+    creature_from(seed)
+}
+
+/// The companion a new colony grown from `seed` starts with.
+fn creature_from(seed: [u8; 32]) -> Creature {
     let desktop = DesktopSnapshot {
         monitors: vec![MonitorInfo {
             id: 1,
@@ -499,6 +776,40 @@ fn sample_creature() -> Creature {
         .remove(0)
 }
 
+/// The outline band's three companions: the sheet's own, and the darkest and the palest coats
+/// among a fixed handful of seeds, judged by the average brightness of the pixels the companion
+/// draws standing still.
+fn outline_cast(creature: &Creature) -> [Creature; 3] {
+    let brightness = |creature: &Creature| {
+        let frame = CreatureRenderer::render_frame(&creature.appearance, ActionKind::Idle, 0, true);
+        let (mut sum, mut count) = (0_u32, 0_u32);
+        for y in 0..frame.height() as i32 {
+            for x in 0..frame.width() as i32 {
+                let pixel = frame.get(x, y);
+                if pixel.a > 200 {
+                    sum += u32::from(pixel.r) * 3 + u32::from(pixel.g) * 6 + u32::from(pixel.b);
+                    count += 1;
+                }
+            }
+        }
+        sum / count.max(1)
+    };
+    let mut candidates: Vec<(u32, Creature)> = (0..24_u8)
+        .map(|index| {
+            let mut seed = [0_u8; 32];
+            seed.copy_from_slice(&Sha256::digest(
+                [b"formiga-ui-sheet-outline".as_slice(), &[index]].concat(),
+            ));
+            let candidate = creature_from(seed);
+            (brightness(&candidate), candidate)
+        })
+        .collect();
+    candidates.sort_by_key(|(brightness, _)| *brightness);
+    let palest = candidates.pop().expect("candidates").1;
+    let darkest = candidates.swap_remove(0).1;
+    [creature.clone(), darkest, palest]
+}
+
 // ---------------------------------------------------------------------------------------------
 // Backgrounds
 // ---------------------------------------------------------------------------------------------
@@ -507,6 +818,8 @@ fn sample_creature() -> Creature {
 enum Background {
     Light,
     Dark,
+    /// Near-black, as a dark-mode or night wallpaper is: only the outline is judged on it.
+    Night,
     Busy,
 }
 
@@ -515,6 +828,7 @@ impl Background {
         match self {
             Self::Light => "light",
             Self::Dark => "dark",
+            Self::Night => "near-black",
             Self::Busy => "busy",
         }
     }
@@ -523,6 +837,7 @@ impl Background {
         match self {
             Self::Light => [233, 231, 226, 255],
             Self::Dark => [26, 30, 38, 255],
+            Self::Night => [8, 8, 10, 255],
             // Light tiles under dark ones: the hardest case is cream paper on a pale wallpaper.
             Self::Busy => [186, 190, 176, 255],
         }
@@ -768,5 +1083,12 @@ mod tests {
             GUTTER + MOMENT_STRIPS.len() as u32 * MOMENT_SCENE.0 * SCALE <= SHEET_WIDTH,
             "the moments scenes fit the sheet"
         );
+        // Every shadow scene fits across the sheet, and every hop on it still has a shadow.
+        assert!(GUTTER + SHADOW_SCENES.len() as u32 * SHADOW_SCENE.0 * SCALE <= SHEET_WIDTH);
+        assert!(SHADOW_GROUND < SHADOW_SCENE.1 as i32);
+        for (_, _, _, _, height, _) in SHADOW_SCENES {
+            assert!(height < formiga_art::SHADOW_FADE_HEIGHT, "a shadow to show");
+        }
+        assert!(GUTTER + OUTLINE_SCENES.len() as u32 * SHADOW_SCENE.0 * SCALE <= SHEET_WIDTH);
     }
 }
