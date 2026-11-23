@@ -16,6 +16,8 @@ pub(crate) struct JournalState {
     pub kind: Option<MomentKind>,
     /// What the journal is being searched for.
     pub search: String,
+    /// Whether the guest book shows every visitor it holds, rather than the latest few.
+    all_visitors: bool,
     /// One still picture of every kind of wonder, side by side, for the page of them.
     wonder_sheet: Option<([u8; 32], TextureHandle)>,
     /// Every souvenir's picture side by side, each on its velvet, made once one has come home.
@@ -48,7 +50,7 @@ fn day_heading(at: OffsetDateTime, now: OffsetDateTime, offset: time::UtcOffset)
     match (today - local).whole_days() {
         days if days <= 0 => "Today".into(),
         1 => "Yesterday".into(),
-        _ => local.to_string(),
+        _ => dates::day_heading(local, today.year()),
     }
 }
 
@@ -62,19 +64,12 @@ fn moment_card(
 ) {
     // A line in the log: when, what, and whether it is kept. A kept moment is dated, since it
     // stays long after its day; one under its day's heading needs only the time.
-    let local = entry.at.to_offset(offset);
     let pinned = save.companion.pinned(entry);
     let scale = journal::text_scale(ui);
     let when = if pinned {
-        format!(
-            "{:02} {} · {:02}:{:02}",
-            local.day(),
-            &format!("{:?}", local.month())[..3],
-            local.hour(),
-            local.minute()
-        )
+        dates::kept(entry.at, offset)
     } else {
-        format!("{:02}:{:02}", local.hour(), local.minute())
+        dates::clock(entry.at, offset)
     };
     // On a ruled line of its own, with the time, the moment and its pin all sitting on it.
     journal::ruled_row(ui, |ui| {
@@ -194,24 +189,22 @@ fn favorite_visitors(
     if save.visitors.favorites.is_empty() {
         return;
     }
-    ui.label(
-        RichText::new(format!(
-            "FAVORITE VISITORS · {} of {MAX_FAVORITE_VISITORS}",
+    journal::kicker(
+        ui,
+        &format!(
+            "Favorite visitors · {} of {MAX_FAVORITE_VISITORS}",
             save.visitors.favorites.len()
-        ))
-        .color(forest())
-        .size(11.0),
+        ),
     );
     ui.add_space(6.0);
     let visiting = save.visitors.guest.as_ref();
     for favorite in save.visitors.favorites.iter().rev() {
         let here_now = visiting.is_some_and(|guest| guest.creature.origin == favorite.origin);
         card(ui, |ui| {
-            let kept = favorite.kept_at_utc.to_offset(offset);
             ui.small(if here_now {
                 "Visiting right now".to_owned()
             } else {
-                format!("Kept since {}", kept.date())
+                format!("Kept since {}", dates::on(favorite.kept_at_utc, offset))
             });
             ui.strong(&favorite.name);
             ui.horizontal_wrapped(|ui| {
@@ -244,6 +237,7 @@ fn guest_book(
     shell: &mut Shell,
     outcome: &mut SettingsOutcome,
     offset: time::UtcOffset,
+    all_visitors: &mut bool,
 ) {
     let visiting = save.visitors.guest.as_ref();
     journal::kicker(ui, "The guest book");
@@ -309,17 +303,21 @@ fn guest_book(
     }
     favorite_visitors(ui, save, outcome, offset);
     if !save.visitors.guest_book.is_empty() {
-        let heading = format!("Visitors before this · {}", save.visitors.guest_book.len());
-        egui::CollapsingHeader::new(heading)
-            .id_salt("guest-book")
-            .show(ui, |ui| {
-                for entry in save.visitors.guest_book.iter().rev() {
-                    let local = entry.visited_at_utc.to_offset(offset);
+        // The latest few under a heading like every other on the page, and the rest of the book
+        // when asked for.
+        const SHOWN: usize = 3;
+        let total = save.visitors.guest_book.len();
+        journal::kicker(ui, &format!("Visitors before this · {total}"));
+        ui.add_space(6.0);
+        let shown = if *all_visitors { total } else { SHOWN };
+        {
+            {
+                for entry in save.visitors.guest_book.iter().rev().take(shown) {
                     let visits = save.visitors.visits_of(&entry.origin);
                     card(ui, |ui| {
                         ui.small(format!(
                             "{} · {}{}",
-                            local.date(),
+                            dates::on(entry.visited_at_utc, offset),
                             match entry.source {
                                 VisitorSource::Invited => "invited for a day",
                                 VisitorSource::Wanderer => "came by the houses",
@@ -341,11 +339,26 @@ fn guest_book(
                     });
                     ui.add_space(8.0);
                 }
-                ui.small(format!(
-                    "The last {MAX_GUEST_BOOK_ENTRIES} visitors stay on this computer. A code \
-                     recreates how a visitor looked and what they were like, and nothing else."
-                ));
-            });
+                if total > SHOWN {
+                    let more = if *all_visitors {
+                        "Show fewer".to_owned()
+                    } else {
+                        format!("Show all {total}")
+                    };
+                    if ui
+                        .link(more)
+                        .on_hover_text(format!(
+                            "The last {MAX_GUEST_BOOK_ENTRIES} visitors stay on this computer. \
+                             A code recreates how a visitor looked and what they were like, and \
+                             nothing else."
+                        ))
+                        .clicked()
+                    {
+                        *all_visitors = !*all_visitors;
+                    }
+                }
+            }
+        }
     }
     ui.add_space(10.0);
     ui.separator();
@@ -406,7 +419,7 @@ fn page(
             );
         });
         ui.add_space(14.0);
-        guest_book(ui, save, shell, outcome, offset);
+        guest_book(ui, save, shell, outcome, offset, &mut state.all_visitors);
         state.scrapbook(ui, shell, save);
         state.souvenirs(ui, save);
         state.cups(ui, save);
@@ -430,16 +443,10 @@ fn page(
         ui.add_space(6.0);
         wide_card(ui, |ui| {
             for entry in landmarks.iter().take(8) {
-                let local = entry.at.to_offset(offset);
                 // The date and the moment as one line of type, so they share a baseline and the
                 // line wraps as a whole in a narrow window.
                 let mut line = journal::label_job(
-                    &format!(
-                        "{:02} {} {}   ",
-                        local.day(),
-                        &format!("{:?}", local.month())[..3],
-                        local.year()
-                    ),
+                    &format!("{}   ", dates::on(entry.at, offset)),
                     journal::label_size(journal::text_scale(ui)),
                     muted(),
                 );
@@ -663,7 +670,7 @@ fn page(
     ui.add_space(20.0);
     ui.separator();
     ui.add_space(14.0);
-    guest_book(ui, save, shell, outcome, offset);
+    guest_book(ui, save, shell, outcome, offset, &mut state.all_visitors);
     state.scrapbook(ui, shell, save);
     state.souvenirs(ui, save);
     state.cups(ui, save);
@@ -678,11 +685,7 @@ impl JournalState {
         let atlas = shell.trinket_atlas(ui, save);
         let mut found = save.companion.scrapbook.clone();
         found.sort_by_key(|record| std::cmp::Reverse((record.first_at, record.variant)));
-        ui.label(
-            RichText::new(format!("THE SCRAPBOOK · {} found", found.len()))
-                .color(forest())
-                .size(11.0),
-        );
+        journal::kicker(ui, &format!("The scrapbook · {} found", found.len()));
         ui.add_space(6.0);
         if found.is_empty() {
             card(ui, |ui| {
@@ -712,8 +715,8 @@ impl JournalState {
                             .finder
                             .and_then(|id| save.creatures.iter().find(|c| c.id == id))
                             .map_or(record.finder_name.as_str(), |c| c.name.as_str());
-                        let at = record.first_at.to_offset(offset);
-                        ui.small(format!("Found by {finder} · {}", at.date()));
+                        let at = record.first_at;
+                        ui.small(format!("Found by {finder} · {}", dates::on(at, offset)));
                     });
                 });
             });
@@ -738,11 +741,7 @@ impl JournalState {
             })
             .clone();
         ui.add_space(14.0);
-        ui.label(
-            RichText::new(format!("SOUVENIRS · {} from Formiga Hill", kept.len()))
-                .color(forest())
-                .size(11.0),
-        );
+        journal::kicker(ui, &format!("Souvenirs · {} from Formiga Hill", kept.len()));
         ui.add_space(6.0);
         let kinds = Souvenir::ALL.len() as f32;
         for record in kept.iter().rev() {
@@ -768,8 +767,10 @@ impl JournalState {
                     ui.vertical(|ui| {
                         ui.strong(record.souvenir.name());
                         ui.label(record.souvenir.description());
-                        let at = record.brought_home_at_utc.to_offset(offset);
-                        ui.small(format!("Brought home from Formiga Hill · {}", at.date()));
+                        ui.small(format!(
+                            "Brought home from Formiga Hill · {}",
+                            dates::on(record.brought_home_at_utc, offset)
+                        ));
                     });
                 });
             });
@@ -793,11 +794,7 @@ impl JournalState {
             .get_or_insert_with(|| upload(ui.ctx(), "colony-cups", &formiga_art::cup_strip()))
             .clone();
         ui.add_space(14.0);
-        ui.label(
-            RichText::new(format!("CUPS · {} from Formiga Battle", kept.len()))
-                .color(forest())
-                .size(11.0),
-        );
+        journal::kicker(ui, &format!("Cups · {} from Formiga Battle", kept.len()));
         ui.add_space(4.0);
         ui.label(RichText::new(battle_standing(&battle.record, kept)).color(muted()));
         ui.add_space(6.0);
@@ -825,8 +822,10 @@ impl JournalState {
                     ui.vertical(|ui| {
                         ui.strong(record.keepsake.name());
                         ui.label(record.keepsake.description());
-                        let at = record.earned_at_utc.to_offset(offset);
-                        ui.small(format!("Won in Formiga Battle · {}", at.date()));
+                        ui.small(format!(
+                            "Won in Formiga Battle · {}",
+                            dates::on(record.earned_at_utc, offset)
+                        ));
                     });
                 });
             });
@@ -873,14 +872,13 @@ impl JournalState {
         let sheet = self.wonder_sheet(ui, save);
         let found = &save.companion.wonders;
         ui.add_space(14.0);
-        ui.label(
-            RichText::new(format!(
-                "WONDERS · {} of {} found",
+        journal::kicker(
+            ui,
+            &format!(
+                "Wonders · {} of {} found",
                 found.len(),
                 WonderKind::ALL.len()
-            ))
-            .color(forest())
-            .size(11.0),
+            ),
         );
         ui.small(
             "Now and then something to play on turns up for a little while — a chair, a leaf sled, a \
@@ -921,10 +919,9 @@ impl JournalState {
                                 .finder
                                 .and_then(|id| save.creatures.iter().find(|c| c.id == id))
                                 .map_or(record.finder_name.as_str(), |c| c.name.as_str());
-                            let at = record.first_at.to_offset(offset);
                             ui.small(format!(
                                 "First found by {finder} · {} · {} {}",
-                                at.date(),
+                                dates::on(record.first_at, offset),
                                 record.goes,
                                 if record.goes == 1 { "go" } else { "goes" }
                             ));

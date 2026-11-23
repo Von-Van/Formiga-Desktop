@@ -2549,7 +2549,10 @@ with them. A colony with no room to bring everyone back refuses and keeps the ch
 For a layout change — cottages, colours, gardens, spots, corner, display, decorations, keepsakes —
 exactly those fields go back, with keepsakes found since kept after the rest. Renames, keeps, and
 preferences are not part of it. The settings window's footer offers "Undo …" on every page while
-there is something to take back, and says on hover how many earlier changes are behind it.
+there is something to take back, and says on hover how many earlier changes are behind it. Apply
+and Revert are in the footer only under the pages with preferences on them (Habitat, Applications
+and Preferences), or under any page while a preference is waiting to be applied; elsewhere the
+footer holds the undo offer and the last notice and nothing else.
 
 Themes and text scaling live entirely in `configure_style`, which the window re-runs when the
 saved preference changes or, under "match system", when the platform's own appearance changes.
@@ -2581,6 +2584,14 @@ shadow beside its free edge, and requests repaints only while it turns; under Re
 never starts. Every box with a stepped edge — cards, tally boxes, tabs, the patch, the notes — is
 a fill and four edge rectangles that leave the corner pixels out; egui's own widgets are drawn
 square with a two-pixel outline.
+The notebook writes a date one way, through `clubhouse::dates`: a day's heading in full ("Monday
+14 September"), a date beside something short ("14 Sep"), a time as "07:00", and a kept moment as
+"14 Sep · 07:00", with the year only when it is not this one, and never an ISO date. The page's
+number is in its corner and nowhere else on it. A page's sections are headed by `journal::kicker`,
+the pencil hand's spaced capitals, on every page alike. The page's kicker is the one place the
+researcher's register is named ("Field notes · Nº 02 · Specimen register"); the companions on it
+are called by name, and what each is doing is `activity_label`'s plain words ("playing with a
+toy"), one for every action, so a new action cannot reach the page unworded.
 A page with more to it than reads at a glance keeps the rest in sections (`clubhouse/sections.rs`):
 Your colony shows the companion, its traits and its tally, then a line for each of its notes, its
 name and leaning, what it wears, Formiga Farm while Farm is installed, sharing, keeping and starting

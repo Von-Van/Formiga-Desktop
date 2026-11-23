@@ -51,7 +51,10 @@ pub(crate) fn ago_text(at: OffsetDateTime, now: OffsetDateTime, offset: time::Ut
         },
         1 => "yesterday".into(),
         days if days < 14 => format!("{days} days ago"),
-        _ => local.to_string(),
+        _ => format!(
+            "on {}",
+            super::dates::short_date(local, now.to_offset(offset).year())
+        ),
     }
 }
 
@@ -272,7 +275,7 @@ pub(crate) fn just_begun(save: &SaveFile, now: OffsetDateTime) -> bool {
 }
 
 /// A number as a word, capitalised, up to twelve; past that, the figure.
-fn count_word(count: usize) -> String {
+pub(crate) fn count_word(count: usize) -> String {
     const WORDS: [&str; 13] = [
         "None", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
         "Eleven", "Twelve",
@@ -333,7 +336,7 @@ fn garden_subject(kind: GardenKind) -> (String, bool) {
 /// What Right now says a companion is doing: the meal by name while it eats — on a window
 /// ledge as much as anywhere, the food being the thing worth knowing — then up on a window, and
 /// otherwise what it is about.
-fn doing_now(creature: &Creature) -> String {
+pub(crate) fn doing_now(creature: &Creature) -> String {
     if creature.state.action == ActionKind::Eat
         && let Some(meal) = &creature.state.meal
     {
@@ -342,7 +345,7 @@ fn doing_now(creature: &Creature) -> String {
     if creature.state.surface.window_key.is_some() {
         return "Up on a window".to_owned();
     }
-    capitalised(&crate::settings::activity_label(creature.state.action))
+    capitalised(crate::settings::activity_label(creature.state.action))
 }
 
 /// A food as Right now names it: short enough for a column, "soup" rather than "a bowl of soup".
@@ -559,8 +562,7 @@ fn highlight<'a>(today: &Today<'a>, reading: Option<&Reading>) -> Option<&'a Jou
 
 /// "16:40", in the reader's own time.
 fn clock(at: OffsetDateTime, offset: time::UtcOffset) -> String {
-    let local = at.to_offset(offset);
-    format!("{:02}:{:02}", local.hour(), local.minute())
+    super::dates::clock(at, offset)
 }
 
 impl TodayState {
@@ -1625,7 +1627,7 @@ mod tests {
         );
         assert_eq!(
             ago_text(now - time::Duration::days(40), now, utc),
-            "2026-08-22"
+            "on 22 Aug"
         );
         // A clock wound back reads as a moment ago, never as the future.
         assert_eq!(
