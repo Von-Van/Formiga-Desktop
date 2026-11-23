@@ -118,10 +118,15 @@ pub enum Gesture {
     Chew,
     /// Head tipped back and the mouth open for something small dropped or tossed into it.
     Gulp,
+    /// Topping out onto a ledge it has climbed to: its chest over the edge with one knee up, then
+    /// pushing itself up on both paws flat on the ledge, then standing with a little settle. A
+    /// climb's own journey strikes it, while the journey carries the creature up and over; no
+    /// attention scene does.
+    Mantle,
 }
 
 impl Gesture {
-    pub const ALL: [Self; 35] = [
+    pub const ALL: [Self; 36] = [
         Self::Cheer,
         Self::Gasp,
         Self::Cover,
@@ -157,6 +162,7 @@ impl Gesture {
         Self::Chomp,
         Self::Chew,
         Self::Gulp,
+        Self::Mantle,
     ];
 
     /// Whether attention scenes strike this pose. The rest belong to habits, to a companion's
@@ -189,6 +195,7 @@ impl Gesture {
                 | Self::Chomp
                 | Self::Chew
                 | Self::Gulp
+                | Self::Mantle
         )
     }
 }

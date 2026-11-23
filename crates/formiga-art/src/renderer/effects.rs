@@ -200,6 +200,12 @@ pub(super) fn draw_gesture_effects(
             canvas.set(x, y, palette.highlight);
             canvas.fill_rect(x - 1, y + 1, 3, 2, palette.highlight);
         }
+        // A glint of effort on the push, as on each pull of the climb before it.
+        Gesture::Mantle => {
+            if !reduce_motion && frame == 1 {
+                canvas.set((face.x + 8).min(45), (face.y - 5).max(2), palette.highlight);
+            }
+        }
         Gesture::Heave => {
             if frame % 4 >= 2 {
                 canvas.fill_circle(

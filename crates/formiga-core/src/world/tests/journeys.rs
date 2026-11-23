@@ -279,26 +279,26 @@ fn upward_window_routes_stage_traverse_climb_mantle_and_perch() {
         position: start,
         action: ActionKind::Traverse,
         complete: false,
+        pose: None,
     };
+    let mut mantled = false;
     for _ in 0..400 {
         last = journey.advance(0.05);
         if stages.last() != Some(&last.action) {
             stages.push(last.action);
         }
+        mantled |= last
+            .pose
+            .is_some_and(|(gesture, _)| gesture == Gesture::Mantle);
         if last.complete {
             break;
         }
     }
     assert!(last.complete);
-    // Walk to the track, climb it, haul straight up, then step in onto the ledge.
-    assert_eq!(
-        stages,
-        vec![
-            ActionKind::Traverse,
-            ActionKind::ClimbWindow,
-            ActionKind::Landing
-        ]
-    );
+    // Walk to the track and climb it; the haul and the step in onto the ledge are the climb's own
+    // mantle, never a landing.
+    assert_eq!(stages, vec![ActionKind::Traverse, ActionKind::ClimbWindow]);
+    assert!(mantled);
     assert_eq!(last.position.y, bounds.y);
     assert!(last.position.x == bounds.x + 18.0 || last.position.x == bounds.right() - 18.0);
 }
@@ -333,10 +333,17 @@ fn downward_window_routes_keep_the_existing_hop() {
         window_key: Some(94),
         relative_x: 0.5,
     };
-    assert!(matches!(
-        build_window_journey(&creature, target, surface, &desktop),
-        WindowJourney::Hop(_)
-    ));
+    let mut journey = build_window_journey(&creature, target, surface, &desktop);
+    assert!(matches!(journey, WindowJourney::Hop(_)));
+    // A hop down still lands as a hop does, with no mantle over it.
+    for _ in 0..200 {
+        let step = journey.advance(0.05);
+        assert_eq!(step.action, ActionKind::Landing);
+        assert!(step.pose.is_none());
+        if step.complete {
+            break;
+        }
+    }
 }
 
 #[test]
@@ -521,20 +528,23 @@ fn topping_out_hauls_straight_up_before_stepping_onto_the_ledge() {
         },
         &desktop,
     );
-    let mut rising = Vec::new();
+    let haul_secs = f32::from(MANTLE_HAUL_FRAMES) / f32::from(MANTLE_FRAMES_PER_SECOND);
+    let mut haul = Vec::new();
     let mut stepping = Vec::new();
     for _ in 0..400 {
         let step = journey.advance(0.05);
-        match step.action {
-            ActionKind::ClimbWindow => rising.push(step.position),
-            ActionKind::Landing => stepping.push(step.position),
-            _ => {}
+        if step.pose.is_some() {
+            // How far into the mantle this step is, as the art counts its frames.
+            if journey.action_elapsed() < haul_secs {
+                haul.push(step.position);
+            } else {
+                stepping.push(step.position);
+            }
         }
         if step.complete {
             break;
         }
     }
-    let haul = rising.split_off(rising.len().saturating_sub(6));
     assert!(haul.len() >= 2 && !stepping.is_empty());
     for pair in haul.windows(2) {
         assert!(
@@ -612,7 +622,6 @@ fn a_climb_begun_on_demand_runs_every_stage_and_perches() {
             ActionKind::InspectScreen,
             ActionKind::Traverse,
             ActionKind::ClimbWindow,
-            ActionKind::Landing,
             ActionKind::Perch,
         ]
     );
@@ -812,5 +821,147 @@ fn a_climbing_companion_rises_on_the_frames_its_clip_pulls() {
         per_tick(1) > 2.0 * per_tick(2) && per_tick(2) > per_tick(0),
         "the rise per tick on reach, pull, settle was {:?}",
         [per_tick(0), per_tick(1), per_tick(2)]
+    );
+}
+
+/// A world with one window 120 points above the floor and its one companion beside it, set off
+/// on a climb onto it, for the mantle's tests.
+fn climbing_world(reduce_motion: bool) -> (World, DesktopSnapshot, OffsetDateTime, f32) {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let mut desktop = desktop();
+    let world = World::new([41; 32], created, &desktop);
+    let floor = world.save.creatures[0].state.position.y;
+    desktop.windows.push(DesktopWindow {
+        key: 96,
+        bounds: DesktopRect {
+            x: 600.0,
+            y: floor - 120.0,
+            width: 320.0,
+            height: 120.0,
+        },
+        z_order: 0,
+        visible: true,
+        minimized: false,
+        application: None,
+        application_name: None,
+    });
+    let mut world = World::new([41; 32], created, &desktop);
+    world.save.settings.reduce_motion = reduce_motion;
+    let mut now = created;
+    for _ in 0..60 {
+        now += Duration::milliseconds(50);
+        world.tick(now, 0.05, &desktop);
+    }
+    let_colony_wander(&mut world, now);
+    world.clear_attention();
+    let id = world.save.creatures[0].id;
+    let creature = &mut world.save.creatures[0];
+    creature.state.position = Point { x: 560.0, y: floor };
+    creature.state.surface = SurfaceAttachment {
+        kind: SurfaceKind::ScreenFloor,
+        monitor_id: 1,
+        window_key: None,
+        relative_x: 0.5,
+    };
+    assert!(world.begin_window_climb(id, 96, &desktop));
+    (world, desktop, now, floor)
+}
+
+/// Topping out is a mantle of its own rather than a hop's landing: from the tick the climb
+/// reaches the top of the window's side until the companion stands on the ledge, it shows the
+/// mantle and nothing else — never the landing a hop ends in — hauling itself up on the
+/// mantle's first two frames, stepping in on its third, and letting go of it as it perches. It
+/// faces the window it climbed onto the whole way, and with reduced motion it mantles the same.
+#[test]
+fn topping_out_shows_the_mantle_every_tick_and_never_a_landing() {
+    for reduce_motion in [false, true] {
+        let (mut world, desktop, mut now, floor) = climbing_world(reduce_motion);
+        let haul_secs = f32::from(MANTLE_HAUL_FRAMES) / f32::from(MANTLE_FRAMES_PER_SECOND);
+        let frame = |elapsed: f32| (elapsed * f32::from(MANTLE_FRAMES_PER_SECOND)) as u32;
+        let mut topped_out = false;
+        let mut frames = Vec::new();
+        let mut perched = false;
+        for _ in 0..300 {
+            now += Duration::milliseconds(50);
+            world.tick(now, 0.05, &desktop);
+            let creature = &world.save.creatures[0];
+            let mantling = world
+                .window_journeys
+                .get(&creature.id)
+                .is_some_and(|journey| match journey {
+                    WindowJourney::Climb(climb) => {
+                        climb.elapsed >= climb.approach_duration + climb.climb_duration
+                    }
+                    _ => false,
+                });
+            let gesture = creature.state.attention.and_then(|pose| pose.gesture);
+            assert_ne!(creature.state.action, ActionKind::Landing);
+            if mantling {
+                topped_out = true;
+                assert_eq!(gesture, Some(Gesture::Mantle), "{reduce_motion}");
+                assert_eq!(creature.state.action, ActionKind::ClimbWindow);
+                assert!(
+                    creature.state.facing_right,
+                    "it faces the window it climbs onto"
+                );
+                assert_eq!(creature.state.attention.map(|pose| pose.hanging), Some(0.0));
+                let into = creature.state.action_elapsed;
+                // The haul is the first two frames, and the step in the third.
+                let hauling = creature.state.position.x == 605.0;
+                assert_eq!(hauling, into < haul_secs, "{into}");
+                frames.push(frame(into).min(2));
+            } else {
+                assert_ne!(gesture, Some(Gesture::Mantle), "{reduce_motion}");
+            }
+            if creature.state.action == ActionKind::Perch {
+                perched = true;
+                assert!(creature.state.attention.is_none());
+                assert_eq!(creature.state.position.y, floor - 120.0);
+                break;
+            }
+        }
+        assert!(topped_out && perched, "{reduce_motion}");
+        frames.dedup();
+        assert_eq!(frames, [0, 1, 2], "{reduce_motion}");
+    }
+}
+
+/// A mantle cut short leaves nothing of itself behind: picked up partway through hauling itself
+/// onto the ledge, a companion is just carried, and shows no part of the mantle.
+#[test]
+fn a_mantle_cut_short_lets_go_of_its_pose() {
+    let (mut world, desktop, mut now, _) = climbing_world(false);
+    let id = world.save.creatures[0].id;
+    for _ in 0..300 {
+        now += Duration::milliseconds(50);
+        world.tick(now, 0.05, &desktop);
+        if world.save.creatures[0]
+            .state
+            .attention
+            .is_some_and(|pose| pose.gesture == Some(Gesture::Mantle))
+        {
+            break;
+        }
+    }
+    assert_eq!(
+        world.save.creatures[0]
+            .state
+            .attention
+            .and_then(|pose| pose.gesture),
+        Some(Gesture::Mantle)
+    );
+    let at = world.save.creatures[0].state.position;
+    assert!(world.handle_command(
+        WorldCommand::BeginInteraction {
+            creature_id: id,
+            cursor: at,
+        },
+        &desktop,
+    ));
+    let creature = &world.save.creatures[0];
+    assert!(!world.window_journeys.contains_key(&id));
+    assert_ne!(
+        creature.state.attention.and_then(|pose| pose.gesture),
+        Some(Gesture::Mantle)
     );
 }

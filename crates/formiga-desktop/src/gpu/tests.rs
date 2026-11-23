@@ -846,8 +846,8 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     let bake_time = started.elapsed();
     let total_bytes = atlas.body_pixels.len() + atlas.face_pixels.len();
     eprintln!("layered atlas: {total_bytes} bytes, baked in {bake_time:?}");
-    // 94 action frames — six of them the climb, a stroke with each paw — and 121 gesture
-    // frames — eight of them the seat and the sled wonders
+    // 94 action frames — six of them the climb, a stroke with each paw — and 124 gesture
+    // frames — three of them the mantle a climb tops out with, eight the seat and the sled wonders
     // brought in 0.66.0, twenty-eight a companion's own repertoire (a wash, a shake, a sniff, two
     // more ways to sleep and two more ways to walk), sixteen the chores and a pet leaned into, and
     // fourteen the nibble, chomp, chew and gulp of a meal —
@@ -857,14 +857,14 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     // nothing read: 1,824,768 bytes with the temperament poses and their faces. Since 0.62.0 a
     // frame or face that comes out the same as one already baked shares its cell — a held pose,
     // eyes shut whichever way they would be looking — and the trinket cells are gone.
-    assert_eq!(total_animation_frames(), 215);
+    assert_eq!(total_animation_frames(), 218);
     // 1,244,160 until 0.66.0, when the walk, the run, the greeting and the meal stopped repeating
     // frames they had shared and the texture grew by a row of ten cells, to 1,336,320;
     // 1,244,160 again from 0.66.1, whose scoot along on a leaf sled repeats two of its four
     // frames where pedalling a bike repeated none, which brings it back under that row; and
     // 1,520,640 with the repertoire, three rows more, 1,612,800 with the chores and the pet, and
     // 1,704,960 with the four ways a meal is eaten (fourteen frames), and still that with the
-    // climb's two more frames, which fit in cells the last row had spare.
+    // climb's two more frames and the mantle's three, which fit in cells the last row had spare.
     assert_eq!(total_bytes, 1_704_960);
     assert_eq!(full_layout_bytes(), 2_442_240);
     // Tripled in 0.58.0 so the pose vocabulary has somewhere to grow: the budget is what

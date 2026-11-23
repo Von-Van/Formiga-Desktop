@@ -202,18 +202,26 @@ pub(crate) fn climb(appearance: &AppearanceGenome) -> Climb {
     Climb { floor, samples }
 }
 
-/// What a sample is doing, in a word.
-fn doing(action: ActionKind) -> &'static str {
-    match action {
+/// What a sample is doing, in a word or two: a mantle by its frame, as its haul and its step in.
+fn doing(creature: &Creature) -> String {
+    let body = BodyPresentation::for_creature(creature);
+    if body.clip == formiga_art::BodyClip::Gesture(Gesture::Mantle) {
+        return match body.frame {
+            0 => "MANTLE CHEST".into(),
+            1 => "MANTLE PUSH".into(),
+            _ => "MANTLE STAND".into(),
+        };
+    }
+    match creature.state.action {
         ActionKind::InspectScreen => "LOOK",
         ActionKind::Traverse => "WALK",
         ActionKind::ClimbWindow => "CLIMB",
-        ActionKind::Landing => "STEP IN",
         ActionKind::Perch => "PERCH",
         ActionKind::Dangle => "DANGLE",
         ActionKind::Idle => "IDLE",
         _ => "OTHER",
     }
+    .into()
 }
 
 /// A sheet being drawn: its pixels and size.
@@ -439,11 +447,7 @@ pub fn climb_sheet(path: PathBuf) -> Result<()> {
                 [255, 255, 255, 255],
             );
             sheet.text(view.0 + 4, view.1 + view_h + 3, &format!("{at:.1}"));
-            sheet.text(
-                view.0 + 4,
-                view.1 + view_h + 12,
-                doing(creature.state.action),
-            );
+            sheet.text(view.0 + 4, view.1 + view_h + 12, &doing(creature));
         }
         top += rows_of(climb) * (view_h + CAPTION + ROW_GAP);
     }
@@ -472,12 +476,20 @@ pub fn climb_sheet(path: PathBuf) -> Result<()> {
         creature.state.facing_right = true;
         creature.state.beat = None;
         creature.state.flourish = None;
+        // Unmeasured, so its eyes open and shut on the strip's own clock rather than staying
+        // wherever its blink was when the climb began.
+        creature.state.presence = Presence::default();
         let frame_secs =
             1.0 / f32::from(formiga_art::AnimationSpec::for_action(ActionKind::Dangle).fps);
         let mut column = 0;
         for hanging in HANGING {
             creature.state.attention = Some(AttentionPose {
-                target: ledge,
+                // Looking along the ledge, as a companion that caught it looks to where it was
+                // going, so a glance down at the drop shows as one.
+                target: Point {
+                    x: ledge.x + 48.0,
+                    y: ledge.y - 28.0,
+                },
                 emotion: AttentionEmotion::Concerned,
                 hanging,
                 gesture: None,
@@ -525,24 +537,32 @@ mod tests {
     use super::*;
 
     /// Every body on the sheet makes the whole climb, so no row of it is ever a companion
-    /// standing about: it looks, walks, climbs, steps in and perches on the window's top.
+    /// standing about: it looks, walks, climbs, tops out in its mantle — every frame of it shown
+    /// — and perches on the window's top.
     #[test]
     fn every_climber_on_the_sheet_reaches_its_perch() {
         for (name, genome) in climbers() {
             let climb = climb(&genome);
             let mut stages: Vec<ActionKind> = Vec::new();
+            let mut mantle = Vec::new();
             for (_, creature) in &climb.samples {
                 if stages.last() != Some(&creature.state.action) {
                     stages.push(creature.state.action);
                 }
+                let body = BodyPresentation::for_creature(creature);
+                if body.clip == formiga_art::BodyClip::Gesture(Gesture::Mantle)
+                    && mantle.last() != Some(&body.frame)
+                {
+                    mantle.push(body.frame);
+                }
             }
+            assert_eq!(mantle, [0, 1, 2], "{name}");
             assert_eq!(
                 stages,
                 [
                     ActionKind::InspectScreen,
                     ActionKind::Traverse,
                     ActionKind::ClimbWindow,
-                    ActionKind::Landing,
                     ActionKind::Perch,
                 ],
                 "{name}"

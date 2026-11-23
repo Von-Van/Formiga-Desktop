@@ -118,12 +118,14 @@ pub(super) fn draw_hopper(
     // Rooted low on the rear edge so the puff clears the body ellipse drawn over it.
     draw_tail(canvas, genome, palette, cx - rx, cy + ry / 2, s, pose);
     draw_head_appendages(canvas, genome, palette, cx + lean, cy - ry + 2, s, pose);
+    // A knee drawn up takes the front foot off the ground, and a trailing leg hangs below it, as
+    // far as the frame has room for under feet that already stand near its bottom.
     draw_hopper_leg(
         canvas,
         palette,
         cx - rx / 2,
         cy + ry - 2,
-        ground,
+        ground + pose.trail.clamp(0, 1),
         -2 + pose.step_a,
     );
     draw_hopper_leg(
@@ -131,7 +133,7 @@ pub(super) fn draw_hopper(
         palette,
         cx + rx / 2,
         cy + ry - 2,
-        ground,
+        ground - pose.knee.clamp(0, 6),
         3 + pose.step_b,
     );
     canvas.fill_ellipse(cx, cy, rx + 1, ry + 1, palette.outline);
@@ -226,7 +228,7 @@ pub(super) fn draw_quadruped(
         palette,
         body_x - body_rx / 2,
         body_y + body_ry - 1,
-        ground,
+        ground + pose.trail.clamp(0, 1),
         pose.step_b,
         false,
     );
@@ -235,7 +237,7 @@ pub(super) fn draw_quadruped(
         palette,
         body_x + body_rx / 2 - 1,
         body_y + body_ry - 1,
-        ground,
+        ground - pose.knee.clamp(0, 6),
         pose.step_a,
         false,
     );
@@ -658,6 +660,7 @@ pub(super) fn draw_quadruped_forelimbs(
                 | Gesture::Pour
                 | Gesture::Pluck
                 | Gesture::Tend
+                | Gesture::Mantle
         )
     ) {
         draw_quad_leg(
@@ -978,6 +981,16 @@ pub(super) fn gesture_limb_targets(
             at(middle + 3, left.y - length / 2 + beat),
             at(middle + 6, right.y - length / 2 - beat),
         ),
+        // Topping out onto a ledge: both paws laid over the edge out in front, then planted flat
+        // on it beside the body for the push, and back where they rest once it stands.
+        Gesture::Mantle => match frame.min(2) {
+            0 => (
+                at(middle - 1, left.y + 1),
+                at(right.x + length + 2, right.y),
+            ),
+            1 => offset_pair(left, right, ((-1, length + 2), (2, length + 2))),
+            _ => resting(),
+        },
         // One paw pushing at the ground beside it, and then the other.
         Gesture::Scoot => {
             let (resting_left, resting_right) = resting();
@@ -1256,9 +1269,10 @@ pub(super) fn draw_feet(
     pose: Pose,
 ) {
     let foot = foot_size as i32;
+    // A knee drawn up lifts the front foot, and a trailing leg lowers the back one.
     for (x, step) in [
-        (cx - rx / 2 + pose.step_a, 0),
-        (cx + rx / 2 + pose.step_b, 1),
+        (cx - rx / 2 + pose.step_a, pose.trail.clamp(0, 1)),
+        (cx + rx / 2 + pose.step_b, 1 - pose.knee.clamp(0, 6) / 2),
     ] {
         canvas.fill_ellipse(x, ground + step, foot, 2, palette.outline);
         canvas.fill_ellipse(x + 1, ground + step, (foot - 1).max(1), 1, palette.accent);

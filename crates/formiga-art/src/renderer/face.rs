@@ -1158,6 +1158,21 @@ pub(super) fn default_eyelids(action: ActionKind, frame: u8) -> EyelidPose {
     }
 }
 
+/// Whether a companion dangling from a ledge is glancing down at the drop this frame: on the
+/// frame of each swing of its legs where they come back through the middle (see `Pose::new`),
+/// and on the frame after it too when its attention is startled or worried by the hang.
+fn glancing_down(creature: &Creature) -> bool {
+    let frame = MotionSignature::for_creature(creature)
+        .frame(ActionKind::Dangle, creature.state.action_elapsed);
+    let worried = creature.state.attention.is_some_and(|pose| {
+        matches!(
+            pose.emotion,
+            formiga_core::AttentionEmotion::Startled | formiga_core::AttentionEmotion::Concerned
+        )
+    });
+    frame == 2 || (worried && frame == 3)
+}
+
 pub(super) fn resolve_expression(creature: &Creature) -> ExpressionKind {
     let drives = &creature.state.drives;
     if creature.state.attention.is_none()
@@ -1201,6 +1216,8 @@ pub(super) fn resolve_expression(creature: &Creature) -> ExpressionKind {
             Some(Gesture::Strut) => return ExpressionKind::Smug,
             Some(Gesture::Beg) => return ExpressionKind::Pleading,
             Some(Gesture::Swoon) => return ExpressionKind::Affectionate,
+            // Still the climb's own effort, whatever its attention is on.
+            Some(Gesture::Mantle) => return ExpressionKind::Determined,
             _ => {}
         }
         return match pose.emotion {
@@ -1413,6 +1430,11 @@ enum Looking {
 
 fn looking_at(creature: &Creature, cursor: CursorSnapshot, cursor_reactions: bool) -> Looking {
     let fixed = |gaze| Looking::Fixed(gaze);
+    // Hanging from a ledge, it glances down past its feet at the drop as its legs swing back
+    // through the middle, and for longer when the hang is a worrying one.
+    if creature.state.action == ActionKind::Dangle && glancing_down(creature) {
+        return fixed(GazeDirection::new(0, 1));
+    }
     if let Some(pose) = creature.state.attention {
         return fixed(GazeDirection::new(
             axis_direction(pose.target.x - creature.state.position.x, 10.0),

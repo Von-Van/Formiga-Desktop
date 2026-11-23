@@ -225,8 +225,11 @@ pub(super) fn draw(
         four_legs(c, p, d, body, pose, clip, limbs, true);
     } else {
         for ((side, step), limb) in [(-1, pose.step_a), (1, pose.step_b)].into_iter().zip(limbs) {
-            let fx = x + side * (rx - 4 + pose.splay.clamp(0, 3)) + step.clamp(-2, 2);
-            let lift = step.abs().min(2);
+            // A knee drawn up takes its foot up and a little out; a trailing leg hangs straight.
+            let knee = if side > 0 { pose.knee.clamp(0, 6) } else { 0 };
+            let trail = if side < 0 { pose.trail.clamp(0, 4) } else { 0 };
+            let fx = x + side * (rx - 4 + pose.splay.clamp(0, 3) + knee / 2) + step.clamp(-2, 2);
+            let lift = step.abs().min(2) + knee - trail;
             // Stick legs are drawn in shade, so they read as thin legs rather than coat.
             let leg = if k.limbs == 2 { p.shadow } else { p.coat };
             c.line(
@@ -1019,6 +1022,15 @@ pub(super) fn limbs(clip: BodyClip, frame: u8, body: Body, plan: BodyPlan) -> [L
             let up = [0, 2, 3, 3][usize::from(frame.min(3))];
             both(&|side| to(hx + side * (head / 2 + 2), hy - head - 2 - up))
         }
+        // Topping out onto a ledge (see `Pose::for_gesture`): the forearms laid over the edge
+        // in front of the chest, both paws planted flat on the ledge at the hips for the push,
+        // and down at its sides once it stands. The ledge is where the world has it in each
+        // frame: up at the chest, and then down at the feet.
+        BodyClip::Gesture(Gesture::Mantle) => match frame.min(2) {
+            0 => [to(x - 3, floor - 9), to(x + rx + 3, floor - 10)],
+            1 => [to(x - rx + 1, floor - 2), to(x + rx + 2, floor - 2)],
+            _ => [Limb::Rest; 2],
+        },
     }
 }
 
@@ -1113,9 +1125,15 @@ fn four_legs(
     // Nubs tip each near leg in the accent colour; a plain leg is its own colour to the toe.
     let toe = if near && k.limbs == 1 { p.accent } else { fill };
     let bottom = feet_reach(d, body.floor);
-    for (root, step, limb) in [
-        (hind, hind_step, Limb::Rest),
-        (fore, fore_step, limbs[usize::from(near)]),
+    // Topping out onto a ledge, the near hind leg is drawn up to it and then the far one trails.
+    let (knee, trail) = if near {
+        (pose.knee.clamp(0, 6), 0)
+    } else {
+        (0, pose.trail.clamp(0, 4))
+    };
+    for (root, step, limb, hind) in [
+        (hind, hind_step, Limb::Rest, true),
+        (fore, fore_step, limbs[usize::from(near)], false),
     ] {
         if let Limb::Reach(paw) = limb {
             if !near {
@@ -1123,8 +1141,8 @@ fn four_legs(
             }
             continue;
         }
-        let lift = leg_lift(step, walking);
-        let x = root.x + step.clamp(-2, 2);
+        let lift = leg_lift(step, walking) + if hind { knee - trail } else { 0 };
+        let x = root.x + step.clamp(-2, 2) + if hind { knee / 2 } else { 0 };
         if k.limbs == 2 {
             // Stick legs, thin and in shade, on small forked feet.
             let foot = PixelPoint {
@@ -1332,6 +1350,19 @@ fn long_limbs(clip: BodyClip, frame: u8, body: Body) -> [Limb; 2] {
             // Four paws down in the leaf, leaning into it: the dip of each push is the scoot.
             | Gesture::Scoot,
         ) => [rest; 2],
+        // Topping out: both forepaws reached forward over the edge, up at the chest where the
+        // ledge is, then planted on it ahead for the push, and down on all four once it stands.
+        BodyClip::Gesture(Gesture::Mantle) => match frame.min(2) {
+            0 => [
+                to(far.x + 4, body.floor - 9),
+                to(near.x + 5, body.floor - 10),
+            ],
+            1 => [
+                to(far.x + 3, body.floor - 1),
+                to(near.x + 4, body.floor - 1),
+            ],
+            _ => [rest; 2],
+        },
     }
 }
 
@@ -1955,7 +1986,8 @@ mod tests {
 
     /// A body this heavy at the front never stands on two paws: it uses one forepaw at a time, a
     /// walk lifts one leg at a time, and nothing it does rears it up onto its hind legs. Only
-    /// hanging from a ledge, with nothing underfoot, takes both forepaws.
+    /// hanging from a ledge or pulling itself up onto one, with nothing underfoot, takes both
+    /// forepaws.
     #[test]
     fn a_four_pawed_body_always_stands_on_three_paws_or_more() {
         let creature = preview();
@@ -1965,6 +1997,7 @@ mod tests {
             if matches!(
                 clip,
                 BodyClip::Action(ActionKind::Dangle | ActionKind::ClimbWindow)
+                    | BodyClip::Gesture(Gesture::Mantle)
             ) {
                 continue;
             }

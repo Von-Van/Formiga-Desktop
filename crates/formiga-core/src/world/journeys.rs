@@ -4,9 +4,19 @@ use super::*;
 const INSPECTION_RADIUS: f32 = 12.0;
 pub(super) const MANTLE_LIFT_POINTS: f32 = 10.0;
 
-/// How much of the pull-up is spent hauling straight up, before the step in onto the ledge. The
-/// haul is the longer half: it is the effort, and the step is the arrival.
-const HAUL_SHARE: f32 = 0.62;
+/// How many frames a second a top-out onto a ledge is drawn at. The art plays its mantle at this
+/// rate from the moment the climb tops out, so the haul and the step in below change over on the
+/// frame the art does.
+pub const MANTLE_FRAMES_PER_SECOND: u8 = 5;
+/// How many of the mantle's frames the haul takes: its chest over the edge with a knee up, and the
+/// push up on both paws. The step in onto the ledge is the third. The haul is the longer part: it
+/// is the effort, and the step is the arrival.
+pub const MANTLE_HAUL_FRAMES: u8 = 2;
+/// How much of the haul's rise is made with the chest over the edge, before the push: a little,
+/// as the knee comes up. The push makes the rest.
+const HAUL_CHEST_RISE: f32 = 0.15;
+/// How much of the push is made at once, as the paws plant and the pose changes to the push.
+const HAUL_HEAVE: f32 = 0.6;
 
 /// How many frames a second a climb up a window's side is drawn at. The art plays its climb at
 /// this rate, so the rise below and the hands drawn keep step.
@@ -101,6 +111,9 @@ pub(super) struct JourneyStep {
     pub(super) position: Point,
     pub(super) action: ActionKind,
     pub(super) complete: bool,
+    /// A pose the journey strikes over its action, and where the creature looks while it does:
+    /// the mantle at the top of a climb. None for every other step.
+    pub(super) pose: Option<(Gesture, Point)>,
 }
 
 impl WindowJourney {
@@ -185,6 +198,7 @@ impl WindowJourney {
                             position: journey.hop.start,
                             action: ActionKind::InspectScreen,
                             complete: false,
+                            pose: None,
                         };
                     }
                     let progress = (journey.elapsed - 0.6) / (journey.preparation - 0.6);
@@ -213,6 +227,7 @@ impl WindowJourney {
                         position,
                         action,
                         complete: false,
+                        pose: None,
                     }
                 } else {
                     let progress = ((journey.elapsed - journey.preparation) / journey.hop.duration)
@@ -238,6 +253,7 @@ impl WindowJourney {
                         complete: progress >= 1.0
                             && (!journey.catch
                                 || caught_for >= if journey.helped { 1.7 } else { 2.4 }),
+                        pose: None,
                     }
                 }
             }
@@ -271,6 +287,7 @@ impl WindowJourney {
                     },
                     action: ActionKind::Landing,
                     complete: progress >= 1.0,
+                    pose: None,
                 }
             }
             Self::Climb(journey) => {
@@ -280,6 +297,7 @@ impl WindowJourney {
                         position: journey.start,
                         action: ActionKind::InspectScreen,
                         complete: false,
+                        pose: None,
                     };
                 }
                 let approach_end = journey.approach_duration;
@@ -291,6 +309,7 @@ impl WindowJourney {
                         position: lerp_point(journey.start, journey.approach, smoothstep(progress)),
                         action: ActionKind::Traverse,
                         complete: false,
+                        pose: None,
                     }
                 } else if journey.elapsed < climb_end {
                     let progress =
@@ -299,36 +318,46 @@ impl WindowJourney {
                         position: lerp_point(journey.approach, journey.climb_end, progress),
                         action: ActionKind::ClimbWindow,
                         complete: false,
+                        pose: None,
                     }
                 } else {
                     // Topping out is two beats, not one drift. Hauling and stepping in used to
                     // happen together, so a creature crossed the last stretch diagonally — rising
                     // and sliding sideways at the same time, which reads as the body clipping
                     // along the edge rather than climbing onto it. Now it pulls itself straight
-                    // up where its hands are, and then steps in onto the ledge.
+                    // up where its hands are, and then steps in onto the ledge, all of it in a
+                    // mantle of its own: chest over the edge with a knee up and the push up on
+                    // its paws for the haul, frame for frame with the art, and a stand with a
+                    // little settle for the step. It is still a climb while it does.
                     let mantle = (journey.elapsed - climb_end).max(0.0);
-                    let haul = journey.mantle_duration * HAUL_SHARE;
+                    let haul = mantle_haul_secs(journey.mantle_duration);
                     let over = Point {
                         x: journey.climb_end.x,
                         y: journey.target.y,
                     };
-                    if mantle < haul {
-                        let progress = (mantle / haul.max(0.001)).clamp(0.0, 1.0);
-                        JourneyStep {
-                            position: lerp_point(journey.climb_end, over, smoothstep(progress)),
-                            action: ActionKind::ClimbWindow,
-                            complete: false,
-                        }
+                    let position = if mantle < haul {
+                        lerp_point(journey.climb_end, over, haul_rise(mantle / haul.max(0.001)))
                     } else {
                         let step = (journey.mantle_duration - haul).max(0.001);
+                        // Carried in by the push, and coming to a stop on the ledge.
                         let progress = ((mantle - haul) / step).clamp(0.0, 1.0);
-                        JourneyStep {
-                            position: lerp_point(over, journey.target, smoothstep(progress)),
-                            // Up and over: the landing clip is the one that settles a creature
-                            // onto a surface, which is exactly what this step is.
-                            action: ActionKind::Landing,
-                            complete: journey.elapsed >= total,
-                        }
+                        lerp_point(over, journey.target, 1.0 - (1.0 - progress).powi(2))
+                    };
+                    // Looking ahead along the ledge it is climbing onto.
+                    let inward = if journey.target.x < journey.climb_end.x {
+                        -1.0
+                    } else {
+                        1.0
+                    };
+                    let ahead = Point {
+                        x: journey.target.x + inward * 48.0,
+                        y: journey.target.y - 24.0,
+                    };
+                    JourneyStep {
+                        position,
+                        action: ActionKind::ClimbWindow,
+                        complete: journey.elapsed >= total,
+                        pose: Some((Gesture::Mantle, ahead)),
                     }
                 }
             }
@@ -344,6 +373,7 @@ impl WindowJourney {
                         ActionKind::SqueezeWindow
                     },
                     complete: journey.elapsed >= journey.duration,
+                    pose: None,
                 }
             }
         }
@@ -360,12 +390,37 @@ impl WindowJourney {
                 let into = journey.elapsed - journey.approach_duration;
                 if (0.0..journey.climb_duration).contains(&into) {
                     into
+                } else if into >= journey.climb_duration {
+                    // The mantle counts from the moment the climb topped out.
+                    into - journey.climb_duration
                 } else {
                     0.0
                 }
             }
             _ => 0.0,
         }
+    }
+}
+
+/// How long the haul of a mantle lasting `mantle` seconds takes: its first
+/// [`MANTLE_HAUL_FRAMES`] frames at [`MANTLE_FRAMES_PER_SECOND`], never more than the mantle.
+fn mantle_haul_secs(mantle: f32) -> f32 {
+    (f32::from(MANTLE_HAUL_FRAMES) / f32::from(MANTLE_FRAMES_PER_SECOND)).min(mantle)
+}
+
+/// How far up the haul a companion is, from 0 to 1, `t` of the way through it: a little with its
+/// chest over the edge as a knee comes up, through the haul's first frame, and the rest on the
+/// push through the second. The push is a heave: most of it is made the moment the paws plant
+/// and the pose changes to it, and the rest eases up onto the ledge, so the paws drawn planted on
+/// the ledge stay on it rather than the body sliding up past them for the length of the frame.
+pub(super) fn haul_rise(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    if t < 0.5 {
+        HAUL_CHEST_RISE * smoothstep(t / 0.5)
+    } else {
+        let push = (t - 0.5) / 0.5;
+        let heave = HAUL_HEAVE + (1.0 - HAUL_HEAVE) * (1.0 - (1.0 - push).powi(2));
+        HAUL_CHEST_RISE + (1.0 - HAUL_CHEST_RISE) * heave
     }
 }
 
@@ -395,6 +450,57 @@ fn climb_effort(secs: f32) -> f32 {
         into -= part;
     }
     effort
+}
+
+/// Shows the pose a journey's step strikes, `into` seconds into it, for this tick: over a scene's
+/// own pose if the creature is in one, and otherwise as a pose of its own, looking at `looking`.
+/// The step stands on whatever it is climbing onto, so nothing of it hangs. Struck afresh on every
+/// tick the journey carries it, and let go of at the start of the next (see
+/// [`World::let_go_of_journey_poses`]), so a pose never outlasts the step that struck it.
+pub(super) fn strike_journey_pose(
+    creature: &mut Creature,
+    gesture: Gesture,
+    looking: Point,
+    into: f32,
+) {
+    match &mut creature.state.attention {
+        Some(pose) => {
+            pose.gesture = Some(gesture);
+            pose.hanging = 0.0;
+        }
+        None => {
+            creature.state.attention = Some(AttentionPose {
+                target: looking,
+                emotion: AttentionEmotion::Curious,
+                hanging: 0.0,
+                gesture: Some(gesture),
+            });
+        }
+    }
+    // Drawn from the moment the pose began, as the journey counts it.
+    creature.state.action_elapsed = into;
+}
+
+impl World {
+    /// Lets go of every pose a journey struck last tick. A journey that carries its creature on
+    /// strikes its pose again this tick; one that ended, was cut short or was taken over leaves
+    /// its creature showing whatever it does next. A pose made for the journey alone goes with
+    /// it, and a scene's own pose loses only the gesture.
+    pub(super) fn let_go_of_journey_poses(&mut self) {
+        for creature in &mut self.save.creatures {
+            let Some(pose) = &mut creature.state.attention else {
+                continue;
+            };
+            if pose.gesture != Some(Gesture::Mantle) {
+                continue;
+            }
+            if self.attention.has_plan(creature.id) {
+                pose.gesture = None;
+            } else {
+                creature.state.attention = None;
+            }
+        }
+    }
 }
 
 pub(super) fn gap_position(hop: &HopJourney, progress: f32) -> Point {
