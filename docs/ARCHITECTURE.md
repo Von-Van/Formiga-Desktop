@@ -1696,11 +1696,95 @@ moment does:
   chased and carried back to be finished, or sitting down beside the nap cushion and shuffling onto
   it. `World::loose_props` reports the leaf or the apple and where it is.
 
-Only one plan out and about runs at a time, beside the one quiet moment the village already
-allowed, and a spell indoors counts against its own limit instead. Watering or looking in on a
-garden, a chore, or a spell on a roof turns something up one time in seven, with the at-home
-circumstances and the calendar's; the find completes as `PresentDiscovery` does anywhere, which is
-what writes it into the scrapbook. A friend nearby stops to look at a mishap or a find.
+Several things go on at once, as many as the size of the village allows. `max_about(residents)`
+plans may be out and about together — one in a village of one, two for two or three, three beyond
+that — and `max_moments(residents)` quiet moments at doors, one, two or three; a nap at a door is
+not counted, since it lasts minutes. A spell indoors counts against its own limit, of the residents
+who are not away in a house open elsewhere, and whoever a caller has stopped counts against nobody's.
+Beside those, each thing has a limit of its own: one mishap at a time, so each is worth noticing,
+one resident on each roof, and nothing settled into in front of somebody standing or busy there.
+Through 0.68.23 one plan and one quiet moment ran in the whole village at a time, so a nap at a door
+held everybody else's turn for up to two and a half minutes.
+
+Watering or looking in on a garden, a chore, or a spell on a roof turns something up one time in
+seven, with the at-home circumstances and the calendar's; the find completes as `PresentDiscovery`
+does anywhere, which is what writes it into the scrapbook. A friend nearby stops to look at a
+mishap or a find, at somebody going indoors, and at somebody coming out again — who, up from a
+nap, has a stretch on the doorstep first.
+
+### Turns, tempo and what one thing leads to
+
+Each resident has a wait before its next turn (`VILLAGE_LIFE.first_turn_secs`, then
+`next_turn_secs`), counted down at its own `tempo`: quicker for the brisk, quicker again for the
+sociable while somebody is out and about, and slow for the sleepy. Nothing keeps time for the
+village, so a drowsy one is quiet for a while and one where something has started tends to have
+something else start. The wait runs whatever the resident's feet are doing and comes due once it is
+standing at its own place or its door. Through 0.68.23 any walk threw the wait away and started a new
+one, and since a stroll sets off every nine to twenty-six seconds a turn seldom came round at all:
+watched from outside by `formiga-tools village-watch`, residents stood doing nothing for 61–82% of
+a visit. A resident with nothing it can do just now asks again after `ask_again_secs` rather than
+every tick.
+
+`choose` weighs the choices by who is choosing. Each weight is scaled from a quarter to one and
+three quarters by the trait it answers to — routine for chores, curiosity for the garden, the roof
+and looking on, sociability and playfulness for company, a low activity for indoors — then by
+`favourite_gain` for the pastime `favourite` reads from the resident's own seed, by `again_share`
+for whatever it did last, and by `bent_gain` for what the last thing left it inclined to do.
+
+That inclination is how one thing leads to another. When a plan runs its course,
+`village_company::Memory::finished` notes it and, `follow_on_chance` times in a hundred, leaves a
+bent toward what follows from it — up from a nap, a tidy round the house; the house seen to, the
+garden or company; one patch, another; down off the roof, over to somebody seen from up there; a
+call turned down, something of its own — and the next turn comes in `follow_on_secs`, from wherever
+the resident is standing, instead of after a rest at its own place. Never more than
+`follow_on_most` in a row. A garden visit or a chore somebody is picked up from is remembered for
+three quarters of a minute and gone back to if it is free again by then. All of it is runtime only
+and forgotten when the houses next come out.
+
+### Company
+
+`world/village_company.rs` is residents keeping one another company, as plans in the same map.
+Company takes two, and each has a plan of its own, stepped on its own turn and reading the other's
+from `HomeScene::everyone`, the survey taken as the tick began:
+
+- A **`Call`** is going over to somebody free, home, in sight, and not sought out by this resident
+  in the last few minutes — a close friend sooner than a stranger, by the bond's affinity, and
+  somebody near sooner than somebody at the far end. It looks across first, and that look is an
+  `Invite`.
+- `apply_invites` gives whoever was looked at an **`Answer`**, if it is free: it stops where it is,
+  turns, and watches the caller come. `reply_of` decides how it takes it, from its sociability, the
+  bond, how sleepy it is and its temperament: warmly, shyly — from behind its paws first — or not
+  at all, said with a yawn by the sleepy, a huff by a grump, a stamp by a troublemaker or a
+  show-off, and otherwise a look and a turn away. Somebody busy with anything is left to it, and
+  the caller, seeing nobody look back, does not set off.
+- The caller walks up by the village's paths to stand a creature's width off, on whichever side has
+  nobody standing there, no further back than the grass there goes, and the two say hello. After a
+  welcome, what follows is what the call was for. **Hello**: company kept for
+  `company_secs`, longer for the sociable — sat down together if it is long enough, looking at one
+  another and out over the grass by turns, out of step. **Play**: the caller crouches and chases
+  its friend along the strip, catches it, and runs back with the friend after it, ending in a laugh;
+  neither run ends out of sight behind a house (`run_from`). **Walk**: the two go somewhere along
+  the village a few steps apart, up on the trodden path as often as not, look round at one another
+  there, and part. After a no the caller stands a moment and goes off to something of its own.
+- A **`LookOn`** is stopping beside somebody at work — watering or looking in on a patch, at a
+  chore, or playing or eating at its own place — to watch: from two steps off and from behind its
+  paws first for the shy, with a close look of its own at the patch for the curious, and sat up
+  begging for the hungry looking on at a snack. When the work is done the two look at one another.
+
+Either of a pair can be picked up, called away or ended at any moment: the other finds no part
+kept with it on its next turn and is let go. Every step has a time limit of its own. Two keeping
+company, or somebody looking on, count as a busy spot where they stand, and give the place up if a
+third is left standing in their faces for three seconds. A busy spot keeps whoever lives right
+beside it out of its own place, and one between two places keeps two out with one free place to
+wait in; so where a neighbour's own place is 0.8 to 1.3 frames from whoever is being stood beside,
+`VillageContext::beside` stands exactly there, and only that neighbour waits. With a guest in the village the residents
+call on nobody: their company is the guest's. Hello and the laugh after a game are shown with the
+`Greet` and `SocialPlay` clips, so the talk pass gives them bubbles as it does anywhere, but
+nothing here completes an action, so none of it moves a bond, a tally, a habit or the journal.
+
+`nod_in_passing` is the smallest of it: two residents with nothing on who come face to face as one
+walks by stop for a second and look at one another, the likelier the more sociable the pair, and
+not the same two again for two and a half minutes.
 
 A plan notes the ground it was made on — the commons, where the resident's own house stands and
 which house it is, and where the patch it set off for is — and is let go the moment any of that

@@ -38,6 +38,7 @@ mod tows;
 mod trips;
 mod undo;
 mod village;
+mod village_company;
 mod village_life;
 mod village_paths;
 mod village_stays_out;

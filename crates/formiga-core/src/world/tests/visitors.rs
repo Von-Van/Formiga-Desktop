@@ -24,6 +24,22 @@ fn gather(world: &mut World, now: OffsetDateTime, desktop: &DesktopSnapshot) {
     assert!(world.handle_command(WorldCommand::SendHome, desktop));
 }
 
+/// Live `seconds` of colony time with nobody starting anything of its own about the village,
+/// so everyone is standing on the ground at its own place by the end. The next gathering gives
+/// everybody their turns back.
+fn run_settled(
+    world: &mut World,
+    from: OffsetDateTime,
+    seconds: f32,
+    desktop: &DesktopSnapshot,
+) -> OffsetDateTime {
+    let ids: Vec<CreatureId> = world.save.creatures.iter().map(|c| c.id).collect();
+    for id in ids {
+        world.home_moment_timers.insert(id, 1.0e6);
+    }
+    run(world, from, seconds, desktop)
+}
+
 /// Live `seconds` of colony time in fiftieth-of-a-second steps, and return where the clock got to.
 fn run(
     world: &mut World,
@@ -177,7 +193,7 @@ fn a_visit_arrives_after_the_colony_settles_says_hello_once_and_leaves_before_th
     let desktop = desktop();
     let created = datetime!(2026-04-02 9:00 UTC);
     let mut world = colony_of_two(seed_expecting_a_visitor(), created);
-    let mut now = run(&mut world, created, 40.0, &desktop);
+    let mut now = run_settled(&mut world, created, 40.0, &desktop);
     // Everyone is home and settled, and nobody is visiting yet.
     world.save.visitors.gatherings = 0;
     assert!(world.save.visitors.on_stage().is_none());
@@ -259,7 +275,8 @@ fn a_visit_arrives_after_the_colony_settles_says_hello_once_and_leaves_before_th
             // leave the village to follow it about.
             assert!(
                 (resident.state.position.x - spot.x).abs() <= VILLAGE_SPAN_LIMIT * 4.0
-                    && (resident.state.position.y - spot.y).abs() <= 1.0,
+                    && resident.state.position.y <= spot.y + 1.0
+                    && spot.y - resident.state.position.y <= DWELLING_CELL * 4.0,
                 "{} left the village at {seconds}s",
                 resident.name
             );
@@ -352,7 +369,7 @@ fn a_guest_answers_the_hello_and_so_does_the_colony_without_leaving_its_places()
     let desktop = desktop();
     let created = datetime!(2026-04-02 9:00 UTC);
     let mut world = colony_of_two(seed_expecting_a_visitor(), created);
-    let now = run(&mut world, created, 40.0, &desktop);
+    let now = run_settled(&mut world, created, 40.0, &desktop);
     world.save.visitors.gatherings = 0;
     // One timid companion and one playful one, so both answers are on show.
     world.save.creatures[0].personality.playfulness = 0.95;
@@ -399,7 +416,7 @@ fn dismissing_the_houses_early_takes_the_guest_with_it() {
     let desktop = desktop();
     let created = datetime!(2026-04-02 9:00 UTC);
     let mut world = colony_of_two(seed_expecting_a_visitor(), created);
-    let now = run(&mut world, created, 40.0, &desktop);
+    let now = run_settled(&mut world, created, 40.0, &desktop);
     world.save.visitors.gatherings = 0;
     gather(&mut world, now, &desktop);
     let now = run(&mut world, now, 45.0, &desktop);
@@ -413,7 +430,7 @@ fn dismissing_the_houses_early_takes_the_guest_with_it() {
 
     // A wanderer that never got as far as the door leaves no trace at all.
     let mut world = colony_of_two(seed_expecting_a_visitor(), created);
-    let now = run(&mut world, created, 40.0, &desktop);
+    let now = run_settled(&mut world, created, 40.0, &desktop);
     world.save.visitors.gatherings = 0;
     gather(&mut world, now, &desktop);
     let now = run(&mut world, now, 5.0, &desktop);
@@ -439,7 +456,7 @@ fn pausing_hiding_and_reduced_motion_each_leave_the_visit_somewhere_defined() {
 
     // Paused: the guest holds exactly where it was, and nothing about it moves on.
     let mut world = colony_of_two(seed_expecting_a_visitor(), created);
-    let now = run(&mut world, created, 40.0, &desktop);
+    let now = run_settled(&mut world, created, 40.0, &desktop);
     world.save.visitors.gatherings = 0;
     gather(&mut world, now, &desktop);
     let now = run(&mut world, now, 45.0, &desktop);
@@ -450,7 +467,7 @@ fn pausing_hiding_and_reduced_motion_each_leave_the_visit_somewhere_defined() {
 
     // Hidden: the colony still lives its day, and the guest simply is not drawn.
     let mut world = colony_of_two(seed_expecting_a_visitor(), created);
-    let now = run(&mut world, created, 40.0, &desktop);
+    let now = run_settled(&mut world, created, 40.0, &desktop);
     world.save.visitors.gatherings = 0;
     world.save.settings.visible = false;
     gather(&mut world, now, &desktop);
@@ -460,7 +477,7 @@ fn pausing_hiding_and_reduced_motion_each_leave_the_visit_somewhere_defined() {
 
     // Reduced motion: no walk in, no walk out, and the hello is said standing still.
     let mut world = colony_of_two(seed_expecting_a_visitor(), created);
-    let now = run(&mut world, created, 40.0, &desktop);
+    let now = run_settled(&mut world, created, 40.0, &desktop);
     world.save.visitors.gatherings = 0;
     world.save.settings.reduce_motion = true;
     gather(&mut world, now, &desktop);
@@ -519,7 +536,7 @@ fn a_guest_stays_inside_a_habitat_that_is_redrawn_underneath_it() {
     let desktop = desktop();
     let created = datetime!(2026-04-02 9:00 UTC);
     let mut world = colony_of_two(seed_expecting_a_visitor(), created);
-    let now = run(&mut world, created, 40.0, &desktop);
+    let now = run_settled(&mut world, created, 40.0, &desktop);
     world.save.visitors.gatherings = 0;
     gather(&mut world, now, &desktop);
     let now = run(&mut world, now, 45.0, &desktop);
@@ -743,7 +760,7 @@ fn asking_a_visitor_to_stay_keeps_its_place_and_a_full_colony_cannot() {
     let desktop = desktop();
     let created = datetime!(2026-04-02 9:00 UTC);
     let mut world = colony_of_two(seed_expecting_a_visitor(), created);
-    let now = run(&mut world, created, 40.0, &desktop);
+    let now = run_settled(&mut world, created, 40.0, &desktop);
     world.save.visitors.gatherings = 0;
     gather(&mut world, now, &desktop);
     let now = run(&mut world, now, 45.0, &desktop);
@@ -807,7 +824,7 @@ fn a_guest_can_be_petted_but_never_picked_up() {
     let desktop = desktop();
     let created = datetime!(2026-04-02 9:00 UTC);
     let mut world = colony_of_two(seed_expecting_a_visitor(), created);
-    let now = run(&mut world, created, 40.0, &desktop);
+    let now = run_settled(&mut world, created, 40.0, &desktop);
     world.save.visitors.gatherings = 0;
     gather(&mut world, now, &desktop);
     let now = run(&mut world, now, 45.0, &desktop);
@@ -986,7 +1003,7 @@ fn a_guest_walks_the_village_and_goes_over_to_every_resident_in_turn() {
 
     let created = datetime!(2026-04-02 9:00 UTC);
     let mut world = colony_of_two(seed_expecting_a_visitor(), created);
-    let now = run(&mut world, created, 40.0, &desktop);
+    let now = run_settled(&mut world, created, 40.0, &desktop);
     world.save.visitors.gatherings = 0;
     // One playful companion and one timid one, so both kinds of answer are on show.
     world.save.creatures[0].personality.playfulness = 0.95;
@@ -1075,11 +1092,22 @@ fn a_guest_walks_the_village_and_goes_over_to_every_resident_in_turn() {
         // it has settled the doors are noted again; either side of that nobody budges,
         // whatever the guest does.
         if (300.0..320.0).contains(&seconds) {
+            // Where each stands along the village now, on the ground it has stood on all along:
+            // somebody may be up on its roof just as the doors are noted.
+            let ground = doors[0].1.y;
             doors = world
                 .save
                 .creatures
                 .iter()
-                .map(|creature| (creature.id, creature.state.position))
+                .map(|creature| {
+                    (
+                        creature.id,
+                        Point {
+                            x: creature.state.position.x,
+                            y: ground,
+                        },
+                    )
+                })
                 .collect();
             continue;
         }
@@ -1499,7 +1527,9 @@ fn a_guest_spends_its_visit_in_among_the_village_using_its_spots() {
             let close = standing
                 && !creature.state.indoors
                 && creature.state.velocity.x.abs() < 1.0
-                && (creature.state.position.x - guest.creature.state.position.x).abs() < face_clear;
+                && (creature.state.position.x - guest.creature.state.position.x).abs() < face_clear
+                // Up on a roof above the guest, however low the roof, is not in its face.
+                && creature.state.position.y == guest.creature.state.position.y;
             if close {
                 let run = beside.entry(creature.id).or_default();
                 *run += 0.05;
