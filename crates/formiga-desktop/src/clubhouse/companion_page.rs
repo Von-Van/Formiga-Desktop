@@ -7,45 +7,51 @@ use super::shell::Shell;
 use super::*;
 
 /// What each face in the strip answers to, so the arrow keys know when the strip has the
-/// keyboard.
-pub(crate) fn face_id(id: CreatureId) -> egui::Id {
+/// keyboard. `None` is everyone together.
+pub(crate) fn face_id(id: Option<CreatureId>) -> egui::Id {
     egui::Id::new(("companion-face", id))
 }
 
-/// The companion before (`forward` false) or after the one chosen, in colony order, if there is
-/// one that way.
+/// The page before (`forward` false) or after the one open, if there is one that way: everyone
+/// together first (`Some(None)`), then each companion in colony order (`Some(Some(id))`).
 pub(crate) fn neighbour(
     creatures: &[Creature],
     chosen: Option<CreatureId>,
     forward: bool,
-) -> Option<CreatureId> {
-    let index = creatures
-        .iter()
-        .position(|creature| Some(creature.id) == chosen)
-        .unwrap_or(0);
+) -> Option<Option<CreatureId>> {
+    let at = match chosen {
+        None => 0,
+        Some(id) => creatures
+            .iter()
+            .position(|creature| creature.id == id)
+            .map_or(0, |index| index + 1),
+    };
     let next = if forward {
-        index.checked_add(1)
+        at.checked_add(1)?
     } else {
-        index.checked_sub(1)
-    }?;
-    creatures.get(next).map(|creature| creature.id)
+        at.checked_sub(1)?
+    };
+    match next {
+        0 => Some(None),
+        n => creatures.get(n - 1).map(|creature| Some(creature.id)),
+    }
 }
 
-/// Turning between companions from the keyboard: ⌘[ and ⌘] (Ctrl elsewhere), and the left and
-/// right arrows while nothing but a face in the strip has the keyboard. Taken before the
-/// notebook's own page turns, so ⌘[ on the first companion and ⌘] on the last still turn the
+/// Turning between everyone and each companion from the keyboard: ⌘[ and ⌘] (Ctrl elsewhere), and
+/// the left and right arrows while nothing but a face in the strip has the keyboard. Taken before
+/// the notebook's own page turns, so ⌘[ on everyone and ⌘] on the last companion still turn the
 /// page. Never while a text field or a pop-up is open.
 pub(crate) fn turn_shortcut(
     ctx: &egui::Context,
     creatures: &[Creature],
     chosen: Option<CreatureId>,
-) -> Option<CreatureId> {
+) -> Option<Option<CreatureId>> {
     if ctx.text_edit_focused() || ctx.any_popup_open() {
         return None;
     }
-    let focus_free = ctx
-        .memory(|memory| memory.focused())
-        .is_none_or(|focused| creatures.iter().any(|c| face_id(c.id) == focused));
+    let focus_free = ctx.memory(|memory| memory.focused()).is_none_or(|focused| {
+        focused == face_id(None) || creatures.iter().any(|c| face_id(Some(c.id)) == focused)
+    });
     let back = neighbour(creatures, chosen, false);
     let forward = neighbour(creatures, chosen, true);
     ctx.input_mut(|input| {
@@ -65,36 +71,95 @@ pub(crate) fn turn_shortcut(
     })
 }
 
-/// Everyone's face in a row with their name under it, the chosen one with a strip of tape across
-/// its top. Each face is a button: clicked, or Space or Enter while it has the keyboard, it turns
-/// to that companion, which is returned.
+/// A face that turns to a companion's page wherever it is drawn: a button over `rect`, lit with a
+/// focus ring, a pointing hand and the companion's name for a screen reader.
+pub(crate) fn face_button(
+    ui: &mut Ui,
+    rect: egui::Rect,
+    id: egui::Id,
+    label: &str,
+) -> egui::Response {
+    let response = ui.interact(rect, id, egui::Sense::click());
+    if response.has_focus() {
+        ui.painter().rect_stroke(
+            rect.expand(2.0),
+            0.0,
+            egui::Stroke::new(2.0, forest()),
+            egui::StrokeKind::Outside,
+        );
+    }
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    let label = label.to_owned();
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &label));
+    response
+}
+
+/// Everyone together, then each companion's face, in a row with a name under each; the page open
+/// has a strip of tape across its top. Each is a button: clicked, or Space or Enter while it has
+/// the keyboard, it turns to that page, which is returned.
 pub(crate) fn face_strip(
     ui: &mut Ui,
     shell: &mut Shell,
     creatures: &[Creature],
     chosen: Option<CreatureId>,
-) -> Option<CreatureId> {
+) -> Option<Option<CreatureId>> {
     let scale = journal::text_scale(ui);
     let side = (40.0 * scale.min(1.2)).round();
     let name_font = formiga_pencil::hand(14.0 * scale);
     let mut turned = None;
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing.x = 10.0;
-        for creature in creatures {
-            let is_chosen = Some(creature.id) == chosen;
+        let pages = std::iter::once(None).chain(creatures.iter().map(Some));
+        for creature in pages {
+            let id = creature.map(|c| c.id);
+            let is_chosen = id == chosen;
             let colour = if is_chosen { ink() } else { muted() };
-            let name =
-                ui.painter()
-                    .layout_no_wrap(creature.name.clone(), name_font.clone(), colour);
+            let label = creature.map_or("Everyone", |c| c.name.as_str());
+            let name = ui
+                .painter()
+                .layout_no_wrap(label.to_owned(), name_font.clone(), colour);
             let width = side.max(name.size().x) + 8.0;
             let (_, rect) = ui.allocate_space(egui::vec2(width, side + 6.0 + name.size().y));
-            let response = ui.interact(rect, face_id(creature.id), egui::Sense::click());
+            let response = ui.interact(rect, face_id(id), egui::Sense::click());
             let face = egui::Rect::from_min_size(
                 rect.center_top() - egui::vec2(side / 2.0, 0.0),
                 egui::vec2(side, side),
             );
-            let texture = shell.portrait_texture(ui.ctx(), creature);
-            paper::face(ui.painter(), face, &texture, true);
+            match creature {
+                Some(creature) => {
+                    let texture = shell.portrait_texture(ui.ctx(), creature);
+                    paper::face(ui.painter(), face, &texture, true);
+                }
+                // Everyone: up to three of them squeezed into one frame, as on a group photo.
+                None => {
+                    let mut fills = journal::Fills::default();
+                    journal::stepped_box(&mut fills, face, forest(), gold());
+                    fills.paint(ui.painter());
+                    let few: Vec<&Creature> = creatures.iter().take(3).collect();
+                    let small = face.width() * 0.56;
+                    for (index, member) in few.iter().enumerate() {
+                        let x = if few.len() == 1 {
+                            face.center().x - small / 2.0
+                        } else {
+                            face.left()
+                                + 2.0
+                                + index as f32 * (face.width() - small - 4.0)
+                                    / (few.len() - 1) as f32
+                        };
+                        let y =
+                            face.bottom() - small - 2.0 - if index % 2 == 1 { 6.0 } else { 0.0 };
+                        let texture = shell.portrait_texture(ui.ctx(), member);
+                        ui.painter().image(
+                            texture.id(),
+                            egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(small, small)),
+                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                            Color32::WHITE,
+                        );
+                    }
+                }
+            }
             ui.painter().galley(
                 egui::pos2(rect.center().x - name.size().x / 2.0, face.bottom() + 6.0),
                 name,
@@ -124,11 +189,11 @@ pub(crate) fn face_strip(
                     egui::WidgetType::SelectableLabel,
                     true,
                     is_chosen,
-                    &creature.name,
+                    label,
                 )
             });
             if response.clicked() && !is_chosen {
-                turned = Some(creature.id);
+                turned = Some(id);
             }
         }
     });
@@ -247,13 +312,15 @@ pub(crate) fn arrived_today(
     creature.born_at_utc.to_offset(offset).date() >= now.to_offset(offset).date()
 }
 
-/// The companion first: its portrait beside its name in the hand, its temperament once, its traits
+/// The companion first: its portrait, doing what it is doing (held `still` under Reduce motion),
+/// beside its name in the hand, its temperament once, its traits
 /// run over with a highlighter, and what it is doing. `aside` adds whatever else belongs beside
 /// the portrait, under those.
 ///
 /// The name is renamed where it is written: clicked, it becomes a field holding the name, Enter
 /// hands back what was typed for the page to check and keep, and Escape, or clicking away, leaves
 /// the name as it was. `renaming` is the name being typed, and whose.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn header(
     ui: &mut Ui,
     shell: &mut Shell,
@@ -261,6 +328,7 @@ pub(crate) fn header(
     creatures: &[Creature],
     now: OffsetDateTime,
     renaming: &mut Option<(CreatureId, String)>,
+    still: bool,
     aside: impl FnOnce(&mut Ui),
 ) -> Option<String> {
     let mut submitted = None;
@@ -272,7 +340,7 @@ pub(crate) fn header(
         96.0
     };
     journal::ruled_row(ui, |ui| {
-        shell.portrait(ui, creature, portrait);
+        shell.living_portrait(ui, creature, portrait, still);
         ui.vertical(|ui| {
             let field = egui::Id::new(("rename", creature.id));
             match renaming.as_mut().filter(|(id, _)| *id == creature.id) {
@@ -542,10 +610,12 @@ mod tests {
         for (index, creature) in creatures.iter_mut().enumerate() {
             creature.id = index as CreatureId + 1;
         }
-        assert_eq!(neighbour(&creatures, Some(1), false), None);
-        assert_eq!(neighbour(&creatures, Some(1), true), Some(2));
+        // Everyone together first, then each companion in turn.
+        assert_eq!(neighbour(&creatures, None, false), None);
+        assert_eq!(neighbour(&creatures, None, true), Some(Some(1)));
+        assert_eq!(neighbour(&creatures, Some(1), false), Some(None));
+        assert_eq!(neighbour(&creatures, Some(1), true), Some(Some(2)));
         assert_eq!(neighbour(&creatures, Some(3), true), None);
-        assert_eq!(neighbour(&creatures, Some(2), false), Some(1));
-        assert_eq!(neighbour(&creatures, None, true), Some(2));
+        assert_eq!(neighbour(&creatures, Some(2), false), Some(Some(1)));
     }
 }

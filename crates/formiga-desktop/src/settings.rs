@@ -330,7 +330,8 @@ impl SettingsWindow {
                 .iter()
                 .map(|creature| (creature.id, creature.name.clone()))
                 .collect(),
-            selected_creature: creatures.first().map(|creature| creature.id),
+            // Your colony opens on everyone together until a companion is chosen.
+            selected_creature: None,
             clubhouse: Clubhouse::default(),
             repaint_due: None,
             ui_visible: false,
@@ -391,11 +392,12 @@ impl SettingsWindow {
             .collect();
         self.ui_visible = true;
         self.occluded = false;
+        // A companion who has since left turns the page back to everyone.
         if self
             .selected_creature
-            .is_none_or(|selected| !creatures.iter().any(|creature| creature.id == selected))
+            .is_some_and(|selected| !creatures.iter().any(|creature| creature.id == selected))
         {
-            self.selected_creature = creatures.first().map(|creature| creature.id);
+            self.selected_creature = None;
         }
         self.window.set_visible(true);
         self.window.focus_window();
@@ -957,7 +959,7 @@ fn draw_settings(
         && let Some(turned) =
             clubhouse::companion_page::turn_shortcut(root.ctx(), creatures, *selected_creature)
     {
-        *selected_creature = Some(turned);
+        *selected_creature = turned;
     }
     // A page can be turned from the keyboard, as well as by its tab.
     if let Some(page) = clubhouse::journal::page_shortcut(root.ctx(), *tab) {
@@ -1205,6 +1207,12 @@ fn draw_settings(
                     let echo_fox = save.creatures.iter().any(|creature| creature.appearance.echo_fox);
                     about_tab(ui, &mut clubhouse.shell, &mut clubhouse.recovery, &clubhouse.apps, outcome, save_location, update_status, automatic_update_checks, echo_fox);
                 }
+            }
+            // A face clicked anywhere on the page turns to that companion's page.
+            if let Some(id) = clubhouse.shell.open_companion.take() {
+                *tab = SettingsTab::Colony;
+                *selected_creature = Some(id);
+                ui.ctx().request_repaint();
             }
         });
         // The ruling is drawn where the writing is, so the lines scroll with it; they run on down
@@ -1604,21 +1612,24 @@ fn colony_tab(
     let creatures = colony.creatures;
     let relationships = colony.relationships;
     // Everyone's face along the top, the chosen one taped, and how the colony is getting on.
-    let chosen = selected_creature.or_else(|| creatures.first().map(|c| c.id));
-    if creatures.len() > 1
-        && let Some(turned) = clubhouse::companion_page::face_strip(ui, shell, creatures, chosen)
+    // Everyone together, then each companion's face, along the top, the page open taped.
+    if let Some(turned) =
+        clubhouse::companion_page::face_strip(ui, shell, creatures, *selected_creature)
     {
-        *selected_creature = Some(turned);
+        *selected_creature = turned;
     }
-    clubhouse::journal::write(
-        ui,
-        egui::RichText::new(clubhouse::journal::colony_observation(creatures))
-            .color(clubhouse::muted()),
-    );
-    let Some(creature) = selected_creature
-        .and_then(|id| creatures.iter().find(|c| c.id == id))
-        .or_else(|| creatures.first())
+    let Some(creature) = selected_creature.and_then(|id| creatures.iter().find(|c| c.id == id))
     else {
+        // The colony's opening spread: who is here, what each is doing, and who goes with whom.
+        *selected_creature = None;
+        colony_spread(
+            ui,
+            shell,
+            colony.save,
+            creatures,
+            relationships,
+            selected_creature,
+        );
         return;
     };
     *selected_creature = Some(creature.id);
@@ -1635,11 +1646,6 @@ fn colony_tab(
             ),
         )
         .marked(TourMark::Wardrobe),
-        Section::new(
-            "together",
-            "How everyone gets along",
-            "Friendships, playmates and tensions across the colony",
-        ),
         Section::new(
             "care",
             "Care & share",
@@ -1663,6 +1669,7 @@ fn colony_tab(
             creatures,
             now,
             &mut renaming,
+            colony.save.settings.reduce_motion,
             |ui| {
                 // The two things the strip over a companion offers, here as plain buttons so they can
                 // be reached from the keyboard, with what came of them in words.
@@ -1901,7 +1908,6 @@ fn colony_tab(
                 }
             });
         }
-        Some("together") => colony_standings_card(ui, creatures, relationships, selected_creature),
         _ => {}
     }
     ui.ctx()
@@ -1964,15 +1970,6 @@ impl Standing {
             Self::Acquainting
         }
     }
-
-    fn heading(self) -> &'static str {
-        match self {
-            Self::Distant => "Keeping their distance",
-            Self::Close => "Close friends",
-            Self::Playmates => "Playmates",
-            Self::Acquainting => "Still getting to know each other",
-        }
-    }
 }
 
 /// Two companions, named in colony order, and how they get along.
@@ -2018,125 +2015,87 @@ fn colony_standings(
     pairs
 }
 
-/// The whole colony's friendships, playmates, and tensions on one card, so the social life that
-/// plays out on the desktop is easy to notice here too. A name opens that companion's profile.
-fn colony_standings_card(
+/// The colony's opening spread: everyone standing together doing what each is doing, then the
+/// pairs who matter, as two faces with the one word for how they get along between them — close
+/// friends and playmates first, a pair keeping apart last. Any face turns to that companion.
+fn colony_spread(
     ui: &mut egui::Ui,
+    shell: &mut clubhouse::shell::Shell,
+    save: &formiga_core::SaveFile,
     creatures: &[Creature],
     relationships: &[formiga_core::CreatureRelationship],
     selected_creature: &mut Option<CreatureId>,
 ) {
-    if creatures.len() < 2 {
+    let scale = clubhouse::journal::text_scale(ui);
+    clubhouse::journal::write(
+        ui,
+        egui::RichText::new("Your colony")
+            .font(formiga_pencil::hand_bold(40.0 * scale.min(1.2)))
+            .color(ink()),
+    );
+    clubhouse::journal::write(
+        ui,
+        egui::RichText::new(clubhouse::journal::colony_observation(creatures))
+            .color(clubhouse::muted()),
+    );
+    let now = time::OffsetDateTime::now_utc();
+    let offset = clubhouse::local_offset();
+    let today = clubhouse::today::today(save, now.to_offset(offset).date(), offset);
+    let mut here = SettingsTab::Colony;
+    clubhouse::today::TodayState::right_now(ui, shell, save, now, &today, &mut here);
+    let pairs: Vec<PairStanding> = colony_standings(creatures, relationships)
+        .into_iter()
+        .filter(|pair| pair.standing != Standing::Acquainting)
+        .take(6)
+        .collect();
+    ui.add_space(12.0);
+    clubhouse::journal::to_next_rule(ui);
+    clubhouse::journal::kicker(ui, "Who goes with whom");
+    if pairs.is_empty() {
+        clubhouse::journal::write(
+            ui,
+            egui::RichText::new(
+                "Nobody has paired off yet. I'll note it here when two of them do.",
+            )
+            .color(clubhouse::muted()),
+        );
         return;
     }
-    let name = |id: CreatureId| {
-        creatures
-            .iter()
-            .find(|creature| creature.id == id)
-            .map_or("A companion", |creature| creature.name.as_str())
-    };
-    clubhouse::card(ui, |ui| {
-        ui.strong("How everyone gets along");
-        let mut heading = None;
-        for PairStanding {
-            standing,
-            a,
-            b,
-            relationship,
-        } in colony_standings(creatures, relationships)
-        {
-            if heading != Some(standing) {
-                heading = Some(standing);
-                ui.add_space(6.0);
-                ui.small(egui::RichText::new(standing.heading()).color(forest()));
-            }
-            let involves_selected = *selected_creature == Some(a) || *selected_creature == Some(b);
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
-                for (index, id) in [a, b].into_iter().enumerate() {
-                    if index == 1 {
-                        ui.label("&");
-                    }
-                    let text = egui::RichText::new(name(id));
-                    let text = if involves_selected {
-                        text.strong()
-                    } else {
-                        text
-                    };
-                    if ui.link(text).clicked() {
-                        *selected_creature = Some(id);
-                    }
-                }
-                let together = creatures
-                    .iter()
-                    .find(|creature| creature.id == a)
-                    .zip(creatures.iter().find(|creature| creature.id == b))
-                    .map_or_else(
-                        || play_label(relationship.playfulness),
-                        |(a, b)| together_label(a, b, &relationship),
+    let side = (32.0 * scale.min(1.2)).round();
+    for pair in pairs {
+        let (Some(a), Some(b)) = (
+            creatures.iter().find(|c| c.id == pair.a),
+            creatures.iter().find(|c| c.id == pair.b),
+        ) else {
+            continue;
+        };
+        let word = clubhouse::story::friend_word(a, b, &pair.relationship);
+        clubhouse::journal::ruled_row(ui, |ui| {
+            for (index, creature) in [a, b].into_iter().enumerate() {
+                if index == 1 {
+                    clubhouse::journal::write(
+                        ui,
+                        egui::RichText::new(format!("· {word} ·")).color(forest()),
                     );
-                ui.label(format!(
-                    "· {} · {}",
-                    bond_label(relationship.affinity, relationship.avoidance),
-                    together
-                ));
-            });
-        }
-    });
-}
-
-fn bond_label(affinity: u8, avoidance: u8) -> &'static str {
-    if avoidance >= 160 {
-        "keeping some distance"
-    } else if affinity >= 192 {
-        "devoted"
-    } else if affinity >= 112 {
-        "close"
-    } else if affinity >= 48 {
-        "warming up"
-    } else {
-        "new friends"
-    }
-}
-
-fn play_label(playfulness: u8) -> &'static str {
-    if playfulness >= 160 {
-        "very playful"
-    } else if playfulness >= 72 {
-        "playful"
-    } else {
-        "gentle"
-    }
-}
-
-/// How two companions are together, beyond how close they are: how they play, or, while they do
-/// not play much, what their temperaments make of each other.
-fn together_label(
-    a: &Creature,
-    b: &Creature,
-    relationship: &formiga_core::CreatureRelationship,
-) -> &'static str {
-    use formiga_core::TemperamentKind as Kind;
-    if relationship.playfulness >= 72 {
-        return play_label(relationship.playfulness);
-    }
-    let (a, b) = (a.temperament(), b.temperament());
-    let feisty = |t: &formiga_core::Temperament| t.axes.feistiness >= 0.65;
-    let both = |test: &dyn Fn(&formiga_core::Temperament) -> bool| test(&a) && test(&b);
-    if both(&feisty) {
-        "squabbling"
-    } else if both(&|t| t.kind == Kind::Troublemaker) {
-        "partners in mischief"
-    } else if (a.kind == Kind::Grump || b.kind == Kind::Grump) && feisty(&a) != feisty(&b) {
-        "an odd couple"
-    } else if both(&|t| t.axes.social <= 0.3) {
-        "quiet company"
-    } else if both(&|t| t.axes.energy <= 0.35) {
-        "easy company"
-    } else if relationship.affinity >= 112 {
-        "cozy"
-    } else {
-        "polite"
+                }
+                let (rect, _) =
+                    ui.allocate_exact_size(egui::vec2(side, side), egui::Sense::hover());
+                let texture = shell.portrait_texture(ui.ctx(), creature);
+                clubhouse::paper::face(ui.painter(), rect, &texture, true);
+                if clubhouse::companion_page::face_button(
+                    ui,
+                    rect,
+                    egui::Id::new(("pair-face", pair.a, pair.b, creature.id)),
+                    &creature.name,
+                )
+                .on_hover_text(format!("{}'s page", creature.name))
+                .clicked()
+                {
+                    *selected_creature = Some(creature.id);
+                }
+                clubhouse::journal::write(ui, egui::RichText::new(&creature.name).color(ink()));
+            }
+        });
     }
 }
 

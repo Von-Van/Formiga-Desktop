@@ -38,6 +38,14 @@ All notable changes are documented here.
   could find moves to Home & keepsakes, beside the trees its finds hang in. An open section's way
   back is the page's corner turned up at its foot, "‹ Your colony", as well as Escape, instead of
   a button above its heading, on every page with sections.
+- Your colony opens on everyone together: the same picture of everyone standing about that Today
+  has, and the pairs who go together as two faces with a word between ("Mallow · cozy · Tofu").
+  Everyone is the first face in the strip, and ⌘[ ⌘] turn from everyone through each companion.
+  Any face in the notebook, on Today's highlight and log, the colony's picture, a pair or a
+  friend, turns to that companion's page, and Today's highlight has a button for it. A
+  companion's portrait on its page plays what it is doing, asleep while it sleeps, and holds
+  still under Reduce motion. "How everyone gets along" is no longer a row on each companion's
+  page, since the colony's own page shows it.
 
 ### Fixed
 
