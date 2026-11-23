@@ -1001,6 +1001,44 @@ of two if a valid colony frame exceeds the initial colony allocation. Simulation
 are reconciled to current native monitor IDs before rendering, so display sleep or hot-plug changes
 cannot strand a living creature outside every overlay.
 
+### Contact shadows
+
+Every companion drawn on the overlay stands on a small shadow: one quad, the first of its own
+stretch of the frame's vertices, drawn just before its body so the feet stand on it and nothing of
+it covers them (`gpu/shadow.rs`). It comes from the frame's own silhouette and the desktop's window
+rectangles alone, never from the screen. When an atlas is baked, each body frame's feet are measured
+— the first and just-past-the-last columns of its bottom two drawn rows (`ContactShadow::feet`,
+kept per slot beside the silhouette rows) — and the shadow is exactly that wide, centred under them
+and mirrored with the frame. On the desktop it is two art pixels tall, dark at about a third, its top
+row behind the feet's own bottom row and the other under the line they stand on.
+
+`ContactShadow::under` shrinks it evenly from both ends as the feet go up, two pixels at a time so
+it stays centred on whole pixels, and it is gone 48 art pixels up (`SHADOW_FADE_HEIGHT`); a lift of
+one pixel, a stride's bob, does not count. A frame that lifts the feet off the line in its own
+drawing keeps its shadow on the line, smaller. Thrown, coming down from a hop (drawn with the
+landing clip all the way), hanging by the hands or climbing a window's side, a companion may be off
+the ground, so its shadow goes on whatever is under its feet: `formiga_core::ground_below` looks
+straight down from them at the same exposed ledges and habitat floor a landing chooses from, and a
+ledge buried under another window does not count. With nothing under it there is no shadow. A
+companion being carried has none.
+
+On the village's grass the shadow is drawn as the ground shades itself: in the ink and strength of
+every house's and tree's own ground shadow, three rows tall with the outer two drawn in, all three
+lying back across the grass behind the line the feet stand on, so a companion at the front of the
+grass never has a shadow hanging off its front edge. A companion standing back among the houses has
+its shadow drawn in its own place between them, so the houses nearer the front cover it as they
+cover the companion, and in a doorway it lies over the house behind. The shadow carries its body's
+occlusion flag, so a chosen application hides it exactly where it hides the body.
+
+Every width of both shadows is one 48×240 sheet (`ContactShadow::sheet`, 46,080 bytes), built the
+first time anybody is drawn and kept for the life of the overlay, as the tow rope's is. It is its
+own texture rather than cells of the interface atlas because a shadow is drawn all the time and that
+atlas is only held while a bubble or a menu is up. It costs one quad, one bind group and one draw
+call per drawn companion, no wakeup and no simulation work. `formiga-tools ui-sheet` shows a
+companion on its shadow on light, dark and busy wallpaper, on a window's top and on the village's
+grass, stepping, asleep, landing, hopping and carried, and `animation-preview` draws every frame on
+the shadow it stands on.
+
 ## The creature menu
 
 A secondary click on a creature's existing interaction proxy opens one small strip above its head.

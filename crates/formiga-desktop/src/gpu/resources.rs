@@ -196,6 +196,7 @@ impl OverlayRenderer {
             hands: atlas.hands,
             held: atlas.held,
             silhouette: atlas.silhouette,
+            feet: atlas.feet,
             resting_baseline: CreatureRenderer::resting_baseline(&drawn.appearance, reduce_motion),
             dress,
             dress_colours,
@@ -462,6 +463,25 @@ impl OverlayRenderer {
         let (texture, bind_group) =
             self.static_texture("held things", HELD_SHEET_WIDTH, HELD_SHEET_HEIGHT, &pixels);
         self.held_sheet = Some(HeldSheetGpu {
+            _texture: texture,
+            bind_group,
+        });
+    }
+
+    /// The contact shadows' sheet: a few kilobytes, made the first time anybody is drawn and kept
+    /// for the life of the overlay, like the tow rope.
+    pub(super) fn ensure_shadow_sheet(&mut self) {
+        if self.shadow_sheet.is_some() {
+            return;
+        }
+        let pixels = ContactShadow::sheet().rgba_bytes();
+        let (texture, bind_group) = self.static_texture(
+            "contact shadows",
+            SHADOW_SHEET_WIDTH,
+            SHADOW_SHEET_HEIGHT,
+            &pixels,
+        );
+        self.shadow_sheet = Some(HeldSheetGpu {
             _texture: texture,
             bind_group,
         });

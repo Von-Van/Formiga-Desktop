@@ -12,6 +12,15 @@ All notable changes are documented here.
   the mouth each frame holds things by, so a belonging in the wrong place shows at a glance. `formiga-tools climb-sheet` shows a
   whole climb onto a window, a tenth of a second a picture, placed exactly as the desktop places a
   companion, and each body dangling from a ledge. Nothing a companion does or looks like changes.
+- Every companion now stands on a small shadow, so it reads as standing on a window's top or the
+  floor rather than floating over the desktop. The shadow is as wide as its feet in the frame it is
+  drawn in, dark at about a third, and drawn under the body so it never covers the feet. Thrown,
+  hopping between ledges, hanging from one or climbing, its shadow stays on whatever is below it and
+  shrinks the higher it goes; while you carry it there is none. On the village's grass it is drawn
+  in the same shade the houses and trees stand on. It is worked out from the companion's own
+  picture and the windows' rectangles, never from the screen, and costs one small quad per
+  companion and no extra wakeups. `formiga-tools ui-sheet` shows it on light, dark and busy
+  wallpaper, and `animation-preview` draws every frame on its shadow.
 
 ### Changed
 

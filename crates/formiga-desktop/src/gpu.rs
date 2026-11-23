@@ -3,16 +3,16 @@ use anyhow::{Context, Result};
 use bytemuck::{Pod, Zeroable};
 use formiga_art::{
     AccessoryArt, AnimationSpec, BodyClip, BodyPresentation, COLONY_OBJECT_ATLAS_HEIGHT,
-    COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE, ClipBridge, ColonyObjectRenderer,
+    COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE, ClipBridge, ColonyObjectRenderer, ContactShadow,
     CreatureRenderer, FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement, FrameShape,
     HELD_CELL, HELD_SHEET_HEIGHT, HELD_SHEET_WIDTH, HeldPlacement, HeldThing, MenuIcon, MenuLayout,
-    MilestoneBubbleRenderer, PixelPoint, PropSprite, Rgba, SHELTER_SIZE, ShelterRenderer,
-    SpriteRect, TALK_BUBBLE, TALK_DETAIL, TALK_ICON, TALK_ICON_AT, TALK_SHEET_HEIGHT,
-    TALK_SHEET_WIDTH, TRINKET_ATLAS_HEIGHT, TRINKET_ATLAS_WIDTH, TRINKET_CELL, TRINKET_FRAME_GLINT,
-    TRINKET_FRAME_REST, TalkSheet, TrinketAnchor, TrinketAtlasRenderer, UI_ATLAS_HEIGHT,
-    UI_ATLAS_WIDTH, UiAtlasRenderer, VILLAGE_ATLAS_HEIGHT, VILLAGE_ATLAS_WIDTH, VillageCell,
-    VillageLook, WONDER_CELL_HEIGHT, WONDER_CELL_WIDTH, WONDER_GROUND, WONDER_MIDDLE,
-    WonderRenderer, wonder_frame, wonder_frames,
+    MilestoneBubbleRenderer, PixelPoint, PropSprite, Rgba, SHADOW_SHEET_HEIGHT, SHADOW_SHEET_WIDTH,
+    SHELTER_SIZE, ShadowGround, ShelterRenderer, SpriteRect, TALK_BUBBLE, TALK_DETAIL, TALK_ICON,
+    TALK_ICON_AT, TALK_SHEET_HEIGHT, TALK_SHEET_WIDTH, TRINKET_ATLAS_HEIGHT, TRINKET_ATLAS_WIDTH,
+    TRINKET_CELL, TRINKET_FRAME_GLINT, TRINKET_FRAME_REST, TalkSheet, TrinketAnchor,
+    TrinketAtlasRenderer, UI_ATLAS_HEIGHT, UI_ATLAS_WIDTH, UiAtlasRenderer, VILLAGE_ATLAS_HEIGHT,
+    VILLAGE_ATLAS_WIDTH, VillageCell, VillageLook, WONDER_CELL_HEIGHT, WONDER_CELL_WIDTH,
+    WONDER_GROUND, WONDER_MIDDLE, WonderRenderer, wonder_frame, wonder_frames,
 };
 use formiga_art::{
     GROUND_ATLAS_HEIGHT, GROUND_STRIP_HEIGHT, GROUND_STRIP_WIDTH, GroundLayer, VillageGroundLook,
@@ -33,6 +33,7 @@ use winit::window::Window;
 mod atlas;
 mod occlusion;
 mod resources;
+mod shadow;
 mod train;
 mod ui;
 mod village;
@@ -40,6 +41,7 @@ pub(crate) use atlas::creature_horizontal_scale;
 use atlas::*;
 use occlusion::*;
 pub(crate) use occlusion::{monitor_has_fullscreen_window, visible_occlusion_rects};
+use shadow::*;
 pub use train::TrainView;
 #[cfg(test)]
 pub(crate) use ui::menu_scale as ui_menu_scale;
@@ -63,9 +65,9 @@ struct ZoneVertex {
 const MAX_OCCLUSION_RECTS: usize = 64;
 /// How many vertices of the habitat editor's zones the overlay holds: 128 rectangles.
 const MAX_ZONE_VERTICES: usize = 768;
-// Four creatures, a village of four dwellings and the two trees that bookend them, sixteen
-// keepsakes hung between the pair, one bubble, and eight belongings.
-const INITIAL_VERTEX_CAPACITY: usize = 258;
+// Four creatures and their shadows, a village of four dwellings and the two trees that bookend
+// them, sixteen keepsakes hung between the pair, one bubble, and eight belongings.
+const INITIAL_VERTEX_CAPACITY: usize = 282;
 const SURFACE_RECOVERY_STALLS: u8 = 3;
 
 #[repr(C)]
@@ -102,6 +104,8 @@ struct SpriteGpu {
     /// from the frame's top edge. A bubble hangs off the crown rather than off the frame, so a
     /// mini keeps its bubble as close to its head as an adult does.
     silhouette: Vec<(u8, u8)>,
+    /// How far across each baked body frame's feet reach, by slot (see `AtlasPixels::feet`).
+    feet: Vec<(u8, u8)>,
     resting_baseline: u32,
     /// What it was baked wearing, in the inks it was baked in.
     dress: Option<AccessoryArt>,
@@ -130,6 +134,8 @@ struct ShelterGpu {
 struct CreatureDraw {
     id: CreatureId,
     start: usize,
+    /// Its shadow, the first quad of its stretch, drawn before its body.
+    shadow: bool,
     trinket: bool,
     held: usize,
     /// What it is eating, sipping or playing with, after its held things: from the held sheet,
@@ -316,6 +322,8 @@ pub struct OverlayRenderer {
     talk_sheet: Option<HeldSheetGpu>,
     trinkets: Option<TrinketAtlasGpu>,
     rope: Option<RopeGpu>,
+    /// Every contact shadow's width, made the first time a companion is drawn and kept.
+    shadow_sheet: Option<HeldSheetGpu>,
     /// Each kind of wonder out on this display, at most one of each.
     wonders: Vec<WonderGpu>,
     /// The train's frames, while a trip is on this display.
@@ -597,6 +605,7 @@ impl OverlayRenderer {
             talk_sheet: None,
             trinkets: None,
             rope: None,
+            shadow_sheet: None,
             wonders: Vec::new(),
             train: None,
             tree_vertex_cache_key: None,
@@ -688,8 +697,7 @@ impl OverlayRenderer {
     /// Round a physical-pixel position onto the drawable's own pixel grid, so every sprite edge
     /// falls exactly between two drawable pixels and nearest sampling stays even.
     fn snap(&self, physical: f32) -> f32 {
-        let divisor = self.render_divisor as f32;
-        (physical / divisor).round() * divisor
+        snap_to(physical, self.render_divisor)
     }
 
     /// Where a creature's contact point is drawn, in monitor-local physical pixels on the
@@ -880,7 +888,7 @@ impl OverlayRenderer {
         };
         let mut vertices = Vec::with_capacity(
             object_vertices.len()
-                + visible.len() * 18
+                + visible.len() * 24
                 + village_quads.len() * 6
                 + tree_vertices.len()
                 + usize::from(bubble_creature.is_some()) * 6,
@@ -935,6 +943,8 @@ impl OverlayRenderer {
             self.ensure_wonder(wonder.kind, save.colony_seed);
             vertices.extend_from_slice(&self.wonder_vertices(*wonder, save.settings.display_scale));
         }
+        let village_strip = ground_plan.as_ref().map(|plan| self.village_strip(plan));
+        let shadow_ground = (windows, &save.settings, village_strip);
         for creature in &visible {
             let sprite = self.sprite_for(creature).expect("sprite atlas exists");
             let face_state = CreatureRenderer::resolve_face_state_among(
@@ -945,8 +955,16 @@ impl OverlayRenderer {
                 save.settings.reduce_motion,
             );
             let start = vertices.len();
-            let (body, face, trinket, held, carried, tether) =
-                self.vertices_for(creature, save.settings.display_scale, sprite, face_state);
+            let (shadow, body, face, trinket, held, carried, tether) = self.vertices_for(
+                creature,
+                save.settings.display_scale,
+                sprite,
+                face_state,
+                shadow_ground,
+            );
+            if let Some(shadow) = shadow {
+                vertices.extend_from_slice(&shadow);
+            }
             vertices.extend_from_slice(&body);
             vertices.extend_from_slice(&face);
             if let Some(trinket) = trinket {
@@ -976,6 +994,7 @@ impl OverlayRenderer {
             creature_draws.push(CreatureDraw {
                 id: creature.id,
                 start,
+                shadow: shadow.is_some(),
                 trinket: trinket.is_some(),
                 held: held_count,
                 carried: carried.map(|(_, sheet)| sheet),
@@ -996,6 +1015,9 @@ impl OverlayRenderer {
         let prop_vertex_count = prop_vertices.len();
         if prop_vertex_count > 0 || creature_draws.iter().any(|draw| draw.held > 0) {
             self.ensure_colony_object_atlas(save.colony_seed);
+        }
+        if creature_draws.iter().any(|draw| draw.shadow) {
+            self.ensure_shadow_sheet();
         }
         if creature_draws
             .iter()
@@ -1144,9 +1166,17 @@ impl OverlayRenderer {
             // standing back among them drawn between the ones behind it and the ones in front.
             let draw_creature = |pass: &mut wgpu::RenderPass<'_>, creature: &CreatureDraw| {
                 if let Some(sprite) = self.sprite_at(creature.id, creature.set_back) {
-                    draw(pass, &sprite.body_bind_group, creature.start, 6);
-                    draw(pass, &sprite.face_bind_group, creature.start + 6, 6);
-                    let mut next = creature.start + 12;
+                    // Its shadow first, so the feet stand on it and nothing of it covers them.
+                    let mut next = creature.start;
+                    if creature.shadow {
+                        if let Some(sheet) = &self.shadow_sheet {
+                            draw(pass, &sheet.bind_group, next, 6);
+                        }
+                        next += 6;
+                    }
+                    draw(pass, &sprite.body_bind_group, next, 6);
+                    draw(pass, &sprite.face_bind_group, next + 6, 6);
+                    next += 12;
                     if creature.trinket
                         && let Some(trinkets) = &self.trinkets
                     {
@@ -1379,7 +1409,13 @@ impl OverlayRenderer {
         display_scale: u8,
         sprite: &SpriteGpu,
         face_state: FaceRenderState,
+        (windows, settings, village): (
+            &[DesktopWindow],
+            &formiga_core::Settings,
+            Option<VillageStrip>,
+        ),
     ) -> (
+        Option<[Vertex; 6]>,
         [Vertex; 6],
         [Vertex; 6],
         Option<[Vertex; 6]>,
@@ -1429,6 +1465,32 @@ impl OverlayRenderer {
             std::mem::swap(&mut u_left, &mut u_right);
         }
         let occlusion_enabled = (creature.state.action != ActionKind::Dragged) as u8 as f32;
+        // Its shadow, under it on whatever it stands on, occluded wherever its body is.
+        let grounds = ShadowGrounds {
+            monitor: &self.monitor,
+            render_divisor: self.render_divisor,
+            windows,
+            settings,
+            village,
+        };
+        let shadow = grounds
+            .spot(
+                creature,
+                sprite.silhouette[slot as usize].1,
+                (local_x, contact_y),
+                frame_top,
+                display_scale,
+            )
+            .and_then(|spot| {
+                shadow_quad(
+                    sprite.feet[slot as usize],
+                    facing_right,
+                    spot,
+                    self.layout,
+                    occlusion_enabled,
+                    |value| self.snap(value),
+                )
+            });
         let body = [
             Vertex {
                 position: [left, top],
@@ -1649,7 +1711,7 @@ impl OverlayRenderer {
                 });
             }
         }
-        (body, face, trinket, held, carried, tether)
+        (shadow, body, face, trinket, held, carried, tether)
     }
 
     /// A straight line `width` overlay pixels wide from `from` to `to`, in the string colour the
@@ -1742,6 +1804,12 @@ impl OverlayRenderer {
             vertex([left, bottom], [u_left, v_bottom]),
         ]
     }
+}
+
+/// `physical` rounded onto the grid of a drawable `render_divisor` window pixels to each of its own.
+pub(super) fn snap_to(physical: f32, render_divisor: u32) -> f32 {
+    let divisor = render_divisor as f32;
+    (physical / divisor).round() * divisor
 }
 
 fn expanded_vertex_capacity(current: usize, required: usize) -> Option<usize> {
