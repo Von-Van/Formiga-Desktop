@@ -474,7 +474,13 @@ new companion's textures come to about 1.70 MB — 1.24 MB
 before its own repertoire of washing, shaking, sniffing and the other ways it sleeps and walks,
 its chores, its pet and the four ways it eats a meal added five rows of cells, 1.34 MB in 0.66.0 alone, when the walk, the run, the greeting and the
 meal stopped repeating frames — and much less under reduced motion, where each clip holds one
-frame. With no two frames alike they would be 2,442,240 bytes, which is what the budgets hold: below a 4,500,000-byte
+frame. That frame is the clip's still frame (`AnimationSpec::still_frame`), the moment that says
+best what the clip is doing: the first for nearly every clip, play's among them with the toy at
+the paw, but the snack up at the mouth with a bite out of it for eating, the cup tipped to the
+mouth for drinking and a pull, one paw above the other, for a climb. Every frame of a clip is drawn
+as that one under reduced motion, the held thing and the marks around the body included, so the
+clip bakes one cell; `formiga-tools activity-sheet --reduced` draws the clips as reduced motion
+shows them. With no two frames alike they would be 2,442,240 bytes, which is what the budgets hold: below a 4,500,000-byte
 test limit per creature, raised deliberately from 1.5 MB so the pose vocabulary has room to grow
 without the budget moving each time, and a full colony of six under 15 MiB, raised from 10 MiB in
 0.62.0 for the new poses and faces.

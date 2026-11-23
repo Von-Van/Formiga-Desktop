@@ -361,6 +361,21 @@ impl AnimationSpec {
         }
     }
 
+    /// The frame a clip holds still on with reduced motion, the moment that says best what it is
+    /// doing: the first for nearly every clip, play among them, whose first frame has the toy at
+    /// the paw already. Eating holds the snack up at the mouth with a bite out of it rather than
+    /// away from the face before the first bite, drinking the cup tipped to the mouth rather than
+    /// held down, and a climb a pull, one paw above the other, rather than the first reach with
+    /// both up together. Under reduced motion every frame of a clip is drawn as this one, so the
+    /// atlas bakes the clip as one cell of it.
+    pub fn still_frame(clip: impl Into<BodyClip>) -> u8 {
+        match clip.into() {
+            BodyClip::Action(ActionKind::Eat | ActionKind::ClimbWindow) => 1,
+            BodyClip::Action(ActionKind::Drink) => 2,
+            _ => 0,
+        }
+    }
+
     pub const fn body_action(action: ActionKind) -> ActionKind {
         match action {
             ActionKind::Tossed => ActionKind::Dragged,
@@ -1250,7 +1265,11 @@ impl CreatureRenderer {
         reduce_motion: bool,
         detail: u32,
     ) -> (RenderedBodyFrame, Option<Canvas>) {
-        let frame = if reduce_motion { 0 } else { frame };
+        let frame = if reduce_motion {
+            AnimationSpec::still_frame(clip)
+        } else {
+            frame
+        };
         let clip = clip.body();
         let face_genome;
         // The body as painted, before anything is drawn on it, and the same body painted finely.

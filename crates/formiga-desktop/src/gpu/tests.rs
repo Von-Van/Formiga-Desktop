@@ -376,6 +376,51 @@ fn every_frame_and_face_is_drawn_from_a_cell_that_holds_it() {
     }
 }
 
+/// With motion reduced each clip bakes one cell, shared by every frame of it, and that cell is the
+/// clip's still frame: what it holds there is what the moving clip holds on that frame, the snack
+/// at the mouth and the cup tipped to it rather than the first frame of either.
+#[test]
+fn reduced_motion_bakes_each_clip_as_one_cell_of_its_still_frame() {
+    let world = World::new(
+        [7; 32],
+        time::OffsetDateTime::UNIX_EPOCH,
+        &formiga_core::DesktopSnapshot::default(),
+    );
+    let creature = &world.save.creatures[0];
+    let reduced = build_atlas_pixels(creature, true, false, None, 1);
+    let moving = build_atlas_pixels(creature, false, false, None, 1);
+    for clip in BodyClip::baked() {
+        let still = atlas_slot(clip, AnimationSpec::still_frame(clip)) as usize;
+        for frame in 0..AnimationSpec::for_clip(clip).frames {
+            let slot = atlas_slot(clip, frame) as usize;
+            assert_eq!(
+                reduced.body_cells[slot], reduced.body_cells[still],
+                "{clip:?} frame {frame} has a cell of its own under reduced motion"
+            );
+        }
+        assert_eq!(
+            reduced.held[still].map(|held| held.thing),
+            moving.held[still].map(|held| held.thing),
+            "{clip:?} holds still on another frame than its still frame"
+        );
+    }
+    let cells = |atlas: &AtlasPixels| {
+        atlas
+            .body_cells
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+    };
+    eprintln!(
+        "reduced motion: {} body cells, {} bytes; moving: {} body cells, {} bytes",
+        cells(&reduced),
+        reduced.body_pixels.len() + reduced.face_pixels.len(),
+        cells(&moving),
+        moving.body_pixels.len() + moving.face_pixels.len(),
+    );
+    assert!(cells(&reduced) <= BodyClip::baked().count());
+}
+
 /// Every variant the catalogue has — including the eight the simulation cannot pick yet —
 /// samples a real cell of the colony sheet, on both of its frames.
 #[test]
