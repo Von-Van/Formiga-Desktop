@@ -731,6 +731,92 @@ fn the_atlas_keeps_each_frames_paw_for_every_body_slot() {
     }
 }
 
+/// Through a whole watering beat, ticked as the desktop ticks it, the can is on the paw on every
+/// frame and the water is drawn only while the pour has the can tipped over, its quad centred on
+/// the tipped can's spout whichever way the companion faces and however large it is drawn.
+#[test]
+fn the_water_runs_from_the_cans_spout_only_while_the_pour_tips_it() {
+    use formiga_art::{BodyPresentation, PropSprite};
+    use formiga_core::{Beat, BeatKind, Gesture, VillageProp};
+    let world = World::new(
+        [23; 32],
+        time::OffsetDateTime::UNIX_EPOCH,
+        &formiga_core::DesktopSnapshot::default(),
+    );
+    let mut creature = world.save.creatures[0].clone();
+    creature.state.action = ActionKind::Idle;
+    let hands = (300.0, 400.0);
+    let tipped = ColonyObjectRenderer::prop_cell(PropSprite::WateringCanTipped);
+    let upright = ColonyObjectRenderer::prop_cell(PropSprite::WateringCan);
+    let water = ColonyObjectRenderer::prop_cell(PropSprite::Water);
+    let (spout_x, spout_y) = PropSprite::WateringCanTipped
+        .spout()
+        .expect("the tipped can has a spout");
+    let half = COLONY_OBJECT_SIZE as f32 / 2.0;
+    for facing_right in [true, false] {
+        for display_scale in [1_u8, 2, 3] {
+            creature.state.facing_right = facing_right;
+            let mut beat = Beat::new(BeatKind::Watering, 5.0);
+            beat.held = Some(VillageProp::WateringCan);
+            let (mut poured, mut level) = (0, 0);
+            while beat.elapsed <= beat.length {
+                creature.state.beat = Some(beat);
+                let shown = BodyPresentation::for_creature(&creature);
+                assert_eq!(shown.clip, BodyClip::Gesture(Gesture::Pour));
+                let [can, running] = village_held_cells(
+                    VillageProp::WateringCan,
+                    shown.clip,
+                    shown.frame,
+                    hands,
+                    shown.facing_right,
+                    display_scale,
+                );
+                let (can_cell, can_centre) = can.expect("the can is always in its paws");
+                assert_eq!(can_centre, hands, "the can is on the paw the frame draws");
+                // The pour leans into the can on its second and third frames and is level on the
+                // first and last.
+                let tips = matches!(shown.frame % 4, 1 | 2);
+                assert_eq!(running.is_some(), tips, "frame {}", shown.frame);
+                assert_eq!(can_cell, if tips { tipped } else { upright });
+                if let Some((cell, centre)) = running {
+                    poured += 1;
+                    assert_eq!(cell, water);
+                    let unit = f32::from(display_scale);
+                    let across = (spout_x as f32 - half) * unit;
+                    let spout = (
+                        can_centre.0 + if shown.facing_right { across } else { -across },
+                        can_centre.1 + (spout_y as f32 - half) * unit,
+                    );
+                    close(centre.0, spout.0, "water centre x at the spout");
+                    close(centre.1, spout.1, "water centre y at the spout");
+                } else {
+                    level += 1;
+                }
+                beat.elapsed += 0.05;
+            }
+            assert!(poured > 0 && level > 0, "it pours and comes level");
+        }
+    }
+    // Nothing else the village puts in a paw pours, and the can pours on no other clip's frames.
+    for clip in BodyClip::baked() {
+        for frame in 0..AnimationSpec::for_clip(clip).frames {
+            for prop in [
+                VillageProp::WateringCan,
+                VillageProp::Apple,
+                VillageProp::Leaf,
+                VillageProp::Produce(formiga_core::GardenKind::Vegetables),
+            ] {
+                let [held, running] = village_held_cells(prop, clip, frame, hands, true, 2);
+                assert!(held.is_some());
+                let pours = prop == VillageProp::WateringCan
+                    && clip == BodyClip::Gesture(Gesture::Pour)
+                    && matches!(frame, 1 | 2);
+                assert_eq!(running.is_some(), pours, "{prop:?} {clip:?} frame {frame}");
+            }
+        }
+    }
+}
+
 #[test]
 fn layered_atlas_matches_the_baked_budget_per_creature() {
     let desktop = formiga_core::DesktopSnapshot {

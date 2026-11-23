@@ -85,6 +85,10 @@ All notable changes are documented here.
   crosses the face. A snack is held up, carried into the mouth as the head dips to it, and gone
   while it is chewed, with crumbs at the end; a cup tips back with the head, further on the deepest
   of the sip. Every other clip draws exactly as before.
+- Watering pours in time with the pour. The can tips over on the frames the companion leans into
+  it and comes level when it does, and the water runs out of the spout only while it is tipped,
+  rather than appearing beside an upright can for most of the watering whatever the pose. The water
+  starts at the spout facing either way.
 
 ### Fixed
 
