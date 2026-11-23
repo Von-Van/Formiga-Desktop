@@ -1094,6 +1094,36 @@ It is 0.66.1, at the 2× scale the owner uses rather than the 3× the budgets ar
 reference rather than a gate result. Energy with the menu open, and anything at all on Windows, is
 still to be measured ([#6](https://github.com/Von-Van/Formiga-Desktop/issues/6)).
 
+## Climbing a paw at a time
+
+The climb's shaped rise is a few multiplications a tick for a companion on a window's side, and
+nothing for anyone else. Measured with `formiga-tools tick-bench` in one sitting against a build of
+the commit before it, run before and after it, `World::tick` costs the same within the noise: the
+medians of the eleven scenarios moved by less than half a microsecond either way, and the saves a
+minute are unchanged (asks a minute in the busy scenarios moved by under one in a hundred, as climbs
+there now start their clip a fraction of a tick earlier). The two frames the climb gained fit in
+cells each creature's body texture already had spare, so its textures stay at 1,704,960 bytes.
+
+## The bridge between clips
+
+The one-tick bridge between clips (`formiga_art::ClipBridge`, see ARCHITECTURE.md, "Between the
+big moments") is worked out by the app once a tick, not by the simulation, so `World::tick` does
+not change: `formiga-tools tick-bench` run on the commit before it and after it in one sitting
+gave the eleven scenarios within 0.15 µs of each other in both directions (6 creatures on a busy
+desktop: 8.99 and 9.11 µs; 6 creatures homebound: 6.25 and 6.27 µs). What the app adds per tick
+is one more `BodyPresentation::for_creature` per companion, a lookup of the silhouette rows the
+atlas already keeps, and `held_now`: timed the same way in a throwaway copy of the harness, 0.32 µs
+a tick for six companions on the desktop and 0.43 µs for six and a visitor at home. It adds no
+texture, quad or draw call, and no allocation per tick beyond rebuilding a map of six entries.
+
+A bridge asks for a frame when it starts and when it ends, so the settle is on the desktop for
+exactly its tick. Counted with real outlines in the same throwaway harness over 33 simulated
+minutes a scenario, bridges come about 2 a minute for a colony of one to four and 8.5 to 10.3 a
+minute for six, a tenth or less of the clip changes; paused, none. Most fall while the colony is
+moving and drawn at 20 Hz anyway, so at most two frames per bridge are brought forward: under 21
+frames a minute in the busiest scenario, against 1,200 a minute for a colony on the move, and at
+about 2 ms of process CPU a frame, at most 0.07% of one core.
+
 ## Contact shadows
 
 ### Frames

@@ -193,6 +193,7 @@ impl OverlayRenderer {
             face_atlas_height: atlas.face_height,
             face_cells: atlas.face_cells,
             face_anchors: atlas.face_anchors,
+            hands: atlas.hands,
             held: atlas.held,
             silhouette: atlas.silhouette,
             feet: atlas.feet,

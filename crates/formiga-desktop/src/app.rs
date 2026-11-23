@@ -25,7 +25,7 @@ use crate::updater::{
     check_companion, check_github, download_update,
 };
 use anyhow::{Context, Result};
-use formiga_art::{AnimationSpec, BodyPresentation, MenuIcon};
+use formiga_art::{AnimationSpec, BodyPresentation, ClipBridge, MenuIcon};
 use formiga_core::*;
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
@@ -142,6 +142,9 @@ pub struct FormigaApp {
     interaction_proxies: BTreeMap<WindowId, InteractionProxy>,
     /// Which size each companion is shown at, after the last tick (see `carry_set_back`).
     set_back_shown: BTreeMap<CreatureId, bool>,
+    /// Each companion's one-tick bridge between clips, after the last tick (see
+    /// `carry_clip_bridges`).
+    clip_bridges: BTreeMap<CreatureId, ClipBridge>,
     /// Each house of the village as it can be clicked, while Formiga Home is installed, and the
     /// native window over each.
     house_shapes: crate::houses::HouseShapes,
@@ -222,6 +225,7 @@ impl FormigaApp {
             settings_window: None,
             interaction_proxies: BTreeMap::new(),
             set_back_shown: BTreeMap::new(),
+            clip_bridges: BTreeMap::new(),
             house_shapes: Default::default(),
             house_proxies: BTreeMap::new(),
             wonder_shapes: crate::wonder_proxies::WonderShapes::default(),
@@ -756,6 +760,45 @@ impl FormigaApp {
         }
     }
 
+    /// Move every companion's one-tick bridge between clips on by a tick
+    /// (`formiga_art::ClipBridge`) and tell every overlay, so the picture, its bubbles and the
+    /// grab mask show the settle on the same tick. Each frame's outline is read from the atlas
+    /// of the display the companion is on; until that is baked nothing is bridged. A bridge
+    /// that starts or ends asks for a frame at once, so the settle is on the desktop for exactly
+    /// the tick it belongs to however slowly the colony is being drawn. While a trip has the
+    /// colony nothing is bridged.
+    fn carry_clip_bridges(&mut self) {
+        let away = self.colony_away();
+        let was = std::mem::take(&mut self.clip_bridges);
+        let mut turned = false;
+        if let (Some(world), false) = (&self.world, away) {
+            let reduced = world.save.settings.reduce_motion;
+            for creature in world
+                .save
+                .creatures
+                .iter()
+                .chain(world.save.visitors.on_stage())
+            {
+                let body = BodyPresentation::for_creature(creature);
+                let shape = self
+                    .overlays
+                    .values()
+                    .find(|overlay| overlay.monitor.id == creature.state.surface.monitor_id)
+                    .and_then(|overlay| overlay.frame_shape(creature, body));
+                let mut bridge = was.get(&creature.id).copied().unwrap_or_default();
+                let before = bridge.bridging();
+                turned |= bridge.advance(body, shape, reduced) != before;
+                self.clip_bridges.insert(creature.id, bridge);
+            }
+        }
+        for overlay in self.overlays.values_mut() {
+            overlay.show_clip_bridges(&self.clip_bridges);
+        }
+        if turned {
+            self.request_overlay_redraw();
+        }
+    }
+
     fn sync_interaction_proxies(&mut self, event_loop: &ActiveEventLoop) {
         if self.habitat_editor.is_some() {
             for proxy in self.interaction_proxies.values_mut() {
@@ -866,6 +909,11 @@ impl FormigaApp {
                                 world.save.home.is_active(),
                             )
                         }),
+                    bridge: self
+                        .clip_bridges
+                        .get(&creature.id)
+                        .copied()
+                        .unwrap_or_default(),
                 },
             );
         }
@@ -1377,6 +1425,7 @@ impl ApplicationHandler<UserEvent> for FormigaApp {
         }
         if ticked {
             self.carry_set_back();
+            self.carry_clip_bridges();
             self.sync_interaction_proxies(event_loop);
             self.sync_house_proxies(event_loop);
             self.sync_wonder_proxies(event_loop);
