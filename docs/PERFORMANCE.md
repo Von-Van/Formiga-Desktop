@@ -1093,3 +1093,97 @@ minutes — 2.71% CPU, 61 MB resident, and an energy impact of 2.51 on average a
 It is 0.66.1, at the 2× scale the owner uses rather than the 3× the budgets are set at, so it is a
 reference rather than a gate result. Energy with the menu open, and anything at all on Windows, is
 still to be measured ([#6](https://github.com/Von-Van/Formiga-Desktop/issues/6)).
+
+## Climbing a paw at a time
+
+The climb's shaped rise is a few multiplications a tick for a companion on a window's side, and
+nothing for anyone else. Measured with `formiga-tools tick-bench` in one sitting against a build of
+the commit before it, run before and after it, `World::tick` costs the same within the noise: the
+medians of the eleven scenarios moved by less than half a microsecond either way, and the saves a
+minute are unchanged (asks a minute in the busy scenarios moved by under one in a hundred, as climbs
+there now start their clip a fraction of a tick earlier). The two frames the climb gained fit in
+cells each creature's body texture already had spare, so its textures stay at 1,704,960 bytes.
+
+## The bridge between clips
+
+The one-tick bridge between clips (`formiga_art::ClipBridge`, see ARCHITECTURE.md, "Between the
+big moments") is worked out by the app once a tick, not by the simulation, so `World::tick` does
+not change: `formiga-tools tick-bench` run on the commit before it and after it in one sitting
+gave the eleven scenarios within 0.15 µs of each other in both directions (6 creatures on a busy
+desktop: 8.99 and 9.11 µs; 6 creatures homebound: 6.25 and 6.27 µs). What the app adds per tick
+is one more `BodyPresentation::for_creature` per companion, a lookup of the silhouette rows the
+atlas already keeps, and `held_now`: timed the same way in a throwaway copy of the harness, 0.32 µs
+a tick for six companions on the desktop and 0.43 µs for six and a visitor at home. It adds no
+texture, quad or draw call, and no allocation per tick beyond rebuilding a map of six entries.
+
+A bridge asks for a frame when it starts and when it ends, so the settle is on the desktop for
+exactly its tick. Counted with real outlines in the same throwaway harness over 33 simulated
+minutes a scenario, bridges come about 2 a minute for a colony of one to four and 8.5 to 10.3 a
+minute for six, a tenth or less of the clip changes; paused, none. Most fall while the colony is
+moving and drawn at 20 Hz anyway, so at most two frames per bridge are brought forward: under 21
+frames a minute in the busiest scenario, against 1,200 a minute for a colony on the move, and at
+about 2 ms of process CPU a frame, at most 0.07% of one core.
+
+## Contact shadows
+
+### Frames
+
+A shadow under every drawn companion adds, per companion and per presented frame, one quad of six
+vertices (120 bytes more in the frame's one vertex upload), one bind group and one draw call inside
+the existing pass, both before its body. A companion that might be off the ground — thrown, coming
+down from a hop, hanging or climbing — also looks straight down for the ground under it, over at
+most 64 window rectangles, which is a few microseconds on the frames it is in the air and nothing
+on the rest. The overlay's starting vertex buffer holds four companions' shadows, 282 vertices
+where it held 258. The shadow adds no wakeup, no frame and no simulation work. Live process CPU
+per frame, the comparable figure since 0.63.0, was not re-measured for it.
+
+### The simulation
+
+The simulation does not draw shadows, and `World::tick` is unchanged. `formiga-tools tick-bench`,
+the commit before and the shadow's commit built for release and run one after the other in one
+sitting, measured the same within the noise: the eleven scenarios' means moved between 2% faster
+and 1% slower, never by more than a tenth of a microsecond (six creatures on a busy desktop with
+the cursor, the most expensive, 9.05 µs before and 9.08 µs after).
+
+### Textures
+
+Every width of both shadows, the desktop's and the village ground's, is one 48×240 sheet of
+46,080 bytes per overlay, built the first time a companion is drawn and kept, like the tow rope. A
+companion's own atlases are unchanged: the reference companion's are 1,704,960 bytes before and
+after, and its frames 213, because a frame's feet are measured from the frame already rendered
+for the atlas and kept as two bytes per frame beside its silhouette rows.
+
+## Riders on a dragged window, and the two-tone outline
+
+### Frames
+
+A rider on a window being dragged used to be drawn at its resting clip's 4 Hz, and the window list
+under it was read on every second 200 ms tick, every 400 ms. Replaying the app's own tick, read and
+frame schedule headlessly (`app::rides` tests) with a window dragged at 300, 600 and 1200 points a
+second, the rider was drawn about four times a second and jumped 120, 240 and 480 points between
+frames, up to 60, 120 and 240 points behind its window. Now a tick is brought forward to each
+quarter-second read, the colony is drawn at 20 Hz while a rider's window is moving, and the rider is
+carried along between reads: once the window's motion has been measured it moves 15, 30 and 60
+points a frame, exactly as far as the window does, and is drawn within a point of it. The first
+quarter second of a drag, before any read has seen the window move, still jumps as before, and a
+window eased to a stop over 0.3 s carries its rider 17, 34 and 68 points past where it stops until
+the next read sets it back; a sudden stop carries it no further, because the carry stops with the
+pointer.
+
+Those frames are the cost: about sixteen more a second than the rider's resting clip asks for, at
+about 2 ms of process CPU each, so roughly 3% of one core for as long as a window with somebody on it
+is being dragged and a quarter second after. The read alignment adds at most four wakeups a second,
+only while somebody is on a window that could be moving. Per frame, the carry is a list of at most
+six offsets and a short search of it per drawn companion. Live process CPU was not measured.
+
+### The simulation
+
+`World::tick` is unchanged: `World::ride_drift` is read by the desktop when it draws and schedules,
+from the velocity `world/rides.rs` already keeps, so `tick-bench` was not run.
+
+### Textures
+
+The outline's pale rim is baked into the pixels the outlined frames already have: the reference
+companion's atlases are 1,704,960 bytes before and after, outlined or not, with the same 160 body
+cells. Baking an outlined atlas takes about 12 ms where it took 9 (release build, the budget test's
+companion), once per bake.

@@ -571,6 +571,182 @@ fn label_tab_width(text: &str) -> u32 {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Contact shadow
+// ---------------------------------------------------------------------------------------------
+
+/// The widest contact shadow, in art pixels: a body frame across.
+pub const SHADOW_MAX_WIDTH: u32 = crate::FRAME_SIZE;
+/// The contact shadows' own sheet: every width a shadow can be, one under the other, the
+/// desktop's two-row shadows first and then the village ground's three-row ones. It is a
+/// texture of its own rather than cells of [`UiAtlasRenderer::render`], because a shadow is
+/// drawn under every companion all the time and the UI atlas is only held while a bubble or a
+/// menu is up.
+pub const SHADOW_SHEET_WIDTH: u32 = SHADOW_MAX_WIDTH;
+pub const SHADOW_SHEET_HEIGHT: u32 = SHADOW_MAX_WIDTH * (2 + 3);
+/// How high above the ground, in art pixels, a companion's shadow has shrunk to nothing.
+pub const SHADOW_FADE_HEIGHT: f32 = 48.0;
+/// How far its feet can come up off the ground, in art pixels, before its shadow starts to
+/// shrink: a stride's bob is not a hop.
+const SHADOW_STILL_LIFT: f32 = 1.0;
+/// Every shadow on the desktop: dark, at about a third, so it darkens a light wallpaper and
+/// still reads on a dark one without ever hiding what is under it.
+const SHADOW_INK: Rgba = Rgba::new(20, 24, 26, 90);
+/// The shading the village ground stands its houses, trees and belongings on, in the ink and
+/// strength every dwelling's own ground shadow is drawn in.
+const GROUND_SHADE: Rgba = Rgba::new(20, 24, 26, 95);
+
+/// What a shadow is laid on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ShadowGround {
+    /// A window's ledge or the habitat floor, seen edge on: two rows.
+    Desktop,
+    /// The village's grass, seen a little from above as its houses' own shadows are: three rows,
+    /// the outer two drawn in.
+    Village,
+}
+
+impl ShadowGround {
+    /// How many rows tall the shadow is.
+    pub const fn rows(self) -> u32 {
+        match self {
+            Self::Desktop => 2,
+            Self::Village => 3,
+        }
+    }
+
+    /// How many of those rows lie above the line its feet stand on. On the desktop, the top
+    /// one, behind the feet's own bottom row, so the shadow peeks out round them rather than
+    /// hanging under them. On the village's grass, all three: the front of the grass is the
+    /// ground line, so a shadow there lies back across the grass behind the feet, as the houses'
+    /// own do, and never hangs off its front edge.
+    pub const fn above_contact(self) -> u32 {
+        match self {
+            Self::Desktop => 1,
+            Self::Village => 3,
+        }
+    }
+
+    fn first_row(self) -> u32 {
+        match self {
+            Self::Desktop => 0,
+            Self::Village => SHADOW_MAX_WIDTH * Self::Desktop.rows(),
+        }
+    }
+}
+
+/// A companion's shadow on whatever it stands on, across the frame it is drawn from: where its
+/// middle falls, in art pixels from the frame's left edge, and how wide it is. Measured from the
+/// frame's own silhouette alone, never from what is on the screen.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ContactShadow {
+    pub centre: f32,
+    pub width: u32,
+}
+
+impl ContactShadow {
+    /// The feet of a frame: the first and just-past-the-last columns its bottom two drawn rows
+    /// reach, or `None` for a frame that draws nothing.
+    pub fn feet(frame: &Canvas) -> Option<(u8, u8)> {
+        let (_, _, _, bottom) = frame.alpha_bounds()?;
+        let rows = bottom.saturating_sub(1)..=bottom;
+        let mut reach: Option<(u32, u32)> = None;
+        for y in rows {
+            for x in 0..frame.width() {
+                if frame.get(x as i32, y as i32).a > 0 {
+                    reach = Some(match reach {
+                        Some((left, right)) => (left.min(x), right.max(x + 1)),
+                        None => (x, x + 1),
+                    });
+                }
+            }
+        }
+        reach.map(|(left, right)| (left as u8, right as u8))
+    }
+
+    /// The shadow under feet reaching across `feet`, with the feet `lift` art pixels off the
+    /// ground: as wide as they are while they are on it, shrinking evenly from both ends the
+    /// higher they go, and gone by [`SHADOW_FADE_HEIGHT`].
+    pub fn under((left, right): (u8, u8), lift: f32) -> Option<Self> {
+        let full = u32::from(right.saturating_sub(left)).min(SHADOW_MAX_WIDTH);
+        let share = if lift <= SHADOW_STILL_LIFT {
+            1.0
+        } else {
+            (1.0 - (lift - SHADOW_STILL_LIFT) / SHADOW_FADE_HEIGHT).max(0.0)
+        };
+        // Two pixels at a time, one off each end, so it stays centred on whole pixels.
+        let trimmed = ((full as f32 * (1.0 - share)) / 2.0).round() as u32 * 2;
+        let width = full.saturating_sub(trimmed);
+        (width >= 2).then(|| Self {
+            centre: (f32::from(left) + f32::from(right)) / 2.0,
+            width,
+        })
+    }
+
+    /// The same shadow under the frame drawn the other way round.
+    pub fn mirrored(self) -> Self {
+        Self {
+            centre: crate::FRAME_SIZE as f32 - self.centre,
+            ..self
+        }
+    }
+
+    /// Its left edge, in art pixels from the frame's left edge.
+    pub fn left(self) -> f32 {
+        self.centre - self.width as f32 / 2.0
+    }
+
+    /// Where a shadow this wide lies on [`ContactShadow::sheet`].
+    pub fn cell(self, ground: ShadowGround) -> SpriteRect {
+        let width = self.width.clamp(1, SHADOW_MAX_WIDTH);
+        SpriteRect {
+            x: 0,
+            y: ground.first_row() + (width - 1) * ground.rows(),
+            width,
+            height: ground.rows(),
+        }
+    }
+
+    /// Every shadow, at every width, on the desktop and on the village ground.
+    pub fn sheet() -> Canvas {
+        let mut canvas = Canvas::new(SHADOW_SHEET_WIDTH, SHADOW_SHEET_HEIGHT);
+        for ground in [ShadowGround::Desktop, ShadowGround::Village] {
+            for width in 1..=SHADOW_MAX_WIDTH {
+                let cell = Self { centre: 0.0, width }.cell(ground);
+                draw_shadow(&mut canvas, cell, ground);
+            }
+        }
+        canvas
+    }
+}
+
+/// One shadow filling `cell`: a flat dark band with its ends half as dark, so it reads as soft
+/// and round at two pixels tall. On the village ground the rows above and below the middle one
+/// are drawn in, as an ellipse seen from a little above.
+fn draw_shadow(canvas: &mut Canvas, cell: SpriteRect, ground: ShadowGround) {
+    let ink = match ground {
+        ShadowGround::Desktop => SHADOW_INK,
+        ShadowGround::Village => GROUND_SHADE,
+    };
+    let soft = Rgba::new(ink.r, ink.g, ink.b, ink.a / 2);
+    let width = cell.width as i32;
+    for row in 0..cell.height as i32 {
+        let inset = match ground {
+            ShadowGround::Village if row != 1 => (width as f32 * 0.13).round().max(1.0) as i32,
+            _ => 0,
+        };
+        let (from, to) = (inset, width - inset);
+        for x in from..to {
+            let end = x == from || x == to - 1;
+            canvas.set(
+                cell.x as i32 + x,
+                cell.y as i32 + row,
+                if end { soft } else { ink },
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Drawing
 // ---------------------------------------------------------------------------------------------
 
@@ -1431,6 +1607,56 @@ fn glyph(letter: char) -> [&'static str; GLYPH_HEIGHT as usize] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_shadow_shrinks_evenly_from_both_ends_and_is_gone_by_its_fade_height() {
+        let feet = (14, 33);
+        let flat = ContactShadow::under(feet, 0.0).expect("a shadow on the ground");
+        assert_eq!(flat.width, 19);
+        assert_eq!(flat.centre, 23.5);
+        // A stride's bob is not a hop.
+        assert_eq!(ContactShadow::under(feet, 1.0), Some(flat));
+        let mut last = flat.width;
+        for lift in 2..SHADOW_FADE_HEIGHT as u32 {
+            let Some(shadow) = ContactShadow::under(feet, lift as f32) else {
+                continue;
+            };
+            assert_eq!(
+                shadow.centre, flat.centre,
+                "it stays centred under the feet"
+            );
+            assert_eq!(shadow.width % 2, flat.width % 2, "on whole pixels");
+            assert!(shadow.width <= last);
+            last = shadow.width;
+        }
+        assert_eq!(ContactShadow::under(feet, SHADOW_FADE_HEIGHT + 1.0), None);
+        let mirrored = flat.mirrored();
+        assert_eq!(mirrored.left(), crate::FRAME_SIZE as f32 - 33.0);
+    }
+
+    #[test]
+    fn every_shadow_width_has_its_own_cell_filled_to_its_ends() {
+        let sheet = ContactShadow::sheet();
+        for ground in [ShadowGround::Desktop, ShadowGround::Village] {
+            for width in 1..=SHADOW_MAX_WIDTH {
+                let cell = ContactShadow { centre: 0.0, width }.cell(ground);
+                assert!(cell.y + cell.height <= SHADOW_SHEET_HEIGHT);
+                assert_eq!(cell.height, ground.rows());
+                let row = if ground == ShadowGround::Village {
+                    1
+                } else {
+                    0
+                };
+                let y = (cell.y + row) as i32;
+                assert!(sheet.get(0, y).a > 0 && sheet.get(width as i32 - 1, y).a > 0);
+                assert_eq!(sheet.get(width as i32, y).a, 0, "{ground:?} {width}");
+                // Never darker than the ground's own shading.
+                for x in 0..width as i32 {
+                    assert!(sheet.get(x, y).a <= GROUND_SHADE.a);
+                }
+            }
+        }
+    }
 
     fn all_sprites() -> Vec<SpriteRect> {
         let mut rects = Vec::new();
