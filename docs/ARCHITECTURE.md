@@ -613,10 +613,10 @@ companion wears is drawn onto every body frame as the atlas is baked, so it cost
 texture of its own. Runtime work normally selects two slots and draws two nearest-filtered quads;
 discovery alone adds one temporary quad, and something the village has put in a companion's hands
 adds one or two from the object sheet, and what it eats or plays with one from the held sheet. A
-new companion's textures come to about 1.80 MB — 1.24 MB
+new companion's textures come to about 1.89 MB — 1.24 MB
 before its own repertoire of washing, shaking, sniffing and the other ways it sleeps and walks,
-its chores, its pet, the four ways it eats a meal and its breathing as it sits and sleeps added six
-rows of cells, 1.34 MB in 0.66.0 alone, when the walk, the run, the greeting and the
+its chores, its pet, the four ways it eats a meal, its breathing as it sits and sleeps, and the
+marks that drift over a greeting, a game with a friend and a cheer added seven rows of cells, 1.34 MB in 0.66.0 alone, when the walk, the run, the greeting and the
 meal stopped repeating frames — and much less under reduced motion, where each clip holds one
 frame. That frame is the clip's still frame (`AnimationSpec::still_frame`), the moment that says
 best what the clip is doing: the first for nearly every clip, play's among them with the toy at
