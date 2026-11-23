@@ -313,6 +313,8 @@ pub struct OverlayRenderer {
     wonders: Vec<WonderGpu>,
     /// The train's frames, while a trip is on this display.
     train: Option<train::TrainGpu>,
+    /// The windows its passengers look out of, while a trip is on this display.
+    passengers: Option<train::PassengersGpu>,
     tree_vertex_cache_key: Option<TreeVertexCacheKey>,
     tree_vertices: Vec<Vertex>,
     object_vertex_cache_key: Option<ObjectVertexCacheKey>,
@@ -591,6 +593,7 @@ impl OverlayRenderer {
             rope: None,
             wonders: Vec::new(),
             train: None,
+            passengers: None,
             tree_vertex_cache_key: None,
             tree_vertices: Vec::new(),
             object_vertex_cache_key: None,
@@ -973,11 +976,13 @@ impl OverlayRenderer {
             self.ensure_trinket_atlas(save);
         }
         // The train, in front of everyone: a companion walking up to its door goes behind it.
-        let train_start = vertices.len();
-        match ui
+        // Whoever is aboard looks out of a window over it, and whoever is stepping up at a door
+        // is drawn over it too, for that tick.
+        let train_here = ui
             .train
-            .filter(|train| train.pose.monitor_id == self.monitor.id)
-        {
+            .filter(|train| train.pose.monitor_id == self.monitor.id);
+        let train_start = vertices.len();
+        match train_here {
             Some(train) => {
                 self.ensure_train(&train);
                 vertices.extend_from_slice(
@@ -987,6 +992,27 @@ impl OverlayRenderer {
             None => self.train = None,
         }
         let train_vertex_count = vertices.len() - train_start;
+        let passenger_start = vertices.len();
+        match train_here {
+            Some(train) if train.pose.seated.contains(&true) => {
+                self.ensure_passengers(&train, &save.creatures);
+                vertices.extend(self.passenger_vertices(train.pose, save.settings.display_scale));
+            }
+            Some(_) => {}
+            None => self.passengers = None,
+        }
+        let passenger_vertex_count = vertices.len() - passenger_start;
+        let boarding: Vec<CreatureId> = train_here
+            .map(|train| {
+                train
+                    .pose
+                    .seats
+                    .iter()
+                    .zip(train.pose.boarding)
+                    .filter_map(|(seat, boarding)| seat.filter(|_| boarding))
+                    .collect()
+            })
+            .unwrap_or_default();
         let bubble_start = vertices.len();
         if let Some(creature) = bubble_creature
             && let Some(bubble_vertices) =
@@ -1207,6 +1233,9 @@ impl OverlayRenderer {
                     draw(&mut pass, &frames.bind_group, wonder_start + index * 6, 6);
                 }
             }
+            let (stepping_up, in_front): (Vec<&CreatureDraw>, Vec<&CreatureDraw>) = in_front
+                .into_iter()
+                .partition(|draw| boarding.contains(&draw.id));
             for creature in in_front {
                 draw_creature(&mut pass, creature);
             }
@@ -1229,6 +1258,19 @@ impl OverlayRenderer {
                     train_start,
                     train_vertex_count,
                 );
+            }
+            if passenger_vertex_count > 0
+                && let Some(passengers) = &self.passengers
+            {
+                draw(
+                    &mut pass,
+                    &passengers.bind_group,
+                    passenger_start,
+                    passenger_vertex_count,
+                );
+            }
+            for creature in stepping_up {
+                draw_creature(&mut pass, creature);
             }
             if bubble_vertex_count > 0
                 && let Some(bubble) = &self.bubble

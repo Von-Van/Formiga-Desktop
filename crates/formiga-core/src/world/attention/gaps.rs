@@ -72,7 +72,8 @@ impl World {
                     return None;
                 }
                 let (elapsed, seconds, rewarding) = match j {
-                    WindowJourney::Gap(_) => return None,
+                    // A newcomer walking in is nothing to stop and watch.
+                    WindowJourney::Gap(_) | WindowJourney::Entrance(_) => return None,
                     WindowJourney::Climb(g) => (
                         g.elapsed,
                         g.approach_duration + g.climb_duration + g.mantle_duration,

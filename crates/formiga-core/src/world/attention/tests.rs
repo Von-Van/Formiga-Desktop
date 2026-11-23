@@ -80,9 +80,13 @@ pub(super) fn fill_colony(world: &mut World, desktop: &DesktopSnapshot, now: Off
             .add_designed_adult([seed; 32], None, now, desktop)
             .unwrap();
     }
+    // Everyone here at once: nobody waiting their turn, and nobody still walking in.
     for creature in &mut world.save.creatures {
         creature.state.arrival_delay_secs = 0.0;
     }
+    world
+        .window_journeys
+        .retain(|_, journey| !journey.entering());
 }
 
 fn start(world: &mut World, desktop: &mut DesktopSnapshot, now: OffsetDateTime) {

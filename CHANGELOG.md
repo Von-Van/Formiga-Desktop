@@ -6,6 +6,16 @@ All notable changes are documented here.
 
 ### Changed
 
+- A new companion walks in instead of appearing. Adopted, or turning up as a mini or on the
+  calendar, it comes out of its own house door when the village is out, and otherwise walks in
+  along the floor from beyond the nearer edge of the display, a few seconds' walk at most. Paused,
+  hidden or with reduced motion it is simply there, as before. `formiga-tools arrival-sheet` shows
+  both ways in.
+- A friend towing a sleeper reaches back for the rope for a moment before the rope appears, and
+  stands with its paws down for a tick before it goes, so the rope is only ever drawn in a paw.
+- On the train, each companion steps up at its coach door in the first frame of a climb, and then
+  looks out of a compartment window until the train has gone; coming home, everyone looks out until
+  they step off.
 - The notebook reads less like a settings window. Apply and Revert are only under Habitat,
   Applications and Preferences, the pages with preferences on them (and under any page while a
   change is waiting to be applied); elsewhere the foot of the page holds only the undo offer and

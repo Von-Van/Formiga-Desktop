@@ -9,9 +9,14 @@
 //!
 //! The frames are baked once for a trip: eight while it runs, the wheels and their rods turning a
 //! full revolution and the steam trailing back, and two while it stands, puffing gently.
+//!
+//! Whoever is aboard looks out of a compartment window: [`TrainRenderer::passenger`] draws one
+//! window with a companion's face in it, to lay over the window it sits at
+//! ([`window_origins`]), so the train itself is drawn once whoever is riding in it.
 
 use crate::paint::mix_truncated;
-use crate::{Canvas, Rgba};
+use crate::{Canvas, CreatureRenderer, Rgba};
+use formiga_core::{ActionKind, AppearanceGenome};
 
 /// The train itself, from the back of the last coach to the front buffers.
 pub const TRAIN_WIDTH: u32 = 202;
@@ -43,6 +48,15 @@ const BUFFERS: i32 = 46;
 const WINDOW_SIZE: (i32, i32) = (14, 13);
 const WINDOW_TOP: i32 = 18;
 const WINDOW_XS: [i32; 3] = [8, 26, 44];
+
+/// The compartment windows along the train, three to a coach: one for each companion aboard.
+pub const TRAIN_WINDOWS: usize = 2 * WINDOW_XS.len();
+/// The glass of one compartment window, in art pixels.
+pub const WINDOW_WIDTH: u32 = WINDOW_SIZE.0 as u32;
+pub const WINDOW_HEIGHT: u32 = WINDOW_SIZE.1 as u32;
+/// Where a passenger's eyes are in its window: a little left of the middle, so the face looks
+/// along the train the way it runs, and low enough that the top of its head shows above them.
+const PASSENGER_EYES: (i32, i32) = (7, 8);
 
 /// One material's tones, darkest first. `edge` outlines it; `shine` is used a pixel at a time.
 #[derive(Clone, Copy)]
@@ -130,6 +144,18 @@ pub fn door_centers() -> [u32; 4] {
     .map(|x| x as u32)
 }
 
+/// Where the glass of each compartment window is in a frame of the train, its top left in art
+/// pixels from the frame's own top left, from the back of the last coach to the front of the first.
+pub fn window_origins() -> [(u32, u32); TRAIN_WINDOWS] {
+    let mut origins = [(0, 0); TRAIN_WINDOWS];
+    for (index, origin) in origins.iter_mut().enumerate() {
+        let coach = (index / WINDOW_XS.len()) as i32 * (COACH_LENGTH + COUPLING);
+        let x = coach + WINDOW_XS[index % WINDOW_XS.len()];
+        *origin = (x as u32, (HEADROOM + WINDOW_TOP) as u32);
+    }
+    origins
+}
+
 /// How the train is lit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TrainLook {
@@ -145,30 +171,7 @@ struct Paint<'a> {
 
 impl Paint<'_> {
     fn put(&mut self, x: i32, y: i32, color: Rgba) {
-        if color.a == 0 {
-            return;
-        }
-        let (x, y) = (x, y + HEADROOM);
-        let under = self.canvas.get(x, y);
-        let top_alpha = u32::from(color.a);
-        let blended = match (color.a, under.a) {
-            (255, _) | (_, 0) => color,
-            (0, _) => under,
-            _ => {
-                let below = u32::from(under.a) * (255 - top_alpha);
-                let total = top_alpha * 255 + below;
-                let channel = |a: u8, b: u8| {
-                    ((u32::from(a) * top_alpha * 255 + u32::from(b) * below) / total) as u8
-                };
-                Rgba::new(
-                    channel(color.r, under.r),
-                    channel(color.g, under.g),
-                    channel(color.b, under.b),
-                    (total / 255).min(255) as u8,
-                )
-            }
-        };
-        self.canvas.set(x, y, blended);
+        blend_onto(self.canvas, x, y + HEADROOM, color);
     }
 
     fn hline(&mut self, x: i32, y: i32, width: i32, color: Rgba) {
@@ -362,13 +365,74 @@ fn coach(paint: &mut Paint<'_>, x: i32, lit: bool) {
 
 /// The glass over a window: a faint sheen and a glint.
 fn glass(paint: &mut Paint<'_>, x: i32, y: i32) {
+    glaze(|dx, dy, color| paint.put(x + dx, y + dy, color));
+}
+
+/// The glass of a window, laid on pixel by pixel through `put` from the window's top left.
+fn glaze(mut put: impl FnMut(i32, i32, Rgba)) {
     let (width, height) = WINDOW_SIZE;
-    paint.rect(x, y, width, height, rgba(0xa6c8d2, 30));
-    paint.hline(x, y, width, rgba(0x2e2a33, 110));
-    for (dx, dy) in [(1, 4), (2, 3), (3, 2), (4, 1)] {
-        paint.put(x + width - 6 + dx, y + dy, rgba(0xffffff, 150));
+    for y in 0..height {
+        for x in 0..width {
+            put(x, y, rgba(0xa6c8d2, 30));
+        }
     }
-    paint.put(x + 1, y + height - 2, rgba(0xffffff, 60));
+    for x in 0..width {
+        put(x, 0, rgba(0x2e2a33, 110));
+    }
+    for (dx, dy) in [(1, 4), (2, 3), (3, 2), (4, 1)] {
+        put(width - 6 + dx, dy, rgba(0xffffff, 150));
+    }
+    put(1, height - 2, rgba(0xffffff, 60));
+}
+
+/// One compartment window as it is drawn on the train, with `figure` looking out of it if anyone
+/// is: a whole frame of a companion and where its eyes are in it.
+fn window_with(look: &TrainLook, figure: Option<(&Canvas, (i32, i32))>) -> Canvas {
+    let (width, height) = WINDOW_SIZE;
+    let mut window = Canvas::new(WINDOW_WIDTH, WINDOW_HEIGHT);
+    for y in 0..height {
+        let shade = compartment(look.lit, y as f32 / height as f32);
+        for x in 0..width {
+            window.set(x, y, shade);
+        }
+    }
+    if let Some((figure, (eyes_x, eyes_y))) = figure {
+        let (dx, dy) = (eyes_x - PASSENGER_EYES.0, eyes_y - PASSENGER_EYES.1);
+        for y in 0..height {
+            for x in 0..width {
+                blend_onto(&mut window, x, y, figure.get(x + dx, y + dy));
+            }
+        }
+    }
+    glaze(|x, y, color| blend_onto(&mut window, x, y, color));
+    window
+}
+
+/// `color` laid over whatever is at `(x, y)`, as paint over paint.
+fn blend_onto(canvas: &mut Canvas, x: i32, y: i32, color: Rgba) {
+    if color.a == 0 {
+        return;
+    }
+    let under = canvas.get(x, y);
+    let top_alpha = u32::from(color.a);
+    let blended = match (color.a, under.a) {
+        (255, _) | (_, 0) => color,
+        (0, _) => under,
+        _ => {
+            let below = u32::from(under.a) * (255 - top_alpha);
+            let total = top_alpha * 255 + below;
+            let channel = |a: u8, b: u8| {
+                ((u32::from(a) * top_alpha * 255 + u32::from(b) * below) / total) as u8
+            };
+            Rgba::new(
+                channel(color.r, under.r),
+                channel(color.g, under.g),
+                channel(color.b, under.b),
+                (total / 255).min(255) as u8,
+            )
+        }
+    };
+    canvas.set(x, y, blended);
 }
 
 fn locomotive(paint: &mut Paint<'_>, x: i32, lit: bool) {
@@ -611,6 +675,17 @@ impl TrainRenderer {
         canvas
     }
 
+    /// One compartment window with a companion looking out of it, `WINDOW_WIDTH` by
+    /// `WINDOW_HEIGHT`, to lay over a window of any frame at its [`window_origins`]: the
+    /// compartment behind, its face and the top of its head, facing the way the train runs, and
+    /// the glass over the top, lamplit after dark like the rest of the train.
+    pub fn passenger(look: &TrainLook, genome: &AppearanceGenome) -> Canvas {
+        let figure = CreatureRenderer::render_frame(genome, ActionKind::Idle, 0, true);
+        let eyes =
+            CreatureRenderer::render_body_frame(genome, ActionKind::Idle, 0, false).face_anchor;
+        window_with(look, Some((&figure, (eyes.x, eyes.y))))
+    }
+
     /// Every frame side by side, left to right: what the overlay bakes once for a trip.
     pub fn render_strip(look: &TrainLook) -> Canvas {
         let mut strip = Canvas::new(TRAIN_WIDTH * u32::from(TRAIN_FRAMES), TRAIN_HEIGHT);
@@ -635,6 +710,59 @@ mod tests {
     use super::*;
 
     const DAY: TrainLook = TrainLook { lit: false };
+
+    #[test]
+    fn an_empty_window_is_the_window_the_train_draws() {
+        for look in [DAY, TrainLook { lit: true }] {
+            let train = TrainRenderer::render(&look, RUNNING_FRAMES);
+            let empty = window_with(&look, None);
+            for (left, top) in window_origins() {
+                for y in 0..WINDOW_HEIGHT {
+                    for x in 0..WINDOW_WIDTH {
+                        assert_eq!(
+                            train.get((left + x) as i32, (top + y) as i32),
+                            empty.get(x as i32, y as i32),
+                            "window at {left},{top} differs at {x},{y}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_passenger_shows_its_face_at_the_window() {
+        let empty = window_with(&DAY, None);
+        for seed in 1..=24 {
+            let genome = formiga_core::World::preview_adult(
+                [seed; 32],
+                time::OffsetDateTime::UNIX_EPOCH,
+                &formiga_core::DesktopSnapshot::default(),
+            )
+            .appearance;
+            let window = TrainRenderer::passenger(&DAY, &genome);
+            assert_eq!(
+                (window.width(), window.height()),
+                (WINDOW_WIDTH, WINDOW_HEIGHT)
+            );
+            let changed = (0..WINDOW_HEIGHT as i32)
+                .flat_map(|y| (0..WINDOW_WIDTH as i32).map(move |x| (x, y)))
+                .filter(|&(x, y)| window.get(x, y) != empty.get(x, y))
+                .count();
+            assert!(
+                changed * 3 >= (WINDOW_WIDTH * WINDOW_HEIGHT) as usize,
+                "seed {seed}: only {changed} pixels of the window show the passenger"
+            );
+            // Its eyes are at the window: the row it looks out of shows it right across the
+            // middle of the glass.
+            let (eyes_x, eyes_y) = PASSENGER_EYES;
+            assert_ne!(
+                window.get(eyes_x, eyes_y),
+                empty.get(eyes_x, eyes_y),
+                "seed {seed}: nobody is at the window"
+            );
+        }
+    }
 
     #[test]
     fn the_train_fills_its_frame_and_stands_on_the_ground() {

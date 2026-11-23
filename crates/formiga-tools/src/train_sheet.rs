@@ -3,14 +3,17 @@
 //! Formiga Hill's own engine and two coaches: standing by day on pale wallpaper and after dark on
 //! a dark one, with the reference companions waiting beside it at the scale the overlay draws
 //! them, standing on the same ground as the wheels; then the engine through every frame, running
-//! and standing. A review sheet, not a test.
+//! and standing; then the train boarding, by day and after dark: two companions already looking out
+//! of the windows they take, and the third stepping up at its door in the first frame of its climb.
+//! A review sheet, not a test.
 //!
 //!   cargo run -p formiga-tools -- train-sheet [--output PATH]
 
 use anyhow::Result;
 use formiga_art::{
-    BodyClip, Canvas, CreatureRenderer, FRAME_SIZE, RUNNING_FRAMES, TRAIN_FRAMES, TRAIN_GROUND,
-    TRAIN_HEIGHT, TRAIN_WIDTH, TrainLook, TrainRenderer,
+    BodyClip, Canvas, CreatureRenderer, FRAME_SIZE, FramePlacement, RUNNING_FRAMES, TRAIN_FRAMES,
+    TRAIN_GROUND, TRAIN_HEIGHT, TRAIN_WIDTH, TRAIN_WINDOWS, TrainLook, TrainRenderer, door_centers,
+    window_origins,
 };
 use formiga_core::ActionKind;
 use std::path::PathBuf;
@@ -27,7 +30,7 @@ pub fn run(path: PathBuf) -> Result<()> {
     let standing_width = (TRAIN_WIDTH + GAP + companions.len() as u32 * (FRAME_SIZE + 4)) * SCALE;
     let frames_width = u32::from(TRAIN_FRAMES) * (ENGINE + 4) * SCALE;
     let width = standing_width.max(frames_width) + 8;
-    let height = band * 3;
+    let height = band * 4;
     let mut pixels = vec![0_u8; (width * height * 4) as usize];
     for (row, lit) in [false, true].into_iter().enumerate() {
         let top = row as u32 * band;
@@ -91,6 +94,72 @@ pub fn run(path: PathBuf) -> Result<()> {
         stamp(&mut pixels, width, &engine, x, (top + LABEL) as i32);
         x += ((ENGINE + 4) * SCALE) as i32;
     }
+    // Boarding, by day and after dark side by side: the first two companions in the windows a
+    // colony of three takes, the third stepping up at its door, drawn over the coach for that
+    // one tick as the overlay draws it.
+    let top = 3 * band;
+    wallpaper(&mut pixels, width, top, band, false);
+    label(
+        &mut pixels,
+        width,
+        4,
+        top + 3,
+        "BOARDING: TWO ABOARD, ONE STEPPING UP",
+        false,
+    );
+    for (index, lit) in [false, true].into_iter().enumerate() {
+        let left = index as u32 * (TRAIN_WIDTH + GAP) * SCALE + 4;
+        let span = (TRAIN_WIDTH + GAP) * SCALE;
+        wallpaper_columns(
+            &mut pixels,
+            width,
+            top + LABEL,
+            band - LABEL,
+            left,
+            span,
+            lit,
+        );
+        let look = TrainLook { lit };
+        let mut train = TrainRenderer::render(&look, RUNNING_FRAMES);
+        let seats = window_origins();
+        for (rank, companion) in companions.iter().enumerate().take(2) {
+            let seat = rank * TRAIN_WINDOWS / companions.len();
+            let window = TrainRenderer::passenger(&look, &companion.appearance);
+            let (wx, wy) = seats[seat];
+            for y in 0..window.height() as i32 {
+                for x in 0..window.width() as i32 {
+                    train.set(wx as i32 + x, wy as i32 + y, window.get(x, y));
+                }
+            }
+        }
+        let ground = top + LABEL + (TRAIN_GROUND + 1) * SCALE;
+        stamp(
+            &mut pixels,
+            width,
+            &train,
+            left as i32,
+            (ground - (TRAIN_GROUND + 1) * SCALE) as i32,
+        );
+        if let Some(stepping) = companions.get(2) {
+            let doors = door_centers();
+            let door = doors[2 * doors.len() / companions.len()];
+            let frame = CreatureRenderer::render_frame(
+                &stepping.appearance,
+                ActionKind::ClimbWindow,
+                0,
+                true,
+            );
+            let baseline = CreatureRenderer::resting_baseline(&stepping.appearance, false);
+            let placement = FramePlacement::for_action(ActionKind::ClimbWindow, baseline);
+            stamp(
+                &mut pixels,
+                width,
+                &frame,
+                (left + door * SCALE) as i32 - (FRAME_SIZE * SCALE / 2) as i32,
+                ground as i32 + placement.origin_y * SCALE as i32,
+            );
+        }
+    }
     crate::write_png(&path, width, height, &pixels)?;
     println!("wrote {}", path.display());
     Ok(())
@@ -115,6 +184,31 @@ fn wallpaper(pixels: &mut [u8], width: u32, top: u32, rows: u32, dark: bool) {
     };
     for y in top..top + rows {
         for x in 0..width {
+            let index = ((y * width + x) * 4) as usize;
+            if index + 4 <= pixels.len() {
+                pixels[index..index + 4].copy_from_slice(&shade);
+            }
+        }
+    }
+}
+
+/// The wallpaper behind one picture in a band: `span` wide from `left`.
+fn wallpaper_columns(
+    pixels: &mut [u8],
+    width: u32,
+    top: u32,
+    rows: u32,
+    left: u32,
+    span: u32,
+    dark: bool,
+) {
+    let shade = if dark {
+        [52, 50, 64, 255]
+    } else {
+        [234, 230, 222, 255]
+    };
+    for y in top..top + rows {
+        for x in left..(left + span).min(width) {
             let index = ((y * width + x) * 4) as usize;
             if index + 4 <= pixels.len() {
                 pixels[index..index + 4].copy_from_slice(&shade);

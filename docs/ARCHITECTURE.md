@@ -299,6 +299,19 @@ surface, and the minis that called it a parent.
 so a calendar arrival and a mini due in the same tick take their turn rather than revealing on top
 of one another.
 
+A newcomer walks in rather than appearing (`begin_entrance`, in `world/arrivals.rs`): a calendar
+arrival or a mini when its turn comes, and a companion adopted from a design or a shared code. With
+the village out it comes out of its own house door, standing as far back as its house does; during
+a visit home the village's own walk takes it from there, and between visits it walks on out
+`ENTRANCES.door_walk_frames` widths, coming down to the front of the grass as it goes. Otherwise
+it walks in along the floor from beyond the nearer side of the ground it may use, where that side
+is the display's edge, to where it was going to appear, or as far toward it as
+`ENTRANCES.edge_walk_secs` of walking takes it. The walk is a `WindowJourney::Entrance`, runtime only
+like every journey, so nothing else takes its feet on the way and nobody stops to watch it; it is
+the one journey allowed to start outside the habitat. Paused, hidden, with motion reduced, or with
+no edge of open ground to come in by, a newcomer is simply there as before, and so is a companion
+that replaces another in place.
+
 ## Procedural identity and animation
 
 A 256-bit colony seed derives named ChaCha streams for appearance, personality, markings, animation
@@ -1963,9 +1976,11 @@ twelve is called off this way. An awake creature takes an ordinary short `Traver
 to the nearest spot that clears everybody, respecting habitat, ledge extent, and reservations;
 ritual participants get a quiet position-only shuffle, and a sleeper is towed: `world/tows.rs`
 finds a friend on the same surface within six widths who is awake, standing about or walking, and
-wanted by nothing else — the closest friend first, then the nearest — which walks over, takes up
-the rope a little under a width ahead of the sleeper, pulls it clear at `TOW_SPEED`, lets go, and
-goes back to standing about. The tow walks the friend itself, so its own choices wait until it
+wanted by nothing else — the closest friend first, then the nearest — which walks over, turns to
+the sleeper and reaches back for the rope for `REACH_SECONDS` (the Reach gesture, before the rope
+is drawn), turns and pulls the sleeper clear at `TOW_SPEED` from a little under a width ahead of
+it, stops with its paws down for one tick while the rope is still drawn, lets go, and goes back to
+standing about. The rope is so only ever drawn in a paw. The tow walks the friend itself, so its own choices wait until it
 lets go. The sleeper's runtime `SleepNudge::Towed` tells the overlay to draw a sagging rope, one
 art pixel thick with a shaded underside, from the friend's hand to the sleeper, behind both, from
 a two-texel texture made the first time a rope is needed. With no friend free, or a rope that would
@@ -3394,14 +3409,24 @@ again. The train stops at the middle of the widest stretch of ground on the vill
 (then the primary); companions there walk to the nearest door from where they
 are, anyone elsewhere comes along the ground from the edge nearest its own display, and anyone with
 far to go hurries, so a departure is never longer than about sixteen seconds at any scale. Coming
-home they step off in turn and walk back, and the scene ends with everyone exactly as saved. With
+home they step off in turn and walk back, and the scene ends with everyone exactly as saved.
+Getting on, each companion steps up at its door in the first frame of a climb for `STEP_UP_SECS`,
+about a tick, drawn over the coach rather than behind it, and from then on looks out of one of
+the six compartment windows (`TrainPose::seats`, a window of the coach its door is on, spread
+along the train the way the doors are) until the train has gone; coming home everyone looks out
+until they step off. A window with a passenger is `TrainRenderer::passenger`: the compartment,
+the companion's face and the top of its head in its idle frame facing the way the train runs, and
+the glass over it, laid over the train's own window. The overlay bakes the six windows into one
+small texture when a scene's seats are first drawn, beside the train's strip, and draws a quad for
+each window someone is at. With
 reduced motion the train neither slides nor puffs: it is there, and then it is not. A departure
 that cannot go on turns round where it stands. The art is `formiga-art`'s `TrainRenderer`:
 Formiga Hill's own train, a green tank engine and two maroon-and-cream coaches drawn to the same
 design and the same size against the companions as at the Hill's station, so the train that leaves
 the desktop is the one that arrives there. Its compartments are lit after dark. It is baked once
 into a strip of ten frames — eight turning the wheels a full revolution, two standing — when a
-scene starts, and dropped when it ends (`formiga-tools train-sheet` draws it for review).
+scene starts, and dropped when it ends (`formiga-tools train-sheet` draws it for review, boarding
+included; the scene's own review is `train_review` in `hill/scene/review.rs`).
 
 ### Cost
 

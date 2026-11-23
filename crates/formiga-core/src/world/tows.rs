@@ -6,6 +6,10 @@
 //! go, and goes back to what it was doing. With nobody free to, the sleeper wriggles over in its
 //! sleep instead. A tow is runtime only and never saved, and anything that takes hold of either of
 //! the two ends it where they stand.
+//!
+//! The rope is in somebody's paws for exactly as long as it is drawn: the friend turns and reaches
+//! for it before it is there, and stands with its paws down for a moment before it is gone, so the
+//! rope never appears in an empty paw or vanishes out of a full one.
 
 use super::*;
 
@@ -29,10 +33,15 @@ const APPROACH_SECONDS: f32 = 6.0;
 /// How long a friend stands with the rope let go before going back to what it was doing.
 const LET_GO_SECONDS: f32 = 0.6;
 
+/// How long a friend reaches back for the rope before it is there and the pull begins.
+pub(super) const REACH_SECONDS: f32 = 0.3;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum TowPhase {
     /// Walking over to take up the rope.
     Approach,
+    /// Turned to the sleeper and reaching back for the rope, which is not there yet.
+    TakeUp,
     /// Pulling.
     Pull,
     /// The rope dropped, a moment before carrying on.
@@ -228,8 +237,8 @@ impl World {
                     if dx.abs() <= step {
                         tower.state.position.x = grip;
                         tower.state.velocity = Point::default();
-                        tower.state.facing_right = tow.direction > 0.0;
-                        tow.phase = TowPhase::Pull;
+                        reach_for_the_rope(tower, sleeper_x, tow.direction);
+                        tow.phase = TowPhase::TakeUp;
                         tow.elapsed = 0.0;
                     } else if tow.elapsed > APPROACH_SECONDS {
                         self.end_tow(index, true, desktop);
@@ -241,6 +250,24 @@ impl World {
                             y: 0.0,
                         };
                         tower.state.facing_right = dx > 0.0;
+                    }
+                }
+                TowPhase::TakeUp => {
+                    tower.state.velocity = Point::default();
+                    if tow.elapsed >= REACH_SECONDS {
+                        // The rope is in its paw: it turns the way it is going to pull, and the
+                        // rope is there from this tick on.
+                        if reaching(tower) {
+                            tower.state.attention = None;
+                        }
+                        tower.state.facing_right = tow.direction > 0.0;
+                        tow.phase = TowPhase::Pull;
+                        tow.elapsed = 0.0;
+                        if let Some(sleeper) =
+                            self.save.creatures.iter_mut().find(|c| c.id == tow.sleeper)
+                        {
+                            sleeper.state.nudge = Some(SleepNudge::Towed { by: tow.tower });
+                        }
                     }
                 }
                 TowPhase::Pull => {
@@ -260,8 +287,9 @@ impl World {
                         self.save.creatures.iter_mut().find(|c| c.id == tow.sleeper)
                     {
                         sleeper.state.position.x = if arrived { tow.target_x } else { towed_to };
-                        sleeper.state.nudge =
-                            (!arrived).then_some(SleepNudge::Towed { by: tow.tower });
+                        // Still in the friend's paw on the tick it stops: the rope goes on the
+                        // next one, once its paws are down.
+                        sleeper.state.nudge = Some(SleepNudge::Towed { by: tow.tower });
                     }
                     if arrived {
                         if let Some(tower) =
@@ -278,6 +306,12 @@ impl World {
                 }
                 TowPhase::LetGo => {
                     tower.state.velocity = Point::default();
+                    // Its paws went down last tick; now the rope goes.
+                    if let Some(sleeper) =
+                        self.save.creatures.iter_mut().find(|c| c.id == tow.sleeper)
+                    {
+                        sleeper.state.nudge = None;
+                    }
                     if tow.elapsed >= LET_GO_SECONDS {
                         self.tows.slots[index] = None;
                         continue;
@@ -325,6 +359,7 @@ impl World {
         let Some(tow) = self.tows.slots[index].take() else {
             return;
         };
+        self.stop_reaching(tow.tower);
         if let Some(tower) = self.save.creatures.iter_mut().find(|c| c.id == tow.tower)
             && tower.state.action == ActionKind::Traverse
             && self
@@ -360,6 +395,9 @@ impl World {
             .collect();
         let towers: Vec<CreatureId> = self.tows.slots.iter().flatten().map(|t| t.tower).collect();
         self.tows.clear();
+        for &tower in &towers {
+            self.stop_reaching(tower);
+        }
         for creature in &mut self.save.creatures {
             if sleepers.contains(&creature.id) {
                 creature.state.nudge = None;
@@ -378,6 +416,7 @@ impl World {
         for index in 0..MAX_TOWS {
             if self.tows.slots[index].is_some_and(|tow| tow.tower == id || tow.sleeper == id) {
                 let tow = self.tows.slots[index].take().expect("just checked");
+                self.stop_reaching(tow.tower);
                 let other = if tow.tower == id {
                     tow.sleeper
                 } else {
@@ -389,6 +428,44 @@ impl World {
             }
         }
     }
+}
+
+impl World {
+    /// A friend let go of before the rope was even in its paw puts the paw down.
+    fn stop_reaching(&mut self, tower: CreatureId) {
+        if let Some(creature) = self.save.creatures.iter_mut().find(|c| c.id == tower)
+            && reaching(creature)
+            && self
+                .interaction
+                .as_ref()
+                .is_none_or(|session| session.creature_id != tower)
+        {
+            creature.state.attention = None;
+        }
+    }
+}
+
+/// Turn round to the sleeper and reach back for the rope: the Reach gesture, from its first frame.
+fn reach_for_the_rope(tower: &mut Creature, sleeper_x: f32, direction: f32) {
+    tower.state.facing_right = direction < 0.0;
+    tower.state.action_elapsed = 0.0;
+    tower.state.attention = Some(AttentionPose {
+        target: Point {
+            x: sleeper_x,
+            y: tower.state.position.y,
+        },
+        emotion: AttentionEmotion::Curious,
+        hanging: 0.0,
+        gesture: Some(Gesture::Reach),
+    });
+}
+
+/// Whether this friend is reaching for a rope just now.
+fn reaching(creature: &Creature) -> bool {
+    creature
+        .state
+        .attention
+        .is_some_and(|pose| pose.gesture == Some(Gesture::Reach))
 }
 
 /// The run of ground a creature is standing on, less half a frame at each end: the window's ledge

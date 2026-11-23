@@ -69,6 +69,18 @@ pub(super) struct SqueezeJourney {
     pub(super) duration: f32,
 }
 
+/// A newcomer walking into the colony along the floor: in from beyond the edge of the display, or
+/// out from its house door, at its own walking pace, to where it stops and looks about. Like every
+/// journey it has the creature's feet until it is over, so nothing else starts with it on the way.
+#[derive(Clone)]
+pub(super) struct EntranceJourney {
+    pub(super) start: Point,
+    pub(super) target: Point,
+    pub(super) surface: SurfaceAttachment,
+    pub(super) elapsed: f32,
+    pub(super) duration: f32,
+}
+
 #[derive(Clone)]
 pub(super) struct WindowRoutePlan {
     pub(super) geometry_hash: u64,
@@ -82,6 +94,7 @@ pub(super) enum WindowJourney {
     Hop(HopJourney),
     Climb(ClimbJourney),
     Squeeze(SqueezeJourney),
+    Entrance(EntranceJourney),
 }
 
 #[derive(Clone, Copy)]
@@ -101,6 +114,7 @@ impl WindowJourney {
             Self::Climb(journey) if journey.approach_duration > 0.05 => ActionKind::Traverse,
             Self::Climb(_) => ActionKind::ClimbWindow,
             Self::Squeeze(_) => ActionKind::InspectScreen,
+            Self::Entrance(_) => ActionKind::Traverse,
         }
     }
 
@@ -110,6 +124,7 @@ impl WindowJourney {
             Self::Hop(journey) => &journey.surface,
             Self::Climb(journey) => &journey.surface,
             Self::Squeeze(journey) => &journey.surface,
+            Self::Entrance(journey) => &journey.surface,
         }
     }
 
@@ -160,6 +175,11 @@ impl WindowJourney {
                 });
                 from_valid && target_valid
             }
+            // Only where it is walking to has to be there: it walks in from beyond the edge.
+            Self::Entrance(journey) => desktop.monitors.iter().any(|monitor| {
+                monitor.id == journey.surface.monitor_id
+                    && monitor.usable_bounds.contains(journey.target)
+            }),
         }
     }
 
@@ -335,7 +355,21 @@ impl WindowJourney {
                     complete: journey.elapsed >= journey.duration,
                 }
             }
+            Self::Entrance(journey) => {
+                journey.elapsed += dt;
+                let progress = (journey.elapsed / journey.duration.max(0.001)).clamp(0.0, 1.0);
+                JourneyStep {
+                    position: lerp_point(journey.start, journey.target, progress),
+                    action: ActionKind::Traverse,
+                    complete: progress >= 1.0,
+                }
+            }
         }
+    }
+
+    /// Whether this is a newcomer walking in, which starts beyond the display's edge.
+    pub(super) fn entering(&self) -> bool {
+        matches!(self, Self::Entrance(_))
     }
 }
 
