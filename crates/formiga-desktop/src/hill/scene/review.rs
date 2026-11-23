@@ -8,7 +8,8 @@
 //! ```
 //!
 //! `train-departure.png` and `train-homecoming.png` each hold ten moments of the scene from top to
-//! bottom, evenly spread over its length, on the bottom strip of a 1440-point display at Medium
+//! bottom, evenly spread over its length — the departure one more, the first companion stepping up
+//! at its door — on the bottom strip of a 1440-point display at Medium
 //! (3x) and 1x scale. Four companions start on the floor at both ends, on a ledge, and on a display
 //! off to the left. Without the environment variable nothing is written; the scene is still played
 //! and drawn, so the test keeps the composition code honest.
@@ -16,7 +17,7 @@
 use super::*;
 use formiga_art::{
     AccessoryArt, BodyPresentation, Canvas, CreatureRenderer, FramePlacement, Rgba, TrainLook,
-    TrainRenderer, palette_for,
+    TrainRenderer, palette_for, window_origins,
 };
 use formiga_core::{DesktopSnapshot, DisplayKey, World};
 use time::macros::datetime;
@@ -97,7 +98,8 @@ fn stamp(sheet: &mut Canvas, source: &Canvas, x: i32, y: i32, scale: i32, mirror
     }
 }
 
-/// One moment of the scene: the platform's copy of the colony, then the train over it.
+/// One moment of the scene: the platform's copy of the colony, then the train over it, with
+/// whoever is aboard at its window and whoever is stepping up at a door over the coach.
 fn moment(sheet: &mut Canvas, scene: &TrainScene, save: &SaveFile, top: i32, night: bool) {
     let scale = i32::from(save.settings.display_scale);
     let strip_top = 850.0 - STRIP as f32;
@@ -122,9 +124,18 @@ fn moment(sheet: &mut Canvas, scene: &TrainScene, save: &SaveFile, top: i32, nig
         .iter()
         .map(|creature| palette_for(&creature.appearance))
         .collect();
-    for creature in staged.creatures.iter().filter(|creature| {
-        on_the_desktop(creature) && creature.state.surface.monitor_id == scene.monitor_id()
-    }) {
+    let train = scene.train();
+    let boarding: Vec<_> = train
+        .map(|train| {
+            train
+                .seats
+                .iter()
+                .zip(train.boarding)
+                .filter_map(|(seat, boarding)| seat.filter(|_| boarding))
+                .collect()
+        })
+        .unwrap_or_default();
+    let draw = |sheet: &mut Canvas, creature: &formiga_core::Creature| {
         let presentation = BodyPresentation::for_creature(creature);
         let dress = creature
             .accessory
@@ -141,10 +152,34 @@ fn moment(sheet: &mut Canvas, scene: &TrainScene, save: &SaveFile, top: i32, nig
         let x = creature.state.position.x.round() as i32 - FRAME_SIZE as i32 * scale / 2;
         let y = to_sheet_y(creature.state.position.y) + placement.origin_y * scale;
         stamp(sheet, &canvas, x, y, scale, false);
+    };
+    let here: Vec<_> = staged
+        .creatures
+        .iter()
+        .filter(|creature| {
+            on_the_desktop(creature) && creature.state.surface.monitor_id == scene.monitor_id()
+        })
+        .collect();
+    for creature in here.iter().filter(|c| !boarding.contains(&c.id)) {
+        draw(sheet, creature);
     }
-    if let Some(train) = scene.train() {
+    if let Some(train) = train {
         let look = TrainLook { lit: night };
-        let canvas = TrainRenderer::render(&look, train.frame);
+        let mut canvas = TrainRenderer::render(&look, train.frame);
+        for (seat, (wx, wy)) in window_origins().into_iter().enumerate() {
+            let Some(passenger) = train.seats[seat]
+                .filter(|_| train.seated[seat])
+                .and_then(|id| save.creatures.iter().find(|c| c.id == id))
+            else {
+                continue;
+            };
+            let window = TrainRenderer::passenger(&look, &passenger.appearance);
+            for y in 0..window.height() as i32 {
+                for x in 0..window.width() as i32 {
+                    canvas.set(wx as i32 + x, wy as i32 + y, window.get(x, y));
+                }
+            }
+        }
         let y = to_sheet_y(train.ground) - TRAIN_RISE as i32 * scale;
         stamp(
             sheet,
@@ -155,14 +190,43 @@ fn moment(sheet: &mut Canvas, scene: &TrainScene, save: &SaveFile, top: i32, nig
             !train.facing_right,
         );
     }
+    for creature in here.iter().filter(|c| boarding.contains(&c.id)) {
+        draw(sheet, creature);
+    }
 }
 
-fn sheet_of(mut scene: TrainScene, save: &SaveFile, night: bool) -> Canvas {
-    let mut sheet = Canvas::new(1440, STRIP * MOMENTS);
-    let step = scene.length() / (MOMENTS - 1) as f32;
-    for index in 0..MOMENTS {
-        moment(&mut sheet, &scene, save, (index * STRIP) as i32, night);
-        scene.advance(step);
+/// The scene's moments, evenly spread over its length, and the first tick somebody steps up at a
+/// door, which is too short for an even spread ever to land on.
+fn sheet_of(scene: TrainScene, save: &SaveFile, night: bool) -> Canvas {
+    let length = scene.length();
+    let mut times: Vec<f32> = (0..MOMENTS)
+        .map(|index| length * index as f32 / (MOMENTS - 1) as f32)
+        .collect();
+    let mut probe = scene.clone();
+    let mut t = 0.0;
+    while t < length {
+        if probe
+            .train()
+            .is_some_and(|train| train.boarding.contains(&true))
+        {
+            times.push(t);
+            break;
+        }
+        probe.advance(0.025);
+        t += 0.025;
+    }
+    times.sort_by(f32::total_cmp);
+    let mut sheet = Canvas::new(1440, STRIP * times.len() as u32);
+    for (index, at) in times.into_iter().enumerate() {
+        let mut shown = scene.clone();
+        shown.advance(at);
+        moment(
+            &mut sheet,
+            &shown,
+            save,
+            (index as u32 * STRIP) as i32,
+            night,
+        );
     }
     sheet
 }
@@ -183,7 +247,7 @@ fn train_review() {
     // Every moment shows something: a train, a companion, or both.
     for sheet in [&leaving, &coming_home] {
         // The first and last moments may be empty: the train is still off the display, or gone.
-        for index in 1..MOMENTS - 1 {
+        for index in 1..sheet.height() / STRIP - 1 {
             let band = (index * STRIP + 1)..((index + 1) * STRIP);
             let drawn = band
                 .flat_map(|y| (0..sheet.width()).map(move |x| (x, y)))

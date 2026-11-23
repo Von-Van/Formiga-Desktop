@@ -14,8 +14,12 @@
 //! a long way to go hurries, so nobody keeps the train waiting more than a few seconds. Coming
 //! home, each steps off in turn and walks back to its own spot, or off towards the display it
 //! lives on. With reduced motion the train does not slide: it is simply there, and then it is not.
+//!
+//! Getting on, each companion steps up at its door in the first frame of a climb, drawn over the
+//! coach for that one tick, and from then on looks out of a window of the same coach until the
+//! train has gone; coming home, everyone looks out of their window until they step off.
 
-use formiga_art::{FRAME_SIZE, TRAIN_GROUND, TRAIN_WIDTH, door_centers};
+use formiga_art::{FRAME_SIZE, TRAIN_GROUND, TRAIN_WIDTH, TRAIN_WINDOWS, door_centers};
 use formiga_core::{
     ActionKind, CreatureId, DesktopRect, MonitorId, MonitorInfo, Point, SaveFile,
     SurfaceAttachment, SurfaceKind, accessible_regions,
@@ -29,6 +33,12 @@ const FIRST_STEP_SECS: f32 = 0.35;
 const STEP_SECS: f32 = 0.25;
 /// How long the train stands once the last companion is on, or off.
 const LINGER_SECS: f32 = 0.8;
+// A window for everyone: a colony is never bigger than the train has windows.
+const _: () = assert!(formiga_core::MAX_COLONY_CREATURES <= TRAIN_WINDOWS);
+
+/// How long a companion getting on is shown stepping up at its door: one tick at the scene's
+/// twenty a second, with room for a frame that comes a little late.
+const STEP_UP_SECS: f32 = 0.075;
 /// The longest anyone takes to reach the train, or to walk home from it: anyone farther hurries.
 const LONGEST_WALK_SECS: f32 = 5.0;
 /// How far behind each other companions set off.
@@ -54,6 +64,13 @@ pub struct TrainPose {
     pub frame: u8,
     /// Which way it faces: always to the right, the way it runs.
     pub facing_right: bool,
+    /// Who sits at each compartment window this trip, from the back of the train to the front:
+    /// the same all the way through a scene, so a window's picture is drawn once.
+    pub seats: [Option<CreatureId>; TRAIN_WINDOWS],
+    /// Which of those are aboard and looking out just now.
+    pub seated: [bool; TRAIN_WINDOWS],
+    /// Which of those are stepping up at their door just now, drawn over the coach.
+    pub boarding: [bool; TRAIN_WINDOWS],
 }
 
 /// What one companion is doing at a moment of the scene.
@@ -62,6 +79,11 @@ enum Shown {
     /// Not on the platform: aboard, or not yet arrived from somewhere else, or gone on home.
     Hidden,
     Standing {
+        x: f32,
+        facing_right: bool,
+    },
+    /// Getting on: at its door, in the first frame of a climb.
+    SteppingUp {
         x: f32,
         facing_right: bool,
     },
@@ -87,8 +109,10 @@ struct Walker {
     sets_off: f32,
     speed: f32,
     hurrying: bool,
-    /// Leaving: when it steps aboard.
+    /// Leaving: when it steps up at its door, and is aboard a tick later.
     aboard_at: f32,
+    /// The compartment window it looks out of while it is aboard.
+    seat: usize,
 }
 
 impl Walker {
@@ -105,7 +129,11 @@ impl Walker {
             hurrying: self.hurrying,
         };
         match leg {
-            Leg::Departure if t >= self.aboard_at => Shown::Hidden,
+            Leg::Departure if t >= self.aboard_at + STEP_UP_SECS => Shown::Hidden,
+            Leg::Departure if t >= self.aboard_at => Shown::SteppingUp {
+                x: self.to_x,
+                facing_right,
+            },
             Leg::Departure if t >= self.arrives_at() => Shown::Standing {
                 x: self.to_x,
                 facing_right,
@@ -122,8 +150,18 @@ impl Walker {
             Leg::Arrival => Shown::Hidden,
         }
     }
+
+    /// Whether it is aboard, looking out of its window: once it has stepped up, getting on, and
+    /// until it steps off, coming home.
+    fn aboard(&self, leg: Leg, t: f32) -> bool {
+        match leg {
+            Leg::Departure => t >= self.aboard_at + STEP_UP_SECS,
+            Leg::Arrival => t < self.sets_off,
+        }
+    }
 }
 
+#[derive(Clone)]
 pub struct TrainScene {
     leg: Leg,
     monitor_id: MonitorId,
@@ -270,6 +308,9 @@ impl TrainScene {
                 speed: speed.max(1.0),
                 hurrying,
                 aboard_at: 0.0,
+                // A window of the coach its door is on: spread along the train the way the doors
+                // are, so the leftmost companion sits furthest back.
+                seat: rank * TRAIN_WINDOWS / spots.len(),
             });
         }
         let (leave_at, ends_at) = match leg {
@@ -296,7 +337,7 @@ impl TrainScene {
                     walkers[index].aboard_at = aboard;
                     last = last.max(aboard);
                 }
-                let leave_at = last + LINGER_SECS;
+                let leave_at = last + STEP_UP_SECS + LINGER_SECS;
                 (leave_at, leave_at + PULL_OUT_SECS)
             }
             Leg::Arrival => {
@@ -368,12 +409,27 @@ impl TrainScene {
     /// Where the train is, while it is on the display.
     pub fn train(&self) -> Option<TrainPose> {
         let t = self.elapsed;
+        let mut seats = [None; TRAIN_WINDOWS];
+        let mut seated = [false; TRAIN_WINDOWS];
+        let mut boarding = [false; TRAIN_WINDOWS];
+        for walker in self
+            .walkers
+            .iter()
+            .filter(|walker| walker.seat < TRAIN_WINDOWS)
+        {
+            seats[walker.seat] = Some(walker.id);
+            seated[walker.seat] = walker.aboard(self.leg, t);
+            boarding[walker.seat] = matches!(walker.shown(self.leg, t), Shown::SteppingUp { .. });
+        }
         let pose = |left: f32, frame: u8| TrainPose {
             monitor_id: self.monitor_id,
             left,
             ground: self.ground,
             frame,
             facing_right: self.facing_right,
+            seats,
+            seated,
+            boarding,
         };
         if self.reduce_motion {
             return (t < self.leave_at).then(|| pose(self.stop_left, STANDING_FRAME));
@@ -419,6 +475,10 @@ impl TrainScene {
                 }
                 Shown::AsItWas => continue,
                 Shown::Standing { x, facing_right } => (x, facing_right, ActionKind::Idle, t),
+                // The climb's own first frame, as a climb up a window starts.
+                Shown::SteppingUp { x, facing_right } => {
+                    (x, facing_right, ActionKind::ClimbWindow, 0.0)
+                }
                 Shown::Walking {
                     x,
                     facing_right,

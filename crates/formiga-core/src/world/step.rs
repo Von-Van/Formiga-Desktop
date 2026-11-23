@@ -76,12 +76,12 @@ impl World {
             creature.state.arrival_delay_secs = (previous_delay - dt).max(0.0);
             if creature.state.arrival_delay_secs == 0.0 {
                 creature.born_at_utc = timeline_now;
+                let id = creature.id;
                 Self::emit(
                     &mut self.events,
-                    WorldEvent::CreatureSpawned {
-                        creature_id: creature.id,
-                    },
+                    WorldEvent::CreatureSpawned { creature_id: id },
                 );
+                self.begin_entrance(id, desktop);
             }
             return true;
         }
@@ -204,10 +204,17 @@ impl World {
                     journey.facing_right(),
                 )
             };
-            let route_point_valid = desktop.monitors.iter().any(|monitor| {
-                monitor.bounds.contains(step.position)
-                    && habitat_contains(&self.save.settings.habitat, monitor, step.position)
-            });
+            // A newcomer walking in starts beyond the edge of the display, outside the habitat;
+            // where it is walking to is inside it (`EntranceJourney`).
+            let entering = self
+                .window_journeys
+                .get(&creature.id)
+                .is_some_and(WindowJourney::entering);
+            let route_point_valid = entering
+                || desktop.monitors.iter().any(|monitor| {
+                    monitor.bounds.contains(step.position)
+                        && habitat_contains(&self.save.settings.habitat, monitor, step.position)
+                });
             let gap_step_valid = self
                 .window_journeys
                 .get(&creature.id)

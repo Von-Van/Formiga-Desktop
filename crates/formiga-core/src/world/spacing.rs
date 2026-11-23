@@ -898,6 +898,7 @@ impl World {
                         WindowJourney::Hop(hop) => hop.target,
                         WindowJourney::Climb(climb) => climb.target,
                         WindowJourney::Squeeze(squeeze) => squeeze.target,
+                        WindowJourney::Entrance(entrance) => entrance.target,
                     };
                     landing.distance(point) < gap
                 }

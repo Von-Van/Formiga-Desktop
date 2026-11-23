@@ -275,6 +275,7 @@ cargo run -p formiga-tools -- village-depth-sheet
 cargo run -p formiga-tools -- prop-sheet
 cargo run -p formiga-tools -- wonder-sheet
 cargo run -p formiga-tools -- train-sheet
+cargo run -p formiga-tools -- arrival-sheet
 cargo run -p formiga-tools -- motion-sheet
 cargo run -p formiga-tools -- rest-sheet
 cargo run -p formiga-tools -- bridge-sheet

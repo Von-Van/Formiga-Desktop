@@ -62,8 +62,8 @@ pub use talk::{
     TalkSheet,
 };
 pub use train::{
-    RUNNING_FRAMES, TRAIN_FRAMES, TRAIN_GROUND, TRAIN_HEIGHT, TRAIN_WIDTH, TrainLook,
-    TrainRenderer, door_centers,
+    RUNNING_FRAMES, TRAIN_FRAMES, TRAIN_GROUND, TRAIN_HEIGHT, TRAIN_WIDTH, TRAIN_WINDOWS,
+    TrainLook, TrainRenderer, WINDOW_HEIGHT, WINDOW_WIDTH, door_centers, window_origins,
 };
 pub use tree::{
     ANCHOR_CLEARANCE, KeepsakeTreeRenderer, TREE_CELL, TREE_INSET, TRINKET_ANCHORS, TreeScene,
