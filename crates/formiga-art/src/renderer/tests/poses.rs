@@ -700,7 +700,18 @@ fn a_mantle_plays_once_at_the_worlds_rate_and_holds_its_push_with_motion_reduced
     assert_eq!(spec.frame_at(haul_secs + 0.01), 2);
     assert_eq!(spec.frame_at(30.0), 2);
     assert_eq!(AnimationSpec::still_frame(Gesture::Mantle), 1);
-    for clip in BodyClip::baked().filter(|clip| *clip != BodyClip::Gesture(Gesture::Mantle)) {
+    // Eating, drinking and the climb hold their own still frames (see `AnimationSpec::still_frame`);
+    // every other clip holds its first.
+    assert_eq!(AnimationSpec::still_frame(ActionKind::Eat), 1);
+    assert_eq!(AnimationSpec::still_frame(ActionKind::Drink), 2);
+    assert_eq!(AnimationSpec::still_frame(ActionKind::ClimbWindow), 1);
+    for clip in BodyClip::baked().filter(|clip| {
+        !matches!(
+            clip,
+            BodyClip::Gesture(Gesture::Mantle)
+                | BodyClip::Action(ActionKind::Eat | ActionKind::Drink | ActionKind::ClimbWindow)
+        )
+    }) {
         assert_eq!(AnimationSpec::still_frame(clip), 0, "{clip:?}");
     }
     for family in [

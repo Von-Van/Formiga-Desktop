@@ -133,12 +133,16 @@ pub(crate) struct Pose {
     pub(crate) tip: f32,
 }
 
-/// The pose of `plan` in frame `frame` of `clip`. Reduced motion holds every intent still in its
-/// first pose: a cut rather than a slower animation.
+/// The pose of `plan` in frame `frame` of `clip`. Reduced motion holds every intent still in the
+/// pose of its still frame ([`AnimationSpec::still_frame`]): a cut rather than a slower animation.
 pub(crate) fn pose(plan: Plan, clip: BodyClip, frame: u8, reduce_motion: bool) -> Pose {
     let intent = Intent::for_clip(clip);
     let frames = AnimationSpec::for_clip(clip).frames.max(1);
-    let frame = if reduce_motion { 0 } else { frame % frames };
+    let frame = if reduce_motion {
+        AnimationSpec::still_frame(clip)
+    } else {
+        frame
+    } % frames;
     let t = f32::from(frame) / f32::from(frames);
     let wave = (t * TAU).sin();
     let half = (t * TAU * 2.0).sin();
@@ -157,7 +161,7 @@ pub(crate) fn pose(plan: Plan, clip: BodyClip, frame: u8, reduce_motion: bool) -
     // In the air on a hop: the whole figure up off its ground with every foot drawn up, stretched
     // out nose first, the tail trailing and the ears back, then levelling out to come down.
     if clip == BodyClip::Gesture(Gesture::Leap) {
-        let rising = frame % 2 == 0;
+        let rising = frame.is_multiple_of(2);
         pose.lift = if rising { 3.0 } else { 2.0 };
         pose.raise = [1.0; 4];
         pose.step = if rising {

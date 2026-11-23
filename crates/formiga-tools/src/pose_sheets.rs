@@ -617,7 +617,11 @@ pub fn gesture_sheet(path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-pub fn activity_sheet(path: PathBuf) -> Result<()> {
+/// Playing, eating, drinking and sprinting, four frames each, for every reference subject. With
+/// `reduced` every frame is drawn as reduced motion draws it, so each clip shows the one frame it
+/// holds still on, and a climb up a window is added, being the other clip that holds a beat
+/// other than its first.
+pub fn activity_sheet(path: PathBuf, reduced: bool) -> Result<()> {
     const COLS: u32 = 8;
     const SCALE: u32 = 3;
     const PREVIEW_FRAMES: u8 = 4;
@@ -627,23 +631,33 @@ pub fn activity_sheet(path: PathBuf) -> Result<()> {
         ActionKind::Drink,
         ActionKind::Sprint,
     ];
+    let actions: Vec<ActionKind> = if reduced {
+        ACTIONS
+            .into_iter()
+            .chain([ActionKind::ClimbWindow])
+            .collect()
+    } else {
+        ACTIONS.to_vec()
+    };
     let creatures = reference_creatures();
     let cell = FRAME_SIZE * SCALE;
-    let cells_per_family = ACTIONS.len() as u32 * u32::from(PREVIEW_FRAMES);
+    let cells_per_family = actions.len() as u32 * u32::from(PREVIEW_FRAMES);
     let rows_per_family = cells_per_family.div_ceil(COLS);
     let width = COLS * cell;
     let height = creatures.len() as u32 * rows_per_family * cell;
     let mut pixels = vec![0_u8; (width * height * 4) as usize];
     for (family_index, creature) in creatures.iter().enumerate() {
-        for (action_index, action) in ACTIONS.into_iter().enumerate() {
+        for (action_index, &action) in actions.iter().enumerate() {
             let spec = formiga_art::AnimationSpec::for_action(action);
             for frame in 0..PREVIEW_FRAMES {
                 let cell_index = action_index as u32 * u32::from(PREVIEW_FRAMES) + u32::from(frame);
-                let rendered = CreatureRenderer::render_frame(
+                let rendered = CreatureRenderer::render_frame_with_options(
                     &creature.appearance,
                     action,
                     frame % spec.frames,
                     true,
+                    reduced,
+                    0,
                 );
                 let row = family_index as u32 * rows_per_family + cell_index / COLS;
                 blit_scaled(

@@ -1027,3 +1027,121 @@ fn the_outline_rim_hugs_the_silhouette_and_never_goes_below_the_feet() {
     CreatureRenderer::outline_frame_in_detail(&mut edged, 2);
     check(&fine, &edged, 2, "detail 2");
 }
+
+/// The bodies the still-frame tests draw: the three original families, a run of modular ones,
+/// and the Echo Fox.
+fn still_frame_subjects() -> Vec<(String, AppearanceGenome)> {
+    let mut cases: Vec<(String, AppearanceGenome)> = [
+        BodyFamily::Blob,
+        BodyFamily::Hopper,
+        BodyFamily::SoftQuadruped,
+    ]
+    .into_iter()
+    .map(|family| (format!("classic {family:?}"), genome(family)))
+    .collect();
+    for seed in 0..16u8 {
+        let mut modular = genome(BodyFamily::Blob);
+        modular.design = Some(formiga_core::CreatureDesign::generated([seed; 32], 0, None));
+        cases.push((format!("modular seed {seed}"), modular));
+    }
+    cases.push((
+        "echo fox".to_owned(),
+        AppearanceGenome {
+            echo_fox: true,
+            ..genome(BodyFamily::Hopper)
+        },
+    ));
+    cases
+}
+
+/// With motion reduced every clip is one picture, whichever of its frames is asked for, and it is
+/// the clip's still frame: what it holds is what the moving clip holds on that frame. For eating
+/// that is the snack up at the mouth with a bite out of it rather than held away before the
+/// first bite, for drinking the cup tipped to the mouth rather than held down, and for play the
+/// toy at the paw.
+#[test]
+fn reduced_motion_holds_each_clip_on_its_still_frame() {
+    for (label, appearance) in still_frame_subjects() {
+        for clip in BodyClip::baked() {
+            let spec = AnimationSpec::for_clip(clip);
+            let still = AnimationSpec::still_frame(clip);
+            assert!(
+                still < spec.frames,
+                "{clip:?} holds frame {still} of {}",
+                spec.frames
+            );
+            let held = CreatureRenderer::render_body_frame(&appearance, clip, still, true);
+            for frame in 0..spec.frames {
+                assert!(
+                    CreatureRenderer::render_body_frame(&appearance, clip, frame, true) == held,
+                    "{label} {clip:?} frame {frame} is not its still frame {still}"
+                );
+            }
+            let moving = CreatureRenderer::render_body_frame(&appearance, clip, still, false);
+            assert_eq!(
+                held.held.map(|held| held.thing),
+                moving.held.map(|held| held.thing),
+                "{label} {clip:?} holds something other than its frame {still} does"
+            );
+        }
+        let held = |action: ActionKind, frame: u8, reduce_motion: bool| {
+            CreatureRenderer::render_body_frame(&appearance, action, frame, reduce_motion)
+                .held
+                .expect("the clip holds something")
+        };
+        let first = held(ActionKind::Eat, 0, false);
+        let mouthful = held(ActionKind::Eat, 0, true);
+        assert!(
+            matches!(mouthful.thing, HeldThing::Snack { bite, .. } if bite > 0)
+                && mouthful.at.y < first.at.y,
+            "{label} eats with the snack held away: {mouthful:?} against {first:?}"
+        );
+        assert!(
+            matches!(
+                held(ActionKind::Drink, 0, true).thing,
+                HeldThing::Cup { tipped: true, .. }
+            ),
+            "{label} drinks with the cup down"
+        );
+        assert_eq!(
+            held(ActionKind::SoloPlay, 0, true).thing,
+            held(ActionKind::SoloPlay, 0, false).thing,
+            "{label} plays with the toy away from the paw"
+        );
+    }
+}
+
+/// With motion on, the still frames change nothing: every frame is its own, and a clip that holds
+/// still on another frame still opens on its first: the snack held up before the first bite,
+/// the cup down, the first reach of a climb.
+#[test]
+fn a_still_frame_changes_nothing_with_motion_on() {
+    for (label, appearance) in still_frame_subjects() {
+        for action in [ActionKind::Eat, ActionKind::Drink, ActionKind::ClimbWindow] {
+            let still = AnimationSpec::still_frame(action);
+            assert_ne!(still, 0, "{action:?}");
+            assert!(
+                CreatureRenderer::render_body_frame(&appearance, action, 0, false)
+                    != CreatureRenderer::render_body_frame(&appearance, action, still, false),
+                "{label} {action:?} opens on its still frame with motion on"
+            );
+        }
+        let opening = |action: ActionKind| {
+            CreatureRenderer::render_body_frame(&appearance, action, 0, false)
+                .held
+                .expect("the clip holds something")
+                .thing
+        };
+        assert!(
+            matches!(opening(ActionKind::Eat), HeldThing::Snack { bite: 0, .. }),
+            "{label}"
+        );
+        assert!(
+            matches!(
+                opening(ActionKind::Drink),
+                HeldThing::Cup { tipped: false, .. }
+            ),
+            "{label}"
+        );
+    }
+}

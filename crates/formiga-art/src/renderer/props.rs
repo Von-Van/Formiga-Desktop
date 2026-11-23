@@ -100,7 +100,11 @@ pub(super) fn activity_held(
     frame: u8,
     reduce_motion: bool,
 ) -> Option<HeldPlacement> {
-    let phase = if reduce_motion { 0 } else { frame % 4 };
+    let phase = if reduce_motion {
+        AnimationSpec::still_frame(clip)
+    } else {
+        frame
+    } % 4;
     let (toy, snack, drink) = prop_variants(genome);
     let snack_at = |bite: u8, x: i32, y: i32| {
         Some(HeldPlacement::centred(
@@ -241,7 +245,11 @@ pub(super) fn draw_activity_marks(
     held: Option<HeldPlacement>,
     previous: Option<PixelPoint>,
 ) {
-    let phase = if reduce_motion { 0 } else { frame % 4 };
+    let phase = if reduce_motion {
+        AnimationSpec::still_frame(action)
+    } else {
+        frame
+    } % 4;
     // Marks are coloured against the creature, not from it, so they stay readable on its coat.
     let palette = crate::prop_palette(palette, prop_signature(genome));
     match action {

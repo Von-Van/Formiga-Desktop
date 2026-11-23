@@ -181,6 +181,14 @@ All notable changes are documented here.
   sprite pixels the outline already used, so it costs no texture and no frame time.
   `formiga-tools ui-sheet` shows three coats plain and outlined on light, dark, near-black and busy
   wallpaper.
+- With reduced motion a companion holds each clip still on the moment that says what it is doing,
+  rather than always on the first frame. Eating used to show the snack held away from the face
+  before the first bite, drinking the cup held down and a climb the first reach with both paws up;
+  now a companion eating holds its snack up at its mouth with a bite out of it, one drinking has
+  its cup tipped to its mouth, and one climbing is pulling itself up, one paw above the other.
+  Play already held the toy at the paw and is unchanged, as is every clip with motion on. Each
+  clip is still one picture, so it costs no texture. `formiga-tools activity-sheet --reduced`
+  draws the clips as reduced motion shows them.
 
 ### Fixed
 
