@@ -91,13 +91,14 @@ fn gesture_subjects() -> Vec<AppearanceGenome> {
 
 /// The loops a companion is seen in most — walking, running, resting, eating, sleeping — frame by
 /// frame for every body, one row each, at 3x, then being carried, a toss tumbling through the air,
-/// and a hop: the crouch it springs from, the leap rising and coming down, and the landing, which
-/// is played once from the touch to standing. A loop that reads as the same picture twice in a
-/// row, or that hitches where it comes round, shows up here and nowhere else.
+/// a hop: the crouch it springs from, the leap rising and coming down, and the landing, which
+/// is played once from the touch to standing, and the shuffle of a squeeze through a narrow gap,
+/// pinched with its face. A loop that reads as the same picture twice in a row, or that hitches
+/// where it comes round, shows up here and nowhere else.
 pub fn motion_sheet(path: PathBuf) -> Result<()> {
     use formiga_art::BodyClip;
     const SCALE: u32 = 3;
-    const LOOPS: [BodyClip; 10] = [
+    const LOOPS: [BodyClip; 11] = [
         BodyClip::Action(ActionKind::Traverse),
         BodyClip::Action(ActionKind::Sprint),
         BodyClip::Action(ActionKind::Idle),
@@ -108,6 +109,7 @@ pub fn motion_sheet(path: PathBuf) -> Result<()> {
         BodyClip::Gesture(Gesture::Crouch),
         BodyClip::Gesture(Gesture::Leap),
         BodyClip::Action(ActionKind::Landing),
+        BodyClip::Action(ActionKind::SqueezeWindow),
     ];
     let subjects = gesture_subjects();
     let cell = FRAME_SIZE * SCALE;

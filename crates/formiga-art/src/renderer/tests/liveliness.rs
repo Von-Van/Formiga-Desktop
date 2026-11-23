@@ -994,3 +994,33 @@ fn tails_on_the_shared_bob_and_hanging_swing_at_half_rate() {
         }
     }
 }
+
+/// Slipping through a narrow gap shows the squeeze's own pinched clip, moving or stopped in the
+/// gap, never the walk or a rest: a foot shuffled each stride of ground covered, on both of its
+/// frames, and never a frame past them.
+#[test]
+fn a_squeeze_shows_its_own_clip() {
+    let squeeze = BodyClip::Action(ActionKind::SqueezeWindow);
+    let frames = AnimationSpec::for_clip(squeeze).frames;
+    let mut creature = measured(43);
+    creature.state.action = ActionKind::SqueezeWindow;
+    creature.state.presence.stepping = true;
+    let mut seen = std::collections::BTreeSet::new();
+    for step in 0..24 {
+        creature.state.presence.stride = step as f32 * 0.5;
+        let body = BodyPresentation::for_creature(&creature);
+        assert_eq!(body.clip, squeeze, "squeezing through at stride {step}");
+        assert!(body.frame < frames, "frame {} of {frames}", body.frame);
+        seen.insert(body.frame);
+    }
+    assert_eq!(seen.len(), usize::from(frames), "both feet shuffle");
+    creature.state.presence.stepping = false;
+    for tenth in 0..20 {
+        creature.state.action_elapsed = tenth as f32 / 10.0;
+        let body = BodyPresentation::for_creature(&creature);
+        assert_eq!(body.clip, squeeze, "stopped in the gap");
+        assert!(body.frame < frames);
+    }
+    creature.state.presence = Presence::default();
+    assert_eq!(BodyPresentation::for_creature(&creature).clip, squeeze);
+}

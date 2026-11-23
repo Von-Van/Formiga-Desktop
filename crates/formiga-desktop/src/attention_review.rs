@@ -981,13 +981,11 @@ fn spectator_reactions_read_without_labels() {
 // ---------------------------------------------------------------------------------------------
 
 /// Stamp one art frame at an integer zoom the way the overlay samples its atlas: nearest, never
-/// filtered. `squeeze` is the horizontal narrowing the overlay applies while a companion slips
-/// through a gap, so a review sheet shows the same shape the desktop does.
-fn stamp(sheet: &mut Canvas, frame: &Canvas, left: i32, top: i32, zoom: i32, squeeze: f32) {
-    let width = (frame.width() as f32 * zoom as f32 * squeeze).round() as i32;
+/// filtered.
+fn stamp(sheet: &mut Canvas, frame: &Canvas, left: i32, top: i32, zoom: i32) {
     for y in 0..frame.height() as i32 * zoom {
-        for x in 0..width {
-            let pixel = frame.get((x as f32 / (zoom as f32 * squeeze)) as i32, y / zoom);
+        for x in 0..frame.width() as i32 * zoom {
+            let pixel = frame.get(x / zoom, y / zoom);
             if pixel.a > 0 {
                 sheet.set(left + x, top + y, over(pixel, sheet.get(left + x, top + y)));
             }
@@ -1090,6 +1088,10 @@ fn overlay_sprite(
     let mut face = CreatureRenderer::render_face_frame(&creature.appearance, state);
     if !creature.state.facing_right {
         face.mirror_horizontal();
+    }
+    // A squeeze's frames have their face drawn in already.
+    if BodyClip::from(action).face_in_frame() {
+        face = Canvas::new(FACE_FRAME_SIZE, FACE_FRAME_SIZE);
     }
     let half = FACE_FRAME_SIZE as i32 / 2;
     for y in 0..FACE_FRAME_SIZE as i32 {
@@ -1206,7 +1208,6 @@ fn every_body_plan_reads_and_seats_at_small_medium_and_large() {
                     x + CELL_W / 2 - FRAME_SIZE as i32 * zoom / 2,
                     y + CONTACT + origin * zoom,
                     zoom,
-                    1.0,
                 );
             }
             // Seating is one number for the whole rest cycle, so the claim is about the cycle:
@@ -1284,7 +1285,6 @@ fn feet_and_hanging_hands_meet_the_ledge_for_every_body_plan() {
                 x + CELL_W / 2 - FRAME_SIZE as i32 * 3 / 2,
                 y + contact + origin * 3,
                 3,
-                1.0,
             );
             let Some((_, min_y, _, max_y)) = sprite.alpha_bounds() else {
                 faults.push(format!("{label} {action:?} draws nothing"));
@@ -1367,7 +1367,7 @@ fn a_carried_prop_is_held_in_front_of_every_body_plan_in_both_facings() {
             let top = y + CONTACT + origin * ZOOM;
             let (sprite, anchor) =
                 overlay_sprite(&creature, ActionKind::PresentDiscovery, 2, false);
-            stamp(sheet, &sprite, left, top, ZOOM, 1.0);
+            stamp(sheet, &sprite, left, top, ZOOM);
             // Held up in its paw, off its eyes, mirrored with the frame as the overlay mirrors it.
             let frame = CreatureRenderer::render_body_frame(
                 &creature.appearance,
@@ -1387,7 +1387,7 @@ fn a_carried_prop_is_held_in_front_of_every_body_plan_in_both_facings() {
                 creature.state.activity_variant,
             );
             let quad = FACE_FRAME_SIZE as i32 * ZOOM / 2;
-            stamp(sheet, &prop, prop_x - quad, prop_y - quad, ZOOM, 1.0);
+            stamp(sheet, &prop, prop_x - quad, prop_y - quad, ZOOM);
             // The body frame's own edges, so a prop hanging outside one is visible rather than
             // merely arguable.
             for edge in 0..2 {
@@ -1548,7 +1548,6 @@ fn the_optional_outline_stays_a_soft_single_pixel_edge_at_every_scale() {
                     x + CELL_W / 2 - FRAME_SIZE as i32 * zoom / 2,
                     y + CELL_H / 2 - FRAME_SIZE as i32 * zoom / 2,
                     zoom,
-                    1.0,
                 );
             }
         }
@@ -1558,14 +1557,13 @@ fn the_optional_outline_stays_a_soft_single_pixel_edge_at_every_scale() {
     assert!(faults.is_empty(), "{faults:#?}");
 }
 
-/// R05.5: the tight places. A gap narrow enough that the overlay squeezes the sprite sideways,
-/// and a ledge barely longer than the companion standing on it.
+/// R05.5: the tight places. A gap narrow enough that a companion slips through it pinched, in
+/// the squeeze's own frames, and a ledge barely longer than the companion standing on it.
 #[test]
 fn narrow_gaps_and_short_ledges_stage_every_body_plan() {
     const CELL_W: i32 = 224;
     const CELL_H: i32 = 240;
     const CONTACT: i32 = 200;
-    const SQUEEZE: f32 = 0.72;
     let subjects = review_subjects(38);
     let mut sheet = Canvas::new((CELL_W * 6) as u32, (CELL_H * subjects.len() as i32) as u32);
     sheet.fill_rect(0, 0, sheet.width() as i32, sheet.height() as i32, PAPER);
@@ -1583,14 +1581,13 @@ fn narrow_gaps_and_short_ledges_stage_every_body_plan() {
                     faults.push(format!("{label} {action:?} draws nothing"));
                     continue;
                 };
-                let squeeze = if situation == 0 { SQUEEZE } else { 1.0 };
-                let drawn = (FRAME_SIZE as f32 * zoom as f32 * squeeze).round() as i32;
+                let drawn = FRAME_SIZE as i32 * zoom;
                 let centre = x + CELL_W / 2;
                 if situation == 0 {
-                    // Two window edges, opened to exactly the width the narrowed body needs, so
+                    // Two window edges, opened to exactly the width the pinched body needs, so
                     // the sheet shows whether it really clears them.
-                    let body = (max_x - min_x + 1) as f32 * zoom as f32 * squeeze;
-                    let half = (body.round() as i32 + zoom) / 2;
+                    let body = (max_x - min_x + 1) as i32 * zoom;
+                    let half = (body + zoom) / 2;
                     sheet.fill_rect(x + 4, y + 4, centre - half - x - 4, CELL_H - 8, SURFACE);
                     sheet.fill_rect(
                         centre + half,
@@ -1617,7 +1614,6 @@ fn narrow_gaps_and_short_ledges_stage_every_body_plan() {
                     centre - drawn / 2,
                     y + CONTACT + origin * zoom,
                     zoom,
-                    squeeze,
                 );
                 // A walk cycle lifts, so the claim here is only that neither pose breaks through
                 // the ledge it is standing on, and that the squeeze really narrows the body.
@@ -1627,9 +1623,17 @@ fn narrow_gaps_and_short_ledges_stage_every_body_plan() {
                         origin + max_y as i32 + 1
                     ));
                 }
-                if situation == 0
-                    && (max_x - min_x + 1) as f32 * SQUEEZE >= (max_x - min_x + 1) as f32
-                {
+                // Narrower than it is at any point of its walk.
+                let walk_width = (0..AnimationSpec::for_action(ActionKind::Traverse).frames)
+                    .filter_map(|frame| {
+                        overlay_sprite(&creature, ActionKind::Traverse, frame, false)
+                            .0
+                            .alpha_bounds()
+                    })
+                    .map(|(min_x, _, max_x, _)| max_x - min_x + 1)
+                    .min()
+                    .unwrap_or(0);
+                if situation == 0 && (max_x - min_x + 1) as f32 > walk_width as f32 * 0.9 {
                     faults.push(format!("{label} does not narrow to slip through a gap"));
                 }
             }

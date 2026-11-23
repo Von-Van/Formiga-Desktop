@@ -563,7 +563,7 @@ collection; the only durable record is the scrapbook's one first-find row per va
 The renderer caches one gaze-free 48×48 body atlas and one 16×16 layered face texture per creature.
 The face texture holds fifteen expressions — the yawn's, eyes screwed shut and the mouth wide, and
 since 0.62.0 grumpy, smug and pleading for the poses a temperament strikes — each in nine gaze
-directions and three eyelid states. The body atlas holds 238 frames: 108 for actions and 130 for
+directions and three eyelid states. The body atlas holds 240 frames: 110 for actions and 130 for
 thirty-seven gesture poses. A toss has two frames of its own, appended after every earlier action clip:
 balled up in the air, legs folded under, head and tail tucked and the eyes shut, and the same ball
 turned a little nose up (`renderer::tumble`), which loops at six frames a second until the landing.
@@ -579,7 +579,18 @@ pixel past standing with the ears up, and standing on exactly the frame a rest s
 cut to whatever comes next does not show. Being carried hangs still rather than bobbing: drawn out a
 pixel longer, the paws, ears and tail hanging (a modular body's paws down its sides, which used to
 stay folded), the head swaying a pixel over and back each second, and the eyes down at the desk. Its
-four frames repeat in pairs, so it takes two cells, and the leap takes the two it gave up. Since 0.62.0 a frame or a
+four frames repeat in pairs, so it takes two cells, and the leap takes the two it gave up. A squeeze through a
+narrow gap has two frames of its own, the last action clip in the atlas, which fill cells its last
+row had spare: the body shuffling a foot forward and then the other (`Pose::shuffle`, and a
+sculpted form's own short step), drawn with its face in it and pinched to about three quarters of
+its width (`renderer::squeeze`). The pinch takes out a quarter of the columns the body spans as
+seams, one pixel a row from top to bottom, run where taking a pixel out changes the least —
+through flat coat and the gaps between ears and legs, paying for any line a sideways step would
+break — and never through an outline, the face, a thin leg or ear, or the last pixel keeping two
+parts apart, so the outline stays whole and the eyes come closer across a narrower head. A
+sculpted form's fine painting loses the same columns. `BodyClip::face_in_frame` is true for this
+clip alone: the composited frame, the review sheets and the overlay draw no face over it, the
+overlay's face quad covering nothing. Since 0.62.0 a frame or a
 face that comes out identical to one already baked — a pose held across frames, a whole clip under
 reduced motion, eyes shut whichever way they would be looking — shares that one's cell, and each
 creature keeps a table of the cell each slot is drawn from; the eight trinket cells the face
@@ -1338,8 +1349,9 @@ retains the best deterministic path of at most four edges. Learned climbing, exp
 trust, a live invitation, and the compact preferred-region candidate adjust route scoring.
 
 `WindowRoutePlan` holds the current geometry hash, remaining hops, and one repair bit. Each tier delegates to
-the existing hop/climb journey. A gap uses `SqueezeWindow`, whose body action maps to the existing
-traversal clip while the GPU narrows its body and layered face quads to 0.72×. Every hop retains both
+the existing hop/climb journey. A gap uses `SqueezeWindow`, drawn in its own pinched two-frame
+clip at full quad size, a foot shuffled each stride of ground covered and the clip held while it
+stops in the gap; the grab mask is read from that frame like any other. Every hop retains both
 supporting rectangles. Unrelated topology changes preserve valid steps. An affected route resolves
 a safe support, then may attempt one replacement route with a brief reorientation; another change
 cancels it. Squeezes include a short inspection at entry and exit.
@@ -3225,7 +3237,7 @@ own simulation: `World::begin_window_climb` starts one companion up onto a windo
 the floor the way it climbs one itself (a look, the walk to the window's side, the climb, the
 mantle's haul and step in, each sample labelled with the mantle frame it shows), and every tenth of
 a second up to two seconds into the perch is drawn at 2x against the window, placed by
-`FramePlacement::frame_rect` with `FramePlacement::horizontal_scale`, the rule `gpu.rs` places
+`FramePlacement::frame_rect`, the rule `gpu.rs` places
 every companion's quad by. Under the climbs, each body dangles from a ledge in every frame with its
 hang at none, half and all of its weight, looking along the ledge so its glance down shows. The
 gesture sheet gives the mantle a row of its own for every body, frame by frame beside the watching

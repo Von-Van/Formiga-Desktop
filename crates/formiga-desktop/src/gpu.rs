@@ -37,7 +37,6 @@ mod shadow;
 mod train;
 mod ui;
 mod village;
-pub(crate) use atlas::creature_horizontal_scale;
 use atlas::*;
 use occlusion::*;
 pub(crate) use occlusion::{monitor_has_fullscreen_window, visible_occlusion_rects};
@@ -1448,15 +1447,11 @@ impl OverlayRenderer {
         // Creature scale is expressed in physical pixels. Applying the monitor scale factor a
         // second time made a 3x creature twice the intended size on Retina displays.
         let (local_x, contact_y) = self.drawn_contact(creature, display_scale);
-        // Gap traversal reuses the normal walk atlas and briefly narrows both body and layered face
-        // quads. The source texture and hit mask remain unchanged and no runtime art is generated.
-        let horizontal_scale = creature_horizontal_scale(creature.state.action);
         // Placed the way the climb sheet places it, from the one shared rule.
         let drawn = FramePlacement::for_creature(creature, sprite.resting_baseline).frame_rect(
             local_x,
             contact_y,
             display_scale as f32,
-            horizontal_scale,
         );
         let sprite_size = drawn.height;
         let frame_top = drawn.top;
@@ -1553,15 +1548,17 @@ impl OverlayRenderer {
         } else {
             FRAME_SIZE as i32 - anchor.x
         } as f32;
-        let unscaled_face_center_x = local_x - sprite_size / 2.0 + anchor_x * display_scale as f32;
-        let face_center_x = local_x + (unscaled_face_center_x - local_x) * horizontal_scale;
+        let face_center_x = local_x - sprite_size / 2.0 + anchor_x * display_scale as f32;
         let face_center_y = frame_top + anchor.y as f32 * display_scale as f32;
         let face_size = FACE_FRAME_SIZE as f32 * display_scale as f32;
-        let face_width = face_size * horizontal_scale;
-        let face_left = (face_center_x - face_width / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
-        let face_right = (face_center_x + face_width / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
-        let face_top = 1.0 - (face_center_y - face_size / 2.0) / self.layout.height as f32 * 2.0;
-        let face_bottom = 1.0 - (face_center_y + face_size / 2.0) / self.layout.height as f32 * 2.0;
+        // A squeeze's frames have the face drawn into them, pinched with the body, so its face
+        // quad covers nothing.
+        let face_drawn = if clip.face_in_frame() { 0.0 } else { face_size };
+        let face_left = (face_center_x - face_drawn / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
+        let face_right = (face_center_x + face_drawn / 2.0) / self.layout.width as f32 * 2.0 - 1.0;
+        let face_top = 1.0 - (face_center_y - face_drawn / 2.0) / self.layout.height as f32 * 2.0;
+        let face_bottom =
+            1.0 - (face_center_y + face_drawn / 2.0) / self.layout.height as f32 * 2.0;
         let mut source_face_state = face_state;
         if !facing_right {
             source_face_state.gaze.x = -source_face_state.gaze.x;
@@ -1615,9 +1612,8 @@ impl OverlayRenderer {
             } else {
                 FRAME_SIZE as i32 - at.x
             } as f32;
-            let unscaled_x = local_x - sprite_size / 2.0 + across * display_scale as f32;
             (
-                local_x + (unscaled_x - local_x) * horizontal_scale,
+                local_x - sprite_size / 2.0 + across * display_scale as f32,
                 frame_top + at.y as f32 * display_scale as f32,
             )
         };
@@ -1701,7 +1697,6 @@ impl OverlayRenderer {
                 } else {
                     FRAME_SIZE as i32 - at.x
                 } as f32;
-                let unscaled_x = local_x - sprite_size / 2.0 + across * display_scale as f32;
                 let sheet = if thing.find().is_some() {
                     CarriedSheet::Finds
                 } else {
@@ -1710,7 +1705,7 @@ impl OverlayRenderer {
                 let quad = self.held_quad_at(
                     thing,
                     (
-                        local_x + (unscaled_x - local_x) * horizontal_scale,
+                        local_x - sprite_size / 2.0 + across * display_scale as f32,
                         frame_top + at.y as f32 * display_scale as f32,
                     ),
                     !facing_right,

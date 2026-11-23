@@ -190,13 +190,10 @@ impl InteractionProxy {
         let drawn = creature
             .state
             .drawn_position(f32::from(scale) / monitor.scale_factor.max(1.0));
-        // Squeezing through a gap, the overlay draws the frame narrower about its middle.
-        let logical_width =
-            logical_size * crate::gpu::creature_horizontal_scale(creature.state.action);
         self.logical_bounds = DesktopRect {
-            x: drawn.x - logical_width * 0.5,
+            x: drawn.x - logical_size * 0.5,
             y: drawn.y + origin_y / monitor.scale_factor,
-            width: logical_width,
+            width: logical_size,
             height: logical_size,
         };
         let local_anchor_x = (drawn.x - monitor.bounds.x) * monitor.scale_factor;
@@ -652,5 +649,47 @@ mod tests {
             count(&small),
             count(&own)
         );
+    }
+
+    /// Slipping through a gap, the grab mask is the pinched frame the overlay draws at full frame
+    /// size, face and all: every pixel of it opaque exactly where the squeeze is drawn, and no
+    /// wider than the body there, rather than a walk frame narrowed on screen.
+    #[test]
+    fn a_squeezing_companion_is_grabbed_by_its_pinched_body() {
+        let appearance = companion();
+        let squeeze = BodyClip::Action(formiga_core::ActionKind::SqueezeWindow);
+        let width = |mask: &[bool]| {
+            let columns: Vec<usize> = (0..mask.len())
+                .filter(|at| mask[*at])
+                .map(|at| at % FRAME_SIZE as usize)
+                .collect();
+            columns.iter().max().unwrap() - columns.iter().min().unwrap() + 1
+        };
+        let walk = body_mask(
+            &appearance,
+            BodyClip::Action(formiga_core::ActionKind::Traverse),
+            0,
+            true,
+            false,
+            face(),
+        );
+        for frame in 0..2 {
+            for facing_right in [true, false] {
+                let mask = body_mask(&appearance, squeeze, frame, facing_right, false, face());
+                let drawn =
+                    CreatureRenderer::render_body_frame(&appearance, squeeze, frame, false).canvas;
+                let mut drawn = drawn;
+                if !facing_right {
+                    drawn.mirror_horizontal();
+                }
+                let expected: Vec<bool> = drawn.pixels().iter().map(|pixel| pixel.a > 16).collect();
+                assert_eq!(
+                    &*mask,
+                    &expected[..],
+                    "frame {frame}, facing right {facing_right}"
+                );
+                assert!(width(&mask) < width(&walk));
+            }
+        }
     }
 }

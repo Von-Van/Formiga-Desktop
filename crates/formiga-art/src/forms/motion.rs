@@ -184,6 +184,25 @@ pub(crate) fn pose(plan: Plan, clip: BodyClip, frame: u8, reduce_motion: bool) -
         pose.tip = 0.08;
         return pose;
     }
+    // Edging through a narrow gap: a short step of one diagonal pair and then the other, or a
+    // floater's small swell. The pinch is drawn over the whole frame afterwards.
+    if clip.body() == BodyClip::Action(ActionKind::SqueezeWindow) {
+        let side = if frame.is_multiple_of(2) { 1.0 } else { -1.0 };
+        if locomotion == Locomotion::Float {
+            pose.lift = if side > 0.0 { 2.0 } else { 1.0 };
+            pose.paddle = side * 0.5;
+            pose.sway = -side * 0.5;
+        } else {
+            pose.step = [side, -side, -side, side];
+            pose.raise = if side > 0.0 {
+                [1.0, 0.0, 0.0, 1.0]
+            } else {
+                [0.0, 1.0, 1.0, 0.0]
+            };
+            pose.sway = side * 0.5;
+        }
+        return pose;
+    }
     match intent {
         Intent::Idle => {
             // A slow breath, the tail drifting, and the ears pricked once a loop.

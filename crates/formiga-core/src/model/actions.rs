@@ -63,8 +63,9 @@ impl ActionKind {
     ];
 
     /// Unique body clips baked into the creature atlas. Tossing has two frames of its own, balled
-    /// up in the air, added last so every clip before it keeps its place in the atlas.
-    pub const BODY_CLIPS: [Self; 23] = [
+    /// up in the air, and a squeeze through a narrow gap two pinched frames of its own, each added
+    /// last so every clip before it keeps its place in the atlas.
+    pub const BODY_CLIPS: [Self; 24] = [
         Self::Idle,
         Self::Traverse,
         Self::Perch,
@@ -88,6 +89,7 @@ impl ActionKind {
         Self::InspectScreen,
         Self::PresentDiscovery,
         Self::Tossed,
+        Self::SqueezeWindow,
     ];
 
     pub const AUTONOMOUS: [Self; 15] = [
