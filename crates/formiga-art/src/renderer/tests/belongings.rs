@@ -300,6 +300,7 @@ fn only_a_speck_sized_companion_wears_the_speck_drawings() {
         hip: PixelPoint { x: 18, y: 34 },
         back: PixelPoint { x: 18, y: 30 },
         floor: 42,
+        hand: None,
     };
     let speck_pieces = [
         AccessoryKind::MoonClip,
