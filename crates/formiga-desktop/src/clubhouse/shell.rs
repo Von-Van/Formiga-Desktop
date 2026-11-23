@@ -19,7 +19,16 @@ pub(crate) struct Shell {
     pub(crate) sections: sections::Sections,
     /// A line of feedback for the footer, and when it was given.
     pub feedback: Option<(String, std::time::Instant)>,
+    /// A companion whose face was clicked somewhere in the notebook, for the notebook to turn
+    /// to its page once the page being drawn is done.
+    pub(crate) open_companion: Option<CreatureId>,
+    /// The companion on its page doing what it is doing: its clip's frames side by side, with
+    /// whose they are, how they looked, what they were doing, and how many frames there are.
+    living: Option<(LivingKey, TextureHandle, u8)>,
 }
+
+/// Whose living portrait it is, how they looked and what they were doing.
+type LivingKey = (CreatureId, AppearanceGenome, ActionKind);
 
 impl Shell {
     pub fn notify(&mut self, message: impl Into<String>) {
@@ -32,12 +41,77 @@ impl Shell {
             .map(|(_, t)| t.id())
             .chain(self.trinket_atlas.iter().map(|(_, t)| t.id()))
             .chain(self.bubble_sheet.iter().map(TextureHandle::id))
+            .chain(self.living.iter().map(|(_, texture, _)| texture.id()))
     }
 
     pub(super) fn release_images(&mut self) {
         self.portraits.clear();
         self.trinket_atlas = None;
         self.bubble_sheet = None;
+        self.living = None;
+    }
+
+    /// A companion's portrait doing what it is doing: its clip played at its own pace, never
+    /// faster than six frames a second, the notebook asking to be drawn again only as often as a
+    /// frame changes. `still` holds the first frame, for Reduce motion. One companion's frames are
+    /// kept at a time, drawn again when it starts doing something else or its look changes.
+    pub(crate) fn living_portrait(
+        &mut self,
+        ui: &mut Ui,
+        creature: &Creature,
+        size: f32,
+        still: bool,
+    ) {
+        let action = formiga_art::AnimationSpec::body_action(creature.state.action);
+        let spec = formiga_art::AnimationSpec::for_action(action);
+        let key = (creature.id, creature.appearance.clone(), action);
+        if self
+            .living
+            .as_ref()
+            .is_none_or(|(drawn, _, _)| *drawn != key)
+        {
+            let frames = spec.frames.max(1);
+            let mut strip = Canvas::new(48 * u32::from(frames), 48);
+            for frame in 0..frames {
+                let tile =
+                    CreatureRenderer::render_frame(&creature.appearance, action, frame, true);
+                for y in 0..48 {
+                    for x in 0..48 {
+                        strip.set(i32::from(frame) * 48 + x, y, tile.get(x, y));
+                    }
+                }
+            }
+            self.living = Some((key, upload(ui.ctx(), "living-portrait", &strip), frames));
+        }
+        let (_, texture, frames) = self.living.as_ref().expect("drawn above");
+        let (texture, frames) = (texture.clone(), *frames);
+        let fps = f64::from(spec.fps.clamp(1, 6));
+        let frame = if still || frames <= 1 {
+            0
+        } else {
+            let now = ui.input(|input| input.time);
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_secs_f64(
+                    (1.0 - (now * fps).fract()) / fps,
+                ));
+            ((now * fps) as u64 % u64::from(frames)) as u8
+        };
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(f32::from(frame) / f32::from(frames), 0.0),
+            egui::pos2(f32::from(frame + 1) / f32::from(frames), 1.0),
+        );
+        egui::Frame::new()
+            .fill(forest())
+            .stroke(egui::Stroke::new(2.0, gold()))
+            .inner_margin(8)
+            .show(ui, |ui| {
+                ui.add(
+                    egui::Image::new(&texture)
+                        .uv(uv)
+                        .maintain_aspect_ratio(false)
+                        .fit_to_exact_size(egui::vec2(size, size)),
+                );
+            });
     }
 
     /// A companion's portrait, greeting, drawn once and kept until its look changes.
@@ -61,21 +135,6 @@ impl Shell {
             *entry = (creature.appearance.clone(), drawn(ctx));
         }
         entry.1.clone()
-    }
-
-    pub fn portrait(&mut self, ui: &mut Ui, creature: &Creature, size: f32) {
-        let texture = self.portrait_texture(ui.ctx(), creature);
-        egui::Frame::new()
-            .fill(forest())
-            .stroke(egui::Stroke::new(2.0, gold()))
-            .inner_margin(8)
-            .show(ui, |ui| {
-                ui.add(
-                    egui::Image::new(&texture)
-                        .maintain_aspect_ratio(false)
-                        .fit_to_exact_size(egui::vec2(size, size)),
-                );
-            });
     }
 
     /// The creatures' speech bubbles, the sheet the desktop draws them from, uploaded once.
