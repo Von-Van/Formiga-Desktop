@@ -510,6 +510,7 @@ impl World {
         self.rngs.remove(&creature_id);
         self.ambient_timers.remove(&creature_id);
         self.village_life.remove(&creature_id);
+        self.village_memory.forget(creature_id);
         self.window_journeys.remove(&creature_id);
         self.window_routes.remove(&creature_id);
         self.tosses.remove(&creature_id);

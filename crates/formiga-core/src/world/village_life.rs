@@ -13,11 +13,12 @@
 //! thing that reaches the save, by the same `PresentDiscovery` completion any other find does.
 
 use super::discovery::{self, DiscoveryCircumstances};
+use super::village_company::{self as company, Answer, Call, Kind, LookOn, Purpose, Recent};
 use super::*;
 use crate::tuning::{FINDS, VILLAGE_LIFE};
 
 /// How fast a resident walks about the village on an errand of its own.
-fn errand_speed(creature: &Creature) -> f32 {
+pub(super) fn errand_speed(creature: &Creature) -> f32 {
     22.0 + creature.personality.activity * 18.0
 }
 
@@ -86,6 +87,13 @@ pub(super) enum Plan {
         cushion: Point,
         nap: f32,
     },
+    /// Going over to another resident: to say hello and stay a while, to play, or for a walk
+    /// along the village together (see [`company`]).
+    Call(Call),
+    /// Stopped for somebody coming over, and whatever comes of it.
+    Answer(Answer),
+    /// Stopped to look on while somebody works.
+    LookOn(LookOn),
 }
 
 /// The village as it stood when a plan began: its ground, where the resident's own house stood
@@ -104,8 +112,10 @@ pub(super) struct PlanGround {
 #[derive(Clone, Copy, Debug)]
 pub(super) struct VillageActivity {
     pub(super) plan: Plan,
-    step: u8,
-    step_elapsed: f32,
+    pub(super) step: u8,
+    pub(super) step_elapsed: f32,
+    /// Whether the step it is on has only just begun.
+    fresh: bool,
     /// Something turned up at the end, in circumstances of its own.
     find: Option<DiscoveryCircumstances>,
     /// The ground the plan was made on, noted the first time it is carried on.
@@ -123,6 +133,7 @@ impl VillageActivity {
             plan,
             step: 0,
             step_elapsed: 0.0,
+            fresh: true,
             find: None,
             ground: None,
         }
@@ -156,9 +167,65 @@ impl VillageActivity {
         }
     }
 
-    fn next(&mut self) {
-        self.step += 1;
+    pub(super) fn next(&mut self) {
+        self.go_to(self.step + 1);
+    }
+
+    pub(super) fn go_to(&mut self, step: u8) {
+        self.step = step;
         self.step_elapsed = 0.0;
+        self.fresh = true;
+    }
+
+    /// Whether this is the first time the step it is on has been asked: asked once a step.
+    pub(super) fn entering(&mut self) -> bool {
+        std::mem::take(&mut self.fresh)
+    }
+
+    /// Where it is at work, or on its way to be, somewhere it can be watched; how far back that
+    /// is; and whether it is a garden.
+    pub(super) fn working(&self) -> Option<(Point, f32, bool)> {
+        if self.step > 1 || self.find.is_some() {
+            return None;
+        }
+        match self.plan {
+            Plan::Garden {
+                stand,
+                task: GardenTask::Water | GardenTask::Inspect,
+                ..
+            } => Some((stand, 0.0, true)),
+            Plan::Chore { stand, depth, .. } => Some((stand, depth, false)),
+            _ => None,
+        }
+    }
+
+    /// Whether it is standing with or beside somebody, where it will stay a moment.
+    pub(super) fn keeps_still(&self) -> bool {
+        company::keeps_still(&self.plan, self.step)
+    }
+
+    /// Whether a call it made came to nothing.
+    pub(super) fn turned_down(&self) -> bool {
+        matches!(self.plan, Plan::Call(_)) && company::turned_down(self.step)
+    }
+
+    /// Its part in company kept with another, as the other reads it.
+    pub(super) fn part(&self) -> Option<company::PartView> {
+        match self.plan {
+            Plan::Call(call) => Some(company::PartView {
+                with: call.on,
+                step: self.step,
+                reply: None,
+                met: self.step >= 2,
+            }),
+            Plan::Answer(answer) => Some(company::PartView {
+                with: answer.to,
+                step: self.step,
+                reply: Some(answer.reply),
+                met: self.step >= 1,
+            }),
+            _ => None,
+        }
     }
 
     /// Indoors right now, out of sight.
@@ -181,7 +248,7 @@ pub(super) struct Aside {
 }
 
 /// A step towards `goal` at `speed`, facing the way it goes. Returns whether it has arrived.
-fn walk(creature: &mut Creature, goal: Point, speed: f32, dt: f32) -> bool {
+pub(super) fn walk(creature: &mut Creature, goal: Point, speed: f32, dt: f32) -> bool {
     let start = creature.state.position;
     let distance = start.distance(goal);
     if distance <= 0.5 {
@@ -195,7 +262,7 @@ fn walk(creature: &mut Creature, goal: Point, speed: f32, dt: f32) -> bool {
 
 /// Shows `action`, announcing it if it is new, the way every clip a resident shows at home is
 /// announced: as started, and never completed.
-fn show(creature: &mut Creature, action: ActionKind, events: &mut Vec<WorldEvent>) {
+pub(super) fn show(creature: &mut Creature, action: ActionKind, events: &mut Vec<WorldEvent>) {
     if creature.state.action != action {
         creature.state.action = action;
         creature.state.action_elapsed = 0.0;
@@ -211,7 +278,12 @@ fn show(creature: &mut Creature, action: ActionKind, events: &mut Vec<WorldEvent
 }
 
 /// Starts a beat on a creature.
-fn beat(creature: &mut Creature, kind: BeatKind, length: f32, held: Option<VillageProp>) {
+pub(super) fn beat(
+    creature: &mut Creature,
+    kind: BeatKind,
+    length: f32,
+    held: Option<VillageProp>,
+) {
     creature.state.beat = Some(Beat {
         held,
         ..Beat::new(kind, length)
@@ -219,7 +291,7 @@ fn beat(creature: &mut Creature, kind: BeatKind, length: f32, held: Option<Villa
 }
 
 /// Whether the beat started for this step is over.
-fn beat_done(creature: &Creature) -> bool {
+pub(super) fn beat_done(creature: &Creature) -> bool {
     creature.state.beat.is_none_or(|beat| beat.finished())
 }
 
@@ -231,6 +303,8 @@ pub(super) struct Onlooker {
     pub(super) at: Point,
     /// Already stopped to look at something.
     pub(super) watching: bool,
+    /// Home in the village, rather than still on its way back to it: somebody to go over to.
+    pub(super) home: bool,
 }
 
 /// Everything a plan needs to know about the village around it this tick.
@@ -248,6 +322,15 @@ pub(super) struct VillageContext<'a> {
     pub(super) find_allowed: bool,
     /// The way down to the front from somewhere back in the village.
     pub(super) paths: &'a village_paths::VillagePaths,
+    /// Everybody as the tick began, for a plan that is about somebody else.
+    pub(super) everyone: &'a [company::Resident],
+    /// Who was asked for their company this tick.
+    pub(super) invites: &'a mut Vec<company::Invite>,
+    /// The village's ground line, the stretch of it there is to stand on, and half the ground
+    /// one resident stands on.
+    pub(super) ground_y: f32,
+    pub(super) span: (f32, f32),
+    pub(super) half: f32,
 }
 
 impl VillageContext<'_> {
@@ -539,6 +622,8 @@ pub(super) fn advance(
                 {
                     creature.state.position = door;
                     creature.state.depth = depth;
+                    // Somebody close by sees it go in.
+                    context.noticed(door, creature.id, 1.2);
                     creature.state.indoors = true;
                     show(
                         creature,
@@ -557,12 +642,18 @@ pub(super) fn advance(
                 if activity.step_elapsed >= stay {
                     creature.state.indoors = false;
                     show(creature, ActionKind::Homebound, context.events);
+                    // Out again, and somebody close by looks round; up from a nap, it has a
+                    // stretch on the doorstep first.
+                    context.noticed(door, creature.id, 1.4);
+                    if nap {
+                        beat(creature, BeatKind::Yawn, super::beats::YAWN_SECS, None);
+                    }
                     activity.next();
                 }
                 true
             }
             // A moment on the doorstep, and off again.
-            _ => activity.step_elapsed < 1.2,
+            _ => activity.step_elapsed < 1.2 || !beat_done(creature),
         },
         Plan::Roof {
             beside, top, stay, ..
@@ -755,6 +846,9 @@ pub(super) fn advance(
             }
             _ => activity.step_elapsed < nap,
         },
+        Plan::Call(call) => company::advance_call(activity, call, creature, dt, context),
+        Plan::Answer(answer) => company::advance_answer(activity, answer, creature, dt, context),
+        Plan::LookOn(plan) => company::advance_look_on(activity, plan, creature, dt, context),
     }
 }
 
@@ -876,10 +970,111 @@ pub(super) struct VillageOptions<'a> {
     pub(super) may_go_in: bool,
     /// Whether nobody is up on its roof already.
     pub(super) roof_free: bool,
-    /// Whether one of the quiet moments at the door may start: only one of those at a time.
+    /// Whether one more of the quiet moments at a door may start, by a resident standing at its
+    /// own place to have one: only so many at a time, for the size of the village.
     pub(super) moment_free: bool,
-    /// Whether a plan out and about may start: only one of those at a time, too.
+    /// Whether one more plan out and about may start: only so many of those at a time, too.
     pub(super) plan_free: bool,
+    /// Whether no mishap is under way: one of those at a time, so each is worth noticing.
+    pub(super) mishap_free: bool,
+    /// Who is free for company, and has not lately been sought out by this resident.
+    pub(super) friends: &'a [Friend],
+    /// Who is at work somewhere it can be watched.
+    pub(super) working: &'a [Working],
+    /// What this resident has lately been up to.
+    pub(super) recent: Recent,
+    pub(super) paths: &'a village_paths::VillagePaths,
+}
+
+/// A resident free for company.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Friend {
+    pub(super) id: CreatureId,
+    pub(super) at: Point,
+    /// How close the two are, from nothing to as close as it gets.
+    pub(super) bond: f32,
+}
+
+/// A resident at work in a garden or on its house.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Working {
+    pub(super) id: CreatureId,
+    pub(super) at: Point,
+    pub(super) depth: f32,
+    pub(super) garden: bool,
+    /// Having something to eat.
+    pub(super) eating: bool,
+}
+
+/// The pastime a resident is fondest of, all its life: read from its own seed, so two residents
+/// alike in every other way still spend their afternoons differently.
+pub(super) fn favourite(creature: &Creature) -> Kind {
+    const KINDS: [Kind; 5] = [
+        Kind::Garden,
+        Kind::Chore,
+        Kind::Roof,
+        Kind::Company,
+        Kind::LookOn,
+    ];
+    KINDS[usize::from(creature.behavior_seed[5]) % KINDS.len()]
+}
+
+/// Who to go over to: anybody free, but a close friend sooner, and somebody near sooner than
+/// somebody at the far end of the village.
+fn choose_friend(
+    rng: &mut ChaCha12Rng,
+    creature: &Creature,
+    options: &VillageOptions<'_>,
+) -> Option<Friend> {
+    let weights: Vec<u32> = options
+        .friends
+        .iter()
+        .map(|friend| {
+            let near = friend.at.distance(creature.state.position) <= options.frame * 4.0;
+            2 + (friend.bond * 8.0).round() as u32 + 2 * u32::from(near)
+        })
+        .collect();
+    Some(options.friends[weighted(rng, &weights)?])
+}
+
+/// Where a walk together goes: somewhere along the village a good few steps from here, clear of
+/// anybody standing or busy there — up on the trodden path along the middle, as often as not,
+/// where the village has one and no house stands in front of that stretch of it.
+fn walk_destination(
+    rng: &mut ChaCha12Rng,
+    creature: &Creature,
+    options: &VillageOptions<'_>,
+) -> Option<(Point, f32)> {
+    let frame = options.frame;
+    let half = RESTING_WIDTH / 2.0 * options.commons.scale;
+    let face_clear = frame * spacing::FACE_CLEAR_RATIO;
+    (0..6).find_map(|_| {
+        let to = options.commons.along(rng.random_range(0.0..1.0));
+        let far = (to.x - creature.state.position.x).abs() >= frame * 3.0;
+        // Room for two: the place itself, and a step either side of it.
+        let clear = !options.taken.iter().any(|busy| {
+            spacing::closer_than(busy.x - to.x, face_clear + frame)
+                && busy.distance(creature.state.position) > 1.0
+        });
+        if !far || !clear {
+            return None;
+        }
+        let on_path = options
+            .paths
+            .path_span()
+            .is_some_and(|(low, high)| (low + frame..=high - frame).contains(&to.x))
+            && [-frame, 0.0, frame].into_iter().all(|step| {
+                !options
+                    .paths
+                    .hidden(to.x + step, village_paths::PATH_DEPTH, half)
+            });
+        let depth = if on_path && rng.random_bool(0.6) {
+            village_paths::PATH_DEPTH
+        } else {
+            0.0
+        };
+        Some((to, depth))
+    })
 }
 
 /// What a resident does with its turn.
@@ -974,7 +1169,12 @@ pub(super) const fn chore_for(style: ShelterStyle) -> BeatKind {
 }
 
 /// What a resident with time on its hands does next: one of the quiet moments at its door, or a
-/// plan about the village — the garden, its house, indoors, its roof, or a small mishap.
+/// plan about the village — the garden, its house, indoors, its roof, a small mishap, or
+/// somebody else: going over to one who is free, or stopping to look on at one who is busy.
+///
+/// How the choices weigh against one another is the resident's own: what it is like, what it is
+/// fondest of, what it did last — seldom the same thing twice running — and what that left it
+/// inclined to do next.
 pub(super) fn choose(
     rng: &mut ChaCha12Rng,
     creature: &Creature,
@@ -985,6 +1185,7 @@ pub(super) fn choose(
     if !options.moment_free && !options.plan_free {
         return Choice::Wait;
     }
+    let personality = &creature.personality;
     let sleepy = creature.state.drives.sleep_pressure > 0.5;
     let hungry = creature.state.drives.energy < 0.5;
     let garden = if options.plan_free {
@@ -992,41 +1193,100 @@ pub(super) fn choose(
     } else {
         None
     };
-    let plan_weight = |weight: u32| if options.plan_free { weight } else { 0 };
+    let recent = options.recent;
+    let fond = favourite(creature);
+    // One choice's weight for this resident: more for one whose nature leans that way, for its
+    // favourite, and for what it has just been left inclined to do; less for what it did last.
+    let lean = |free: bool, weight: u32, kind: Kind, leaning: f32| -> u32 {
+        if !free || weight == 0 {
+            return 0;
+        }
+        let mut weight = weight as f32 * (0.25 + 1.5 * leaning.clamp(0.0, 1.0));
+        if fond == kind {
+            weight *= VILLAGE_LIFE.favourite_gain;
+        }
+        if recent.last == Some(kind) {
+            weight *= VILLAGE_LIFE.again_share;
+        }
+        if recent.bent() == Some(kind) {
+            weight *= VILLAGE_LIFE.bent_gain;
+        }
+        (weight.round() as u32).max(1)
+    };
+    let out = options.plan_free;
+    let mishap = |weight: u32| {
+        if out && options.mishap_free {
+            weight
+        } else {
+            0
+        }
+    };
     let house = options.house;
+    let company = out && !options.friends.is_empty();
+    let rested = !sleepy && creature.state.drives.energy >= 0.3;
     let weights = [
-        if options.moment_free {
+        if !options.moment_free {
+            0
+        } else if recent.bent().is_some() {
+            VILLAGE_LIFE.moment_weight / 2
+        } else {
             VILLAGE_LIFE.moment_weight
-        } else {
-            0
         },
-        if garden.is_some() {
-            VILLAGE_LIFE.garden_weight
-        } else {
-            0
-        },
-        plan_weight(if house.is_some() {
-            VILLAGE_LIFE.chore_weight
-        } else {
-            0
-        }),
-        if house.is_some() && options.may_go_in {
-            VILLAGE_LIFE.indoors_weight + 2 * u32::from(sleepy)
-        } else {
-            0
-        },
-        plan_weight(if house.is_some() && options.roof_free {
-            VILLAGE_LIFE.roof_weight
-        } else {
-            0
-        }),
-        plan_weight(VILLAGE_LIFE.leaf_weight),
-        plan_weight(VILLAGE_LIFE.snack_weight + u32::from(hungry)),
-        plan_weight(if options.cushions.is_empty() {
+        lean(
+            garden.is_some(),
+            VILLAGE_LIFE.garden_weight,
+            Kind::Garden,
+            (personality.curiosity + personality.routine_affinity) / 2.0,
+        ),
+        lean(
+            out && house.is_some(),
+            VILLAGE_LIFE.chore_weight,
+            Kind::Chore,
+            personality.routine_affinity,
+        ),
+        lean(
+            house.is_some() && options.may_go_in,
+            VILLAGE_LIFE.indoors_weight + 2 * u32::from(sleepy),
+            Kind::Indoors,
+            1.0 - personality.activity,
+        ),
+        lean(
+            out && house.is_some() && options.roof_free,
+            VILLAGE_LIFE.roof_weight,
+            Kind::Roof,
+            (personality.curiosity + personality.boldness) / 2.0,
+        ),
+        mishap(VILLAGE_LIFE.leaf_weight),
+        mishap(VILLAGE_LIFE.snack_weight + u32::from(hungry)),
+        mishap(if options.cushions.is_empty() {
             0
         } else {
             VILLAGE_LIFE.cushion_weight + u32::from(sleepy)
         }),
+        lean(
+            company,
+            VILLAGE_LIFE.hello_weight,
+            Kind::Company,
+            personality.sociability - 0.3 * f32::from(u8::from(sleepy)),
+        ),
+        lean(
+            company && rested,
+            VILLAGE_LIFE.play_weight,
+            Kind::Company,
+            personality.playfulness,
+        ),
+        lean(
+            company && rested,
+            VILLAGE_LIFE.walk_weight,
+            Kind::Company,
+            (personality.sociability + personality.activity) / 2.0,
+        ),
+        lean(
+            out && !options.working.is_empty(),
+            VILLAGE_LIFE.look_on_weight,
+            Kind::LookOn,
+            personality.curiosity,
+        ),
     ];
     let Some(pick) = weighted(rng, &weights) else {
         return Choice::Wait;
@@ -1132,6 +1392,52 @@ pub(super) fn choose(
                 eat: rng.random_range(4.0..8.0),
             }
         }
+        (8..=10, _) => {
+            let Some(friend) = choose_friend(rng, creature, options) else {
+                return Choice::Wait;
+            };
+            let walk = if pick == 10 {
+                walk_destination(rng, creature, options)
+            } else {
+                None
+            };
+            let purpose = match (pick, walk) {
+                (9, _) => Purpose::Play,
+                (10, Some(_)) => Purpose::Walk,
+                _ => Purpose::Hello,
+            };
+            let (to, to_depth) = walk.unwrap_or((at, creature.state.depth));
+            // The sociable stay longer.
+            let stay =
+                rng.random_range(VILLAGE_LIFE.company_secs) * (0.7 + 0.6 * personality.sociability);
+            Plan::Call(Call {
+                on: friend.id,
+                purpose,
+                stay,
+                to,
+                to_depth,
+            })
+        }
+        (11, _) => {
+            let nearest = options
+                .working
+                .iter()
+                .copied()
+                .min_by(|a, b| a.at.distance(at).total_cmp(&b.at.distance(at)));
+            let Some(worker) = nearest else {
+                return Choice::Wait;
+            };
+            Plan::LookOn(LookOn {
+                at: worker.id,
+                spot: worker.at,
+                spot_depth: worker.depth,
+                shy: creature.temperament().kind == TemperamentKind::Wallflower
+                    || personality.sociability < 0.3,
+                join: worker.garden && personality.curiosity > 0.55,
+                beg: worker.eating && hungry,
+                stay: rng.random_range(VILLAGE_LIFE.look_on_secs),
+            })
+        }
         (7, _) => {
             let Some(cushion) = options
                 .cushions
@@ -1185,20 +1491,36 @@ impl Plan {
             | Self::DroppedSnack { .. }
             | Self::Indoors { .. }
             | Self::Roof { .. }
-            | Self::LeafOnFace => None,
+            | Self::LeafOnFace
+            | Self::Call(_)
+            | Self::Answer(_)
+            | Self::LookOn(_) => None,
         }
     }
 
-    /// Roughly how long this plan takes, for spacing out the resident's next turn.
-    pub(super) fn rough_length(&self) -> f32 {
-        match *self {
-            Self::Garden { .. } => 12.0,
-            Self::Chore { .. } => 8.0,
-            Self::Indoors { stay, .. } | Self::Roof { stay, .. } => stay + 4.0,
-            Self::LeafOnFace => 5.0,
-            Self::DroppedSnack { before, eat, .. } => before + eat + 5.0,
-            Self::MissedCushion { nap, .. } => nap + 5.0,
+    /// Which kind of thing this is, for remembering what a resident last did.
+    pub(super) fn kind(&self) -> Kind {
+        match self {
+            Self::Garden { .. } => Kind::Garden,
+            Self::Chore { .. } => Kind::Chore,
+            Self::Indoors { .. } => Kind::Indoors,
+            Self::Roof { .. } => Kind::Roof,
+            Self::LeafOnFace | Self::DroppedSnack { .. } | Self::MissedCushion { .. } => {
+                Kind::Mishap
+            }
+            Self::Call(_) | Self::Answer(_) => Kind::Company,
+            Self::LookOn(_) => Kind::LookOn,
         }
+    }
+
+    /// One of the little mishaps: only one of those at a time.
+    pub(super) fn mishap(&self) -> bool {
+        self.kind() == Kind::Mishap
+    }
+
+    /// Somebody else's idea: stopped for a caller, which counts against nobody's turn.
+    pub(super) fn answering(&self) -> bool {
+        matches!(self, Self::Answer(_))
     }
 
     /// Whether this is a spell indoors, which counts against how many may be in at once rather
@@ -1222,6 +1544,10 @@ pub(super) fn settle(activity: &VillageActivity, creature: &mut Creature) -> Opt
     creature.state.indoors = false;
     creature.state.beat = None;
     creature.state.velocity = Point::default();
+    if activity.plan.kind() == Kind::Company {
+        // Sat down with a friend: up again.
+        creature.state.attention = None;
+    }
     let landing = match activity.plan {
         Plan::Roof { beside, .. } if activity.step >= 1 => Some(beside),
         Plan::Indoors { door, depth, .. } if activity.step >= 1 => {
@@ -1306,7 +1632,12 @@ impl World {
             creature.state.indoors = false;
             creature.state.beat = None;
             creature.state.velocity = Point::default();
+            if activity.plan.kind() == Kind::Company {
+                creature.state.attention = None;
+            }
         }
+        // A job it was in the middle of is one to go back to, if it is soon free again.
+        self.village_memory.interrupted(creature_id, activity.plan);
         Some(activity)
     }
 

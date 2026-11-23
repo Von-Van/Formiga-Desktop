@@ -1,4 +1,5 @@
 use super::*;
+use crate::tuning::VILLAGE_LIFE;
 
 pub(super) const HOME_DURATION: time::Duration = time::Duration::minutes(15);
 const HOME_COOLDOWN: time::Duration = time::Duration::minutes(15);
@@ -17,10 +18,43 @@ const _: () = assert!(crate::REST_CLEAR_RATIO == spacing::FACE_CLEAR_RATIO);
 /// counting the colony house as zero.
 pub(super) type HouseAt = (Point, f32, usize);
 
-/// How long a resident waits before the first quiet moment of a visit, and between later ones:
-/// roughly one small thing each every couple of minutes, never two residents at once.
-const FIRST_MOMENT_SECS: std::ops::Range<f32> = 12.0..80.0;
-const NEXT_MOMENT_SECS: std::ops::Range<f32> = 60.0..180.0;
+/// The most quiet moments at a door at once, for a village of `residents`: one in a small
+/// village, where two at once would be most of it, and up to three in a full one. Somebody
+/// asleep at its door is not counted: a nap lasts minutes, and the village goes on round it.
+const fn max_moments(residents: usize) -> usize {
+    match residents {
+        0..=2 => 1,
+        3 | 4 => 2,
+        _ => 3,
+    }
+}
+
+/// The most residents out and about on plans of their own at once: enough that a neighbour can
+/// be at the garden while somebody else is up on a roof, and few enough that most of the
+/// village is still at rest or out for a stroll. Whoever a caller has stopped is not counted.
+const fn max_about(residents: usize) -> usize {
+    match residents {
+        0 | 1 => 1,
+        2 | 3 => 2,
+        _ => 3,
+    }
+}
+
+/// How fast a resident's wait for its next turn runs, against the clock: quicker for the brisk,
+/// quicker again for the sociable while somebody is out and about, and slow for the sleepy. A
+/// village whose residents are drowsy is quiet for a while, and one where something has started
+/// tends to have something else start: nobody keeps time for it.
+fn tempo(creature: &Creature, about: usize) -> f32 {
+    let personality = &creature.personality;
+    let mut tempo = 0.6 + 0.8 * personality.activity;
+    if about > 0 {
+        tempo *= 1.0 + 0.4 * personality.sociability;
+    }
+    if creature.state.drives.sleep_pressure > 0.6 {
+        tempo *= 0.6;
+    }
+    tempo
+}
 /// How far a resident will go for a belonging: two or three steps along its own stretch of the
 /// strip. Anything further stays where it is.
 const ERRAND_REACH_FRAMES: f32 = 1.5;
@@ -113,6 +147,10 @@ pub(super) const WALK_SPEED_PER_ACTIVITY: f32 = 34.0;
 
 /// How far a stroll goes at the least, in creature widths: far enough to read as going somewhere.
 const STROLL_REACH_FRAMES: f32 = 1.5;
+
+/// On grass too short for a stroll of `STROLL_REACH_FRAMES`, how much of it a stroll crosses at
+/// the least.
+const SHORT_STROLL_SHARE: f32 = 0.3;
 
 /// How often a stroll goes into the village rather than along its front, in hundredths: up onto
 /// the trodden path along the middle, or up to a doorstep set back from the front.
@@ -262,16 +300,19 @@ fn roam_target(
     };
     // A stop at the door, or at the far end of a stroll, is over once somebody comes to stand
     // beside it: it goes on rather than keep that one company with a face behind it.
+    // Nor does it stand on beside somebody busy there, or two who have met there.
     let joined = matches!(step.leg, RoamLeg::Arriving | RoamLeg::Out)
         && step.target != settled
         && step.reached(creature)
-        && roam.iter().any(|(id, other)| {
+        && (roam.iter().any(|(id, other)| {
             *id != creature.id
                 && spacing::closer_than(other.target.x - step.target.x, clear)
                 && occupied
                     .iter()
                     .any(|(standing, point)| standing == id && *point == other.target)
-        });
+        }) || taken.iter().any(|(id, spot)| {
+            *id != creature.id && spacing::closer_than(spot.x - step.target.x, clear)
+        }));
     if joined && let Some(step) = roam.get_mut(&creature.id) {
         step.dwell = 0.0;
     }
@@ -387,7 +428,11 @@ impl Stroll<'_> {
     /// clear of doorways and of anybody standing, busy or headed there if such a place can be
     /// found.
     fn to(&self, rng: &mut ChaCha12Rng, creature: &Creature, commons: HomeCommons) -> RoamStep {
-        let reach = CREATURE_FRAME_WIDTH * STROLL_REACH_FRAMES * commons.scale;
+        // Far enough to read as going somewhere; on a village too short for that, a lone
+        // house's, as far as a third of the grass there is.
+        let (low, high) = commons.standing_span();
+        let reach = (CREATURE_FRAME_WIDTH * STROLL_REACH_FRAMES * commons.scale)
+            .min((high - low) * SHORT_STROLL_SHARE);
         let near = |x: f32| spacing::closer_than(x, self.clear);
         let mut best: Option<(Point, u8)> = None;
         for _ in 0..ROAM_TRIES {
@@ -600,6 +645,23 @@ pub(super) struct HomeMoment {
 }
 
 impl HomeMoment {
+    /// Where it is doing something worth stopping to look at, and how far back: a game of its
+    /// own, or something to eat, had standing at its own place. And whether it is eating.
+    fn watchable(&self) -> Option<(Point, f32, bool)> {
+        let eating = self.action == ActionKind::Eat;
+        (self.phase == MomentPhase::Hold
+            && !self.courtesy
+            && self.seat.is_none()
+            && (eating || self.action == ActionKind::SoloPlay))
+            .then_some((self.rest, self.depth, eating))
+    }
+
+    /// Whether it counts against how many quiet moments may be had at once.
+    #[cfg(test)]
+    pub(super) fn counted(&self) -> bool {
+        !self.courtesy && self.action != ActionKind::Sleep
+    }
+
     /// The spot it sits on, lies in or sits by, for tests that check a pose ends with its moment.
     #[cfg(test)]
     pub(super) const fn seat(&self) -> Option<HangoutKind> {
@@ -1081,6 +1143,10 @@ struct HomeScene<'a> {
     /// Who is standing at its own place with nothing on: a neighbour a moment might greet.
     settled: Vec<(CreatureId, Point)>,
     find_allowed: bool,
+    /// Everybody as the tick began, with what each is doing with or about anybody else.
+    everyone: Vec<village_company::Resident>,
+    /// Who is at work somewhere it can be watched.
+    working: Vec<village_life::Working>,
 }
 
 impl HomeScene<'_> {
@@ -1106,10 +1172,14 @@ struct HomeDoings {
     /// Nobody stands about right beside such a spot until it is free, and nothing new starts
     /// there.
     taken: Vec<(CreatureId, Point)>,
-    /// Whether one of the quiet moments at the door is under way: one of those at a time.
-    occupied: bool,
-    /// Whether somebody is out and about on a plan of its own: one of those at a time, too.
-    plan_out: bool,
+    /// How many of the quiet moments at a door are under way, napping aside.
+    moments: usize,
+    /// How many are out and about on plans of their own.
+    about: usize,
+    /// Whether one of the little mishaps is under way: one of those at a time.
+    mishap: bool,
+    /// Who was asked for their company this tick.
+    invites: Vec<village_company::Invite>,
     /// How many are indoors, never so many that the village looks empty.
     indoors: usize,
     /// What the plans asked of the others this tick.
@@ -1142,6 +1212,18 @@ impl World {
                 self.village_life
                     .iter()
                     .filter_map(|(id, activity)| Some((*id, activity.plan.spot()?))),
+            )
+            // Two keeping company, or somebody looking on, stand wherever they have met.
+            .chain(
+                self.save
+                    .creatures
+                    .iter()
+                    .filter(|creature| {
+                        self.village_life
+                            .get(&creature.id)
+                            .is_some_and(village_life::VillageActivity::keeps_still)
+                    })
+                    .map(|creature| (creature.id, creature.state.position)),
             )
     }
 
@@ -1245,6 +1327,7 @@ impl World {
         self.save.home.active_since_utc = Some(now);
         self.home_moments.clear();
         self.end_village_life();
+        self.village_memory.clear();
         self.home_moment_timers.clear();
         self.home_roam.clear();
         self.clear_runtime_plans();
@@ -1390,14 +1473,17 @@ impl World {
             else {
                 continue;
             };
-            if !self.time_on_its_hands(index, &scene, &doings, heading, next_action) {
+            let Some(at_rest) =
+                self.time_on_its_hands(index, &scene, &doings, heading, next_action)
+            else {
                 continue;
-            }
-            if self.take_up_village_plan(index, &scene, &mut doings) {
+            };
+            if self.take_up_village_plan(index, &scene, &mut doings, at_rest) {
                 continue;
             }
             self.start_quiet_moment(index, &scene, &mut doings, heading.target);
         }
+        let lively = !scene.quiet;
         let half = commons_half_width(scene.commons);
         self.behind_houses = self
             .save
@@ -1410,7 +1496,10 @@ impl World {
             })
             .map(|creature| creature.id)
             .collect();
-        self.finish_homebound_tick(now, doings);
+        self.finish_homebound_tick(now, doings, &scene);
+        if lively {
+            self.nod_in_passing(scene.frame);
+        }
     }
 
     /// Looks the village over once before anyone takes its turn: the display and the ground it
@@ -1557,13 +1646,81 @@ impl World {
         if quiet {
             self.end_village_life();
         }
-        let occupied = self.home_moments.values().any(|moment| !moment.courtesy);
-        // Who is out and about on a plan of its own, and who is indoors: one of the first at a
-        // time, and never so many of the second that the village looks empty.
-        let plan_out = self
+        self.village_memory.age(dt);
+        let moments = self
+            .home_moments
+            .values()
+            .filter(|moment| !moment.courtesy && moment.action != ActionKind::Sleep)
+            .count();
+        // Who is out and about on a plan of its own, and who is indoors: only so many of the
+        // first, and never so many of the second that the village looks empty.
+        let about = self
             .village_life
             .values()
-            .any(|activity| !activity.plan.indoors());
+            .filter(|activity| !activity.plan.indoors() && !activity.plan.answering())
+            .count();
+        let mishap = self
+            .village_life
+            .values()
+            .any(|activity| activity.plan.mishap());
+        let everyone: Vec<village_company::Resident> = self
+            .save
+            .creatures
+            .iter()
+            .map(|creature| {
+                let activity = self.village_life.get(&creature.id);
+                village_company::Resident {
+                    id: creature.id,
+                    at: creature.state.position,
+                    depth: creature.state.depth,
+                    part: activity.and_then(village_life::VillageActivity::part),
+                    working: activity.is_some_and(|activity| activity.working().is_some())
+                        || self
+                            .home_moments
+                            .get(&creature.id)
+                            .is_some_and(|moment| moment.watchable().is_some()),
+                    home_x: resting.get(&creature.id).map(|place| place.x),
+                }
+            })
+            // A guest out in the village is somebody to keep out of the face of like anyone.
+            .chain(
+                self.save
+                    .visitors
+                    .on_stage()
+                    .map(|guest| village_company::Resident {
+                        id: guest.id,
+                        at: guest.state.position,
+                        depth: guest.state.depth,
+                        part: None,
+                        working: false,
+                        home_x: None,
+                    }),
+            )
+            .collect();
+        let working: Vec<village_life::Working> = self
+            .village_life
+            .iter()
+            .filter_map(|(id, activity)| {
+                let (at, depth, garden) = activity.working()?;
+                Some(village_life::Working {
+                    id: *id,
+                    at,
+                    depth,
+                    garden,
+                    eating: false,
+                })
+            })
+            .chain(self.home_moments.iter().filter_map(|(id, moment)| {
+                let (at, depth, eating) = moment.watchable()?;
+                Some(village_life::Working {
+                    id: *id,
+                    at,
+                    depth,
+                    garden: false,
+                    eating,
+                })
+            }))
+            .collect();
         let indoors = self
             .village_life
             .values()
@@ -1573,7 +1730,9 @@ impl World {
             .save
             .creatures
             .iter()
-            .filter(|creature| creature.state.arrival_delay_secs <= 0.0)
+            .filter(|creature| {
+                creature.state.arrival_delay_secs <= 0.0 && !self.house_visit.contains(&creature.id)
+            })
             .count();
         let house_styles = self.save.home.house_style_list(&self.save.creatures);
         // Whose roof somebody is already sitting on.
@@ -1587,26 +1746,29 @@ impl World {
             .collect();
         // Who is standing about or strolling at home with nothing on, and could stop to look at
         // something.
-        let onlookers: Vec<village_life::Onlooker> = self
-            .save
-            .creatures
-            .iter()
-            .filter(|creature| {
-                creature.state.arrival_delay_secs <= 0.0
-                    && matches!(
-                        creature.state.action,
-                        ActionKind::Homebound | ActionKind::Traverse
-                    )
-                    && !creature.state.indoors
-                    && !self.home_moments.contains_key(&creature.id)
-                    && !self.village_life.contains_key(&creature.id)
-            })
-            .map(|creature| village_life::Onlooker {
-                id: creature.id,
-                at: creature.state.position,
-                watching: creature.state.beat.is_some(),
-            })
-            .collect();
+        let onlookers: Vec<village_life::Onlooker> =
+            self.save
+                .creatures
+                .iter()
+                .filter(|creature| {
+                    creature.state.arrival_delay_secs <= 0.0
+                        && matches!(
+                            creature.state.action,
+                            ActionKind::Homebound | ActionKind::Traverse
+                        )
+                        && !creature.state.indoors
+                        && !self.home_moments.contains_key(&creature.id)
+                        && !self.village_life.contains_key(&creature.id)
+                })
+                .map(|creature| village_life::Onlooker {
+                    id: creature.id,
+                    at: creature.state.position,
+                    watching: creature.state.beat.is_some(),
+                    home: self.home_roam.get(&creature.id).is_some_and(|step| {
+                        step.leg != RoamLeg::Arriving || step.reached(creature)
+                    }),
+                })
+                .collect();
         let with_visitor = self.save.visitors.on_stage().is_some();
         let settled: Vec<(CreatureId, Point)> = self
             .save
@@ -1616,6 +1778,7 @@ impl World {
                 creature.state.arrival_delay_secs <= 0.0
                     && creature.state.action == ActionKind::Homebound
                     && !self.home_moments.contains_key(&creature.id)
+                    && !self.village_life.contains_key(&creature.id)
             })
             .filter_map(|creature| Some((creature.id, *resting.get(&creature.id)?)))
             .collect();
@@ -1649,11 +1812,15 @@ impl World {
                 with_visitor,
                 settled,
                 find_allowed,
+                everyone,
+                working,
             },
             HomeDoings {
                 taken,
-                occupied,
-                plan_out,
+                moments,
+                about,
+                mishap,
+                invites: Vec::new(),
                 indoors,
                 asides: Vec::new(),
                 answering: Vec::new(),
@@ -1775,12 +1942,26 @@ impl World {
             frame,
             find_allowed,
             paths: &scene.paths,
+            everyone: &scene.everyone,
+            invites: &mut doings.invites,
+            ground_y: commons.map_or(creature.state.position.y, |commons| commons.ground_y),
+            span: commons.map_or((f32::MIN, f32::MAX), |commons| commons.standing_span()),
+            half: commons_half_width(commons),
         };
         let was_on_roof = creature
             .state
             .beat
             .is_some_and(|beat| beat.kind == BeatKind::RoofSit);
+        let before = creature.state.position;
         let going_on = village_life::advance(activity, creature, dt, &mut context);
+        // How fast its plan is walking it, for everybody else to see: a stroll close behind
+        // drops back from it, and nobody takes it for somebody standing there.
+        if dt > 0.0 && !creature.state.indoors {
+            creature.state.velocity = Point {
+                x: (creature.state.position.x - before.x) / dt,
+                y: 0.0,
+            };
+        }
         if !was_on_roof
             && creature
                 .state
@@ -1792,6 +1973,22 @@ impl World {
         if going_on {
             return true;
         }
+        // Over: what it did is remembered, and either it leads straight on to something else or
+        // a rest is had first.
+        let turned_down = activity.turned_down();
+        let plan = activity.plan;
+        let follows = self.village_memory.finished(
+            creature.id,
+            &plan,
+            turned_down,
+            &mut self.village_life_rng,
+        );
+        let wait = self.village_life_rng.random_range(if follows {
+            VILLAGE_LIFE.follow_on_secs
+        } else {
+            VILLAGE_LIFE.next_turn_secs
+        });
+        self.home_moment_timers.insert(creature.id, wait);
         self.village_life.remove(&creature.id);
         creature.state.indoors = false;
         creature.state.beat = None;
@@ -2205,9 +2402,13 @@ impl World {
         Some(next_action)
     }
 
-    /// Standing at its own door with time on its hands: every so often, one small thing. Waiting
-    /// for the rest of a shared moment to gather is not time on its hands. Returns whether the
-    /// resident's small thing is due now, and may start where it stands.
+    /// A resident with time on its hands: every so often, one thing. Its wait runs at its own
+    /// tempo whatever its feet are doing, so a stroll does not put its turn off, and comes due
+    /// once it is standing at its own place or its door — never in front of somebody busy or
+    /// standing there, and not at the far end of a stroll. One with something it means to get
+    /// straight on with does not wait to be back at its place for it. Waiting for the rest of a
+    /// shared moment to gather is not time on its hands. Returns whether its turn is due now,
+    /// and if so whether it is at rest at its own place, where a quiet moment could be had.
     fn time_on_its_hands(
         &mut self,
         index: usize,
@@ -2215,33 +2416,41 @@ impl World {
         doings: &HomeDoings,
         heading: HomeHeading,
         next_action: ActionKind,
-    ) -> bool {
+    ) -> Option<bool> {
         let HomeScene { dt, quiet, .. } = *scene;
         let HomeHeading { target, shared, .. } = heading;
         let creature = &self.save.creatures[index];
-        if next_action != ActionKind::Homebound || shared.is_some() {
+        if shared.is_some() {
             self.home_moment_timers.remove(&creature.id);
-            return false;
+            return None;
         }
+        if quiet {
+            return None;
+        }
+        let pace = tempo(creature, doings.about);
         let due = {
             let remaining = self
                 .home_moment_timers
                 .entry(creature.id)
-                .or_insert_with(|| self.home_moment_rng.random_range(FIRST_MOMENT_SECS));
-            *remaining -= dt;
+                .or_insert_with(|| {
+                    self.home_moment_rng
+                        .random_range(VILLAGE_LIFE.first_turn_secs)
+                });
+            *remaining -= dt * pace;
             *remaining <= 0.0
         };
-        // Only at its own place or its door, and never in front of somebody busy or standing
-        // there: the far end of a stroll is not time on its hands, and anybody close by is
-        // waited out until they are done or have moved on.
+        if !due {
+            return None;
+        }
         let strolling = self
             .home_roam
             .get(&creature.id)
             .is_some_and(|step| step.leg == RoamLeg::Out);
-        if !due || quiet || strolling || scene.spoken_for(&doings.taken, creature.id, target.x) {
-            return false;
-        }
-        true
+        let at_rest = next_action == ActionKind::Homebound
+            && !strolling
+            && !scene.spoken_for(&doings.taken, creature.id, target.x);
+        let on_its_feet = matches!(next_action, ActionKind::Homebound | ActionKind::Traverse);
+        (at_rest || (on_its_feet && self.village_memory.eager(creature.id))).then_some(at_rest)
     }
 
     /// Something about the village rather than a quiet moment at the door: the garden, its
@@ -2253,6 +2462,7 @@ impl World {
         index: usize,
         scene: &HomeScene,
         doings: &mut HomeDoings,
+        at_rest: bool,
     ) -> bool {
         let HomeScene {
             commons,
@@ -2261,9 +2471,40 @@ impl World {
             ..
         } = *scene;
         let creature = &self.save.creatures[index];
+        let moment_free = at_rest && doings.moments < max_moments(residents);
         let Some(commons) = commons else {
-            return doings.occupied;
+            return !moment_free;
         };
+        let plan_free = doings.about < max_about(residents);
+        // A job it was taken from in the middle of is gone back to, if there is still room.
+        let resumed = self.village_memory.resume(creature.id).filter(|plan| {
+            plan_free
+                && plan
+                    .spot()
+                    .is_none_or(|spot| !scene.spoken_for(&doings.taken, creature.id, spot.x))
+        });
+        if let Some(plan) = resumed {
+            self.begin_village_plan(creature.id, plan, doings);
+            return true;
+        }
+        let friends: Vec<village_life::Friend> = scene
+            .onlookers
+            .iter()
+            .filter(|onlooker| {
+                // With a guest in the village, the residents' company is the guest's.
+                !scene.with_visitor
+                    && onlooker.id != creature.id
+                    && onlooker.home
+                    && !self.behind_houses.contains(&onlooker.id)
+                    && !onlooker.watching
+                    && !self.village_memory.met(creature.id, onlooker.id)
+            })
+            .map(|onlooker| village_life::Friend {
+                id: onlooker.id,
+                at: onlooker.at,
+                bond: self.bond(creature.id, onlooker.id),
+            })
+            .collect();
         let house = scene.houses.get(&creature.id).map(|(at, half, slot)| {
             let style = scene.house_styles[(*slot).min(scene.house_styles.len() - 1)];
             // A house set back on the ground stands that much higher up the display.
@@ -2316,29 +2557,59 @@ impl World {
             taken: &busy,
             may_go_in: doings.indoors < village_life::max_indoors(residents),
             roof_free: house.is_some_and(|house| !scene.roofs_taken.contains(&house.slot)),
-            moment_free: !doings.occupied,
-            plan_free: !doings.plan_out,
+            moment_free,
+            plan_free,
+            mishap_free: !doings.mishap,
+            friends: &friends,
+            working: &scene.working,
+            recent: self.village_memory.recent(creature.id),
+            paths: &scene.paths,
         };
-        match village_life::choose(&mut self.village_life_rng, creature, &options) {
+        let creature_id = creature.id;
+        let choice = village_life::choose(&mut self.village_life_rng, creature, &options);
+        self.village_memory.spent(creature_id);
+        match choice {
             village_life::Choice::Moment => false,
-            village_life::Choice::Wait => true,
+            village_life::Choice::Wait => {
+                // Nothing it can do just now: it asks again in a little while, not every tick.
+                let wait = self
+                    .village_life_rng
+                    .random_range(VILLAGE_LIFE.ask_again_secs);
+                self.home_moment_timers.insert(creature_id, wait);
+                true
+            }
             village_life::Choice::Plan(plan) => {
-                if plan.indoors() {
-                    doings.indoors += 1;
-                } else {
-                    doings.plan_out = true;
-                }
-                let wait =
-                    plan.rough_length() + self.village_life_rng.random_range(NEXT_MOMENT_SECS);
-                self.home_moment_timers.insert(creature.id, wait);
-                if let Some(spot) = plan.spot() {
-                    doings.taken.push((creature.id, spot));
-                }
-                self.village_life
-                    .insert(creature.id, village_life::VillageActivity::new(plan));
+                self.begin_village_plan(creature_id, plan, doings);
                 true
             }
         }
+    }
+
+    /// Sets a resident off on a plan about the village, and counts it against what the others
+    /// may start this tick.
+    fn begin_village_plan(
+        &mut self,
+        creature_id: CreatureId,
+        plan: village_life::Plan,
+        doings: &mut HomeDoings,
+    ) {
+        if plan.indoors() {
+            doings.indoors += 1;
+        } else {
+            doings.about += 1;
+        }
+        doings.mishap |= plan.mishap();
+        // Should the plan be cut short, this is the rest it has before its next turn; one that
+        // runs its course sets its own.
+        let wait = self
+            .village_life_rng
+            .random_range(VILLAGE_LIFE.next_turn_secs);
+        self.home_moment_timers.insert(creature_id, wait);
+        if let Some(spot) = plan.spot() {
+            doings.taken.push((creature_id, spot));
+        }
+        self.village_life
+            .insert(creature_id, village_life::VillageActivity::new(plan));
     }
 
     /// One of the quiet moments at its door: chosen for the resident, with the neighbour it
@@ -2391,12 +2662,16 @@ impl World {
         if let Some(spot) = moment.spot() {
             doings.taken.push((creature.id, spot));
         }
+        if moment.action != ActionKind::Sleep {
+            doings.moments += 1;
+        }
         self.home_moments.insert(creature.id, moment);
+        // The moment itself holds its turn; this is the rest it has once the moment is over.
         self.home_moment_timers.insert(
             creature.id,
-            length + self.home_moment_rng.random_range(NEXT_MOMENT_SECS),
+            self.home_moment_rng
+                .random_range(VILLAGE_LIFE.next_turn_secs),
         );
-        doings.occupied = true;
         if let Some(id) = answered
             && let Some(point) = scene.resting.get(&id).copied()
         {
@@ -2408,13 +2683,28 @@ impl World {
     /// what a plan asked of the others is carried out, and a neighbour waves back. A courtesy
     /// moment never counts against the one-at-a-time rule and is never chosen over: it only ever
     /// answers something already happening.
-    fn finish_homebound_tick(&mut self, now: OffsetDateTime, doings: HomeDoings) {
+    fn finish_homebound_tick(
+        &mut self,
+        now: OffsetDateTime,
+        doings: HomeDoings,
+        scene: &HomeScene,
+    ) {
         let HomeDoings {
             asides,
             answering,
             up_on_roofs,
+            invites,
             ..
         } = doings;
+        if let Some(commons) = scene.commons {
+            self.apply_invites(
+                invites,
+                scene.frame,
+                commons.standing_span(),
+                &scene.paths,
+                commons_half_width(scene.commons),
+            );
+        }
         if !up_on_roofs.is_empty() {
             let day = local_day(now);
             for creature in up_on_roofs {
@@ -2502,7 +2792,6 @@ impl World {
     /// Whether this companion has come home while the home is out: at its own place or its door,
     /// strolling the commons, or about something of the village's — anywhere but still on its
     /// way there.
-    #[cfg(test)]
     pub(crate) fn come_home(&self, creature_id: CreatureId) -> bool {
         let arrived = self.home_roam.get(&creature_id).is_some_and(|step| {
             step.leg != RoamLeg::Arriving
@@ -2695,7 +2984,10 @@ impl World {
                 offered: true,
             },
         );
-        let wait = seconds.max(0.0) + self.home_moment_rng.random_range(NEXT_MOMENT_SECS);
+        let wait = seconds.max(0.0)
+            + self
+                .home_moment_rng
+                .random_range(VILLAGE_LIFE.next_turn_secs);
         self.home_moment_timers.insert(creature_id, wait);
         true
     }

@@ -319,7 +319,11 @@ fn a_bench_and_a_swing_are_sat_on() {
                         .state
                         .attention
                         .is_some_and(|pose| pose.gesture == Some(Gesture::Sit));
-                    if !sitting || world.wonders.owns(creature.id) {
+                    // Two keeping one another company sit down wherever they have met.
+                    if !sitting
+                        || world.wonders.owns(creature.id)
+                        || world.village_life.contains_key(&creature.id)
+                    {
                         continue;
                     }
                     let moment = world.home_moments.get(&creature.id);

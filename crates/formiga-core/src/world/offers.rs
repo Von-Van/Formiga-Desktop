@@ -198,13 +198,11 @@ impl World {
         }) {
             return false;
         }
-        // While the home is out a resident is either walking to its spot or resting at it, and
-        // only the second of those is somewhere a snack can be enjoyed. Resting includes the small
-        // things a resident does at its door: an offer simply takes over from a fidget. A guest
-        // has no walk.
-        if self.save.home.is_active()
-            && !self.is_guest(creature_id)
-            && !self.resting_at_home(creature_id)
+        // While the home is out a resident is either still walking home or in the village, and
+        // only the second of those is somewhere a snack can be enjoyed. In the village includes
+        // a stroll along it and the things a resident does there, at its door or about the
+        // place: an offer simply takes over from any of them. A guest has no walk.
+        if self.save.home.is_active() && !self.is_guest(creature_id) && !self.come_home(creature_id)
         {
             return false;
         }

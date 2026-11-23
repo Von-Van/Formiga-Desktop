@@ -79,6 +79,23 @@ All notable changes are documented here.
   rather than as "solo play" or "follow". The Journal's guest book, scrapbook, souvenirs, cups and
   wonders are headed in the same pencil capitals as the rest of the notebook, and the guest book
   shows its latest three visitors with the rest a click away.
+- The village is lived in. Residents call on one another: one looks across at a neighbour, who
+  stops and looks back, and walks over to say hello — welcomed warmly, shyly from behind its paws,
+  or turned down with a yawn, a huff or a turn away, as that neighbour is. A welcome leads to
+  sitting together a while, a short game of chase there and back, or a walk along the village
+  side by side. Residents stop to look on at somebody gardening, tidying, playing or eating, nod
+  to one another in passing, and look round when a neighbour goes indoors or comes out. Several
+  things now go on at once, as many as the village's size allows, where before one plan and one
+  quiet moment ran in the whole village at a time. What each does is its own: the sociable call,
+  the playful start the games, the curious look on, the tidy see to their houses, each has a
+  favourite pastime, and nobody does the same thing twice running as a rule. One thing leads to
+  another — a nap to a stretch and a tidy, the roof to a call on somebody seen from up there —
+  and a job somebody is picked up from is gone back to. Watched for fifteen minutes, residents
+  of a village of three stood doing nothing 61% of the time and now do 48%, are busy with
+  something 22% of the time rather than 9%, and begin something with or about a neighbour twelve
+  times each in ten minutes rather than once. Nothing new is saved.
+- An offer of a snack or a toy reaches a resident who is strolling the village or busy about it,
+  not only one standing at its door.
 - A companion's page opens on the companion. Everyone's face runs along the top, the chosen one
   taped, and the arrow keys and ⌘[ ⌘] turn between them. Under it the portrait and the name in
   the hand come first, with the temperament once, the traits, and one line of what it is doing,
@@ -277,6 +294,12 @@ All notable changes are documented here.
 
 ### Fixed
 
+- A resident's turn at doing something about the village no longer starts over every time it
+  takes a stroll, which had left most of a visit home spent standing still.
+- A companion living alone strolls its short stretch of grass instead of standing at its door:
+  no stroll was far enough to count on a village of one house.
+- Residents no longer go indoors and leave the village empty while a neighbour is away in a
+  house open elsewhere.
 - Today's tally no longer runs off the edge of its card on a day with a long count in it, such as
   "1 shared moment" beside "2 new keepsakes": it goes to one count a row when two don't fit.
 

@@ -643,7 +643,7 @@ fn watch_the_village(
 }
 
 #[test]
-fn the_village_keeps_one_quiet_moment_going_at_a_time_and_always_settles_back() {
+fn the_village_keeps_only_so_many_quiet_moments_going_at_a_time_and_always_settles_back() {
     let created = datetime!(2026-01-01 0:00 UTC);
     let desktop = desktop();
     let mut world = settled_colony([61; 32], 4, created, &desktop);
@@ -671,7 +671,12 @@ fn the_village_keeps_one_quiet_moment_going_at_a_time_and_always_settles_back() 
     let mut holding: BTreeMap<CreatureId, u32> = BTreeMap::new();
     for _ in 0..12_000 {
         world.tick(created, 0.05, &desktop);
-        let busy = world.home_moments.len();
+        // A neighbour waving back and somebody asleep at its door are not counted.
+        let busy = world
+            .home_moments
+            .values()
+            .filter(|moment| moment.counted())
+            .count();
         busiest = busiest.max(busy);
         for creature in &world.save.creatures {
             if !seen.contains(&creature.state.action) {
@@ -740,6 +745,9 @@ fn the_village_keeps_one_quiet_moment_going_at_a_time_and_always_settles_back() 
                 | ActionKind::Sleep
                 | ActionKind::Greet
                 | ActionKind::InspectScreen
+                // A game of chase with a neighbour, and the laugh after it.
+                | ActionKind::Sprint
+                | ActionKind::SocialPlay
                 // Up on its roof, the hop there and back, and something found about the village.
                 | ActionKind::Perch
                 | ActionKind::Landing
@@ -749,7 +757,7 @@ fn the_village_keeps_one_quiet_moment_going_at_a_time_and_always_settles_back() 
     );
     assert!(
         busiest <= 2,
-        "{busiest} residents were busy at once; one, plus a neighbour waving back, is the rule"
+        "{busiest} residents were having quiet moments at once; two is the most in a village of four"
     );
 }
 
@@ -916,6 +924,14 @@ fn quiet_moments_teach_the_colony_nothing_and_write_nothing_down() {
         let mut world = settled_colony([61; 32], 4, created, &desktop);
         scatter_belongings(&mut world, &desktop);
         world.save.settings.reduce_motion = !lively;
+        // The day's finds are already made: a find about the village is a real one, written
+        // down like any other, and not what this test is about.
+        world.save.finds_today = crate::FindsToday {
+            day: crate::world::local_time_or_utc(created)
+                .date()
+                .to_julian_day(),
+            count: u8::MAX,
+        };
         world.drain_events().for_each(drop);
         let mut busy = false;
         for _ in 0..12_000 {

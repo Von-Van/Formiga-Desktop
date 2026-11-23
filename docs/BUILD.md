@@ -198,6 +198,13 @@ cargo run --release -p formiga-tools -- tick-bench
 scripts/measure-macos.sh --state "four moving, busy desktop" --build "v0.58.0" --colony 4
 ```
 
+`cargo run --release -p formiga-tools -- village-watch [--minutes N] [--seeds N] [--residents 1,3,6]
+[--bare]` keeps colonies at home and counts what they are seen to do, read only from what the
+overlay is given to draw: the share of time spent standing, walking, indoors and doing something,
+how often residents go somewhere and how far back, what was begun and how much of it with or about
+somebody else, how many are up to something at once, and what a tick cost. Run it before and after
+a change to how the village decides things.
+
 `tick-bench` times `World::tick` over deterministic synthetic desktops with one, four and six
 creatures — quiet, busy with a moving cursor, gathered at home, with a visitor, and paused — so
 running it before and after a change is a like-for-like comparison of the simulation's own cost.

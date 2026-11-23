@@ -167,6 +167,35 @@ pub struct VillageLife {
     pub leaf_weight: u32,
     pub snack_weight: u32,
     pub cushion_weight: u32,
+    /// Going over to somebody free — to say hello, to play, for a walk together — and stopping
+    /// to look on at somebody busy. Each is weighed again by the resident's own nature, so the
+    /// sociable call on their neighbours and the playful start the games.
+    pub hello_weight: u32,
+    pub play_weight: u32,
+    pub walk_weight: u32,
+    pub look_on_weight: u32,
+    /// How much more a resident's favourite pastime weighs with it, how much less the thing it
+    /// did last, and how much more whatever that left it inclined to do next.
+    pub favourite_gain: f32,
+    pub again_share: f32,
+    pub bent_gain: f32,
+    /// How often, in hundredths, one thing leads straight on to the next rather than to a rest,
+    /// and the most things done one straight after another before a rest is had regardless.
+    pub follow_on_chance: u32,
+    pub follow_on_most: u8,
+    /// How long company is kept once a hello is welcomed, before the caller's sociability
+    /// lengthens it; and how long somebody stands looking on at another's work.
+    pub company_secs: Range<f32>,
+    pub look_on_secs: Range<f32>,
+    /// How long a resident waits before the first thing it does on a visit, and between later
+    /// ones, in seconds of its own tempo (see `tempo`): the brisk are sooner about it than the
+    /// slow, the sleepy slower still, and everybody a little quicker with something going on.
+    pub first_turn_secs: Range<f32>,
+    pub next_turn_secs: Range<f32>,
+    /// How long before a thing that follows straight on from the last is begun.
+    pub follow_on_secs: Range<f32>,
+    /// How long a resident with nothing it can do just now leaves it before asking again.
+    pub ask_again_secs: Range<f32>,
     /// How long a resident stays indoors: a nap, or a while pottering about in there.
     pub indoors_nap_secs: Range<f32>,
     pub indoors_potter_secs: Range<f32>,
@@ -188,6 +217,21 @@ pub const VILLAGE_LIFE: VillageLife = VillageLife {
     leaf_weight: 1,
     snack_weight: 1,
     cushion_weight: 1,
+    hello_weight: 4,
+    play_weight: 3,
+    walk_weight: 2,
+    look_on_weight: 8,
+    favourite_gain: 1.5,
+    again_share: 0.35,
+    bent_gain: 4.0,
+    follow_on_chance: 55,
+    follow_on_most: 2,
+    company_secs: 6.0..16.0,
+    look_on_secs: 4.0..9.0,
+    first_turn_secs: 6.0..45.0,
+    next_turn_secs: 35.0..110.0,
+    follow_on_secs: 1.5..5.0,
+    ask_again_secs: 3.0..8.0,
     indoors_nap_secs: 40.0..110.0,
     indoors_potter_secs: 12.0..30.0,
     roof_secs: 18.0..45.0,

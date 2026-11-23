@@ -42,6 +42,7 @@ mod talk;
 mod tows;
 mod trips;
 mod undo;
+mod village_company;
 mod village_life;
 mod village_paths;
 mod visitors;
@@ -157,6 +158,8 @@ pub struct World {
     /// Which of those each resident does, and whether it turns something up. A stream of its own,
     /// like the moments'.
     village_life_rng: ChaCha12Rng,
+    /// What the village remembers between one turn and the next. Runtime only.
+    village_memory: village_company::Memory,
     colony_plan: Option<ColonyPlan>,
     /// A wonder out somewhere for a companion or two to play on, and when the next is due.
     /// Runtime only: the notebook's page of them is all a save keeps.
@@ -470,6 +473,7 @@ impl World {
             antics: antics::Antics::new(&streams),
             village_life: BTreeMap::new(),
             village_life_rng: streams.rng("village-life", 0),
+            village_memory: village_company::Memory::default(),
             moment_rng: streams.rng("village-moments", 0),
             colony_plan: None,
             wonders: wonders::Wonders::new(&streams),
