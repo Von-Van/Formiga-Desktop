@@ -76,12 +76,12 @@ impl World {
             creature.state.arrival_delay_secs = (previous_delay - dt).max(0.0);
             if creature.state.arrival_delay_secs == 0.0 {
                 creature.born_at_utc = timeline_now;
+                let id = creature.id;
                 Self::emit(
                     &mut self.events,
-                    WorldEvent::CreatureSpawned {
-                        creature_id: creature.id,
-                    },
+                    WorldEvent::CreatureSpawned { creature_id: id },
                 );
+                self.begin_entrance(id, desktop);
             }
             return true;
         }
@@ -191,17 +191,30 @@ impl World {
                 );
                 return true;
             }
-            let (step, surface) = {
+            let (step, surface, into, facing) = {
                 let journey = self
                     .window_journeys
                     .get_mut(&creature.id)
                     .expect("validated journey exists");
-                (journey.advance(dt), journey.surface().clone())
+                let step = journey.advance(dt);
+                (
+                    step,
+                    journey.surface().clone(),
+                    journey.action_elapsed(),
+                    journey.facing_right(),
+                )
             };
-            let route_point_valid = desktop.monitors.iter().any(|monitor| {
-                monitor.bounds.contains(step.position)
-                    && habitat_contains(&self.save.settings.habitat, monitor, step.position)
-            });
+            // A newcomer walking in starts beyond the edge of the display, outside the habitat;
+            // where it is walking to is inside it (`EntranceJourney`).
+            let entering = self
+                .window_journeys
+                .get(&creature.id)
+                .is_some_and(WindowJourney::entering);
+            let route_point_valid = entering
+                || desktop.monitors.iter().any(|monitor| {
+                    monitor.bounds.contains(step.position)
+                        && habitat_contains(&self.save.settings.habitat, monitor, step.position)
+                });
             let gap_step_valid = self
                 .window_journeys
                 .get(&creature.id)
@@ -234,7 +247,16 @@ impl World {
             }) {
                 creature.state.surface = surface.clone();
             }
-            creature.state.facing_right = step.position.x >= creature.state.position.x;
+            // A climb faces the window it is climbing onto, up its side and over its edge. Any
+            // other journey faces the way it is going, held like a walk's: a step straight up a
+            // window, or a pause where it stands, leaves it facing the way it was.
+            if let Some(facing_right) = facing {
+                creature.state.facing_right = facing_right;
+            } else {
+                let held = facing_held(&self.facing_holds, creature);
+                let going = step.position.x - creature.state.position.x;
+                face_toward(&mut creature.state, held, going);
+            }
             creature.state.position = step.position;
             if step.action != previous_action {
                 Self::emit(
@@ -245,7 +267,9 @@ impl World {
                     },
                 );
                 creature.state.action = step.action;
-                creature.state.action_elapsed = 0.0;
+                // Counted from where the journey says it began, so a climb's hands and its rise
+                // keep step (see `WindowJourney::action_elapsed`).
+                creature.state.action_elapsed = into;
                 creature.state.action_duration = f32::MAX;
                 Self::emit(
                     &mut self.events,
@@ -254,6 +278,11 @@ impl World {
                         action: step.action,
                     },
                 );
+            }
+            if !step.complete
+                && let Some((gesture, looking)) = step.pose
+            {
+                strike_journey_pose(creature, gesture, looking, into);
             }
             if step.complete {
                 self.window_journeys.remove(&creature.id);
@@ -279,7 +308,13 @@ impl World {
                     .filter(|plan| plan.geometry_hash == self.topology.geometry_hash())
                     .and_then(|plan| plan.remaining.pop_front());
                 if let Some(hop) = next_hop {
-                    let mut journey = build_route_hop_journey(creature, hop, desktop);
+                    let mut journey = build_route_hop_journey(
+                        creature,
+                        hop,
+                        desktop,
+                        &self.save.settings.habitat,
+                        self.save.settings.display_scale,
+                    );
                     // Look at the next step before taking it, so an ascent reads as a staircase.
                     if let WindowJourney::Climb(climb) = &mut journey {
                         climb.elapsed = -0.3;
@@ -822,7 +857,13 @@ impl World {
             );
             if !route.is_empty() {
                 let first = route.remove(0);
-                let journey = build_route_hop_journey(creature, first, desktop);
+                let journey = build_route_hop_journey(
+                    creature,
+                    first,
+                    desktop,
+                    &self.save.settings.habitat,
+                    self.save.settings.display_scale,
+                );
                 next = journey.initial_action();
                 self.window_routes.insert(
                     creature.id,
@@ -853,7 +894,14 @@ impl World {
                     )
                 })
             {
-                let journey = build_window_journey(creature, target, surface, desktop);
+                let journey = build_window_journey(
+                    creature,
+                    target,
+                    surface,
+                    desktop,
+                    &self.save.settings.habitat,
+                    self.save.settings.display_scale,
+                );
                 next = journey.initial_action();
                 self.window_journeys.insert(creature.id, journey);
             }
@@ -1047,7 +1095,8 @@ impl World {
             .action_choices
             .get(&creature.id)
             .and_then(|choice| choice.target_point);
-        execute_action(creature, desktop, context, dt, nearest, target_point);
+        let held = facing_held(&self.facing_holds, creature);
+        execute_action(creature, desktop, context, dt, nearest, target_point, held);
         // Walking into the end of a ledge, or of the ground a creature is allowed on, is
         // arriving: the constraint turns it round, and letting go of the target it cannot
         // reach is what stops it stepping straight back out and being put back every tick.

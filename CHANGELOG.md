@@ -4,8 +4,64 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Two review sheets for how a companion meets what it holds and what it climbs.
+  `formiga-tools hold-sheet` draws every frame of eating, drinking, play, holding up a find and the
+  village chores at 4x for every body at its smallest and largest, with crosshairs on the paw and
+  the mouth each frame holds things by, so a belonging in the wrong place shows at a glance. `formiga-tools climb-sheet` shows a
+  whole climb onto a window, a tenth of a second a picture, placed exactly as the desktop places a
+  companion, and each body dangling from a ledge. Nothing a companion does or looks like changes.
+- Every companion now stands on a small shadow, so it reads as standing on a window's top or the
+  floor rather than floating over the desktop. The shadow is as wide as its feet in the frame it is
+  drawn in, dark at about a third, and drawn under the body so it never covers the feet. Thrown,
+  hopping between ledges, hanging from one or climbing, its shadow stays on whatever is below it and
+  shrinks the higher it goes; while you carry it there is none. On the village's grass it is drawn
+  in the same shade the houses and trees stand on. It is worked out from the companion's own
+  picture and the windows' rectangles, never from the screen, and costs one small quad per
+  companion and no extra wakeups. `formiga-tools ui-sheet` shows it on light, dark and busy
+  wallpaper, and `animation-preview` draws every frame on its shadow.
+
 ### Changed
 
+- The test ceiling on a full colony's creature textures, counted as if no two frames were alike, is 16 MiB instead of 15 MiB, so the animation pass's new clips fit. A real colony of six still uses about 11.3 MB.
+- A companion climbs up the side of a window a paw at a time. The climb was four nearly identical
+  frames, the paws alternating three pixels while the body slid up at a steady speed out of step
+  with them; it is six frames now, a reach, a pull and a settle with one paw and then the other,
+  the leg on the reaching side bent up against the wall on the pull. The body rises on the pulls
+  and hardly at all on the reaches, frame for frame, and the climb still starts, ends and takes
+  as long as it did. Every companion climbs on the same beat. The two frames fit in cells each
+  creature's texture already had spare, so it costs no memory, and no other clip draws differently.
+- A stalk tail no longer looks like a paw waving all day. The two stalk tails were held up and
+  back from the shoulder in the accent colour, at the angle and in the colour of a raised paw, so
+  a companion with one seemed to be waving in every clip and its real wave when it said hello did
+  not read. They now trail out behind from the rump, rising a row or two, in the coat's shade with
+  only the tip, the club or the flame in colour. The recipe is unchanged; every companion whose
+  recipe has one of these tails (about a quarter of new ones) is drawn this way in every frame.
+- A blob walks instead of bobbing in place. Each foot comes up two pixels for both frames it is off
+  the ground and the body sways a pixel over onto the planted foot, so the walk, the run, the skip
+  and the trudge read as a waddle from foot to foot. Its feet stay planted, nothing else a blob does
+  changes, and reduced motion still shows the walk's first frame with both feet down.
+- A mini rests, naps and gestures a little quicker and lighter than its grown-up self, at 1.15
+  times the adult's pace, the way its walk already patters. Its walk and everything else keep
+  their timing, and adults look exactly as they did. `formiga-tools rest-sheet` ends with a mini
+  beside its adult.
+- The village breathes: every few seconds a breath of wind bends the tops of both keepsake trees a
+  pixel the same way and blows each tent's pennant out, and a few seconds later it drops again,
+  each colony on its own rhythm. It rides on frames the village is drawn on anyway, adds nothing to
+  the village texture, and is off with Reduce motion. `formiga-tools home-yard-sheet` shows the
+  still and the gusting village side by side.
+
+- A new companion walks in instead of appearing. Adopted, or turning up as a mini or on the
+  calendar, it comes out of its own house door when the village is out, and otherwise walks in
+  along the floor from beyond the nearer edge of the display, a few seconds' walk at most. Paused,
+  hidden or with reduced motion it is simply there, as before. `formiga-tools arrival-sheet` shows
+  both ways in.
+- A friend towing a sleeper reaches back for the rope for a moment before the rope appears, and
+  stands with its paws down for a tick before it goes, so the rope is only ever drawn in a paw.
+- On the train, each companion steps up at its coach door in the first frame of a climb, and then
+  looks out of a compartment window until the train has gone; coming home, everyone looks out until
+  they step off.
 - A companion's menu names its items as it opens while the colony is new. The first three menus
   opened in a launch show every label in one row under the strip for a second, until the colony
   has finished or skipped the tour; the row stays on the display at every edge and corner, and the
@@ -66,6 +122,158 @@ All notable changes are documented here.
   the finder holding up what it found, everyone napping or dancing or at a picnic, a late-night
   sleep pile under stars, a visitor as a shape at the edge. The scrapbook's finds are pasted in
   like snapshots. `formiga-tools vignette-sheet` draws every picture for review.
+- What a companion holds is held by the paw or the mouth it actually draws in that frame. Every
+  body frame now says where its near forepaw is and where its face's mouth is, and toys, snacks,
+  cups, a meal, a find held up, a watering can and anything picked are placed from those instead
+  of from one offset against the face. A find is held up in the paws raised to show it, a cat
+  presents its find against its chest and a Long body in its raised forepaw, a body standing on
+  all four carries things in its mouth, snacks and cups come to the mouth itself, and nothing
+  held goes over the eyes. Clips that hold nothing draw exactly as before.
+- A toy, a snack and a cup move with the body that is using them. At keep-up the toy is caught
+  in the paw on the crouch, knocked up as the body springs and at the top of its arc on the
+  stretch, and the paw goes with it: held out to catch, up at the chin, up beside the head and
+  back down, a wing opening for it on a winged body and a Long body lifting one forepaw with the
+  other three down. A body on four legs keeps its toy up back over its shoulders, and no toy ever
+  crosses the face. A snack is held up, carried into the mouth as the head dips to it, and gone
+  while it is chewed, with crumbs at the end; a cup tips back with the head, further on the deepest
+  of the sip. Every other clip draws exactly as before.
+- Watering pours in time with the pour. The can tips over on the frames the companion leans into
+  it and comes level when it does, and the water runs out of the spout only while it is tipped,
+  rather than appearing beside an upright can for most of the watering whatever the pose. The water
+  starts at the spout facing either way.
+- Topping out a climb is a mantle of its own rather than the end of a jump. Every climb used to
+  finish by hauling up in the climbing pose and then stepping in on the stiff legs a hop lands
+  on. Now the companion lays its chest and forearms over the edge with a knee drawn up to it,
+  pushes itself up on both paws planted flat on the ledge with its back leg still trailing, and
+  stands on the ledge with a little settle as it steps in. The haul and the step in change over
+  on the frame the art does, and the push is made the moment the paws plant, so they stay on
+  the ledge. It faces the window it is climbing onto the whole way up, and with reduced motion it
+  holds still on the push. A hop down still lands as a hop. The three frames fit in cells each
+  creature's texture already had spare, so it costs no memory, and no other clip draws
+  differently.
+- A companion climbs a window up the outside of its side, hung from the paw that grips the edge,
+  instead of up a track just inside it with half its body or more over the window the whole way
+  up. How far out it hangs follows how wide it is drawn, at every display scale and size, and
+  how far its paws reach in the art. It faces the window from the moment it reaches it, walking out
+  from under the window first if it started there, which makes that walk a little longer. At the
+  top the push heaves it up and over the edge onto both paws on the ledge, and the step in that
+  follows is a short one. A window against the side of the display or of the habitat, with no
+  room beside it, is climbed just inside its edge as before.
+- In a tug of war, whoever is not digging in is hauled toward whoever is, whichever way round the
+  two stand. It was hauled away from its partner when the pair stood one way round, which pulled
+  them apart and set it stepping back and forth on the spot.
+- A companion hanging from a ledge swings its legs slowly from side to side and glances down at
+  the drop now and then, for longer when the hang has it worried, instead of hanging still.
+- A tossed companion balls up in the air instead of hanging as if still carried: two frames of
+  its own, legs folded under, head and tail tucked and its eyes shut, the second turned a little
+  so it tumbles until it lands. Every body draws it — the original families, every modular plan
+  including four-pawed bodies, the Echo Fox and sculpted forms — and it costs no texture: the two
+  frames fill cells the atlas's last row had spare. Every other clip draws exactly as before.
+  `motion-sheet` shows the tumble and the landing after the everyday loops.
+- A hop is drawn as a hop. A companion crouches where it stands for a moment before it springs,
+  is up in the air for the whole flight — stretched out long with its feet drawn up, its paws in
+  and its ears laid back, rising and then coming down, a winged body with its wings spread — and
+  lands on the touch, where it used to wobble through its landing squash the whole way across. The
+  landing is played once: squashed on the touch, back up, a pixel past, and standing on the frame a
+  rest starts from, so whatever comes next starts without a cut, after a toss as well. A hop it
+  meant to take is no longer shaken off afterwards. Gap hops keep their run-up.
+- A carried companion hangs still in the hand instead of bobbing: drawn out a pixel longer, its
+  paws, ears and tail hanging, its head swaying a pixel over and back each second and its eyes
+  down at the desk. A modular body's paws hang down its sides, where they used to stay folded.
+- The leap's two frames cost no texture: being carried now repeats its frames in pairs and gives
+  up two cells, which the leap takes. Every other clip draws exactly as before. `motion-sheet`
+  shows being carried and a hop's crouch, leap and landing.
+- A change of clip whose outline jumps no longer cuts straight across. Where the next clip sits
+  more than three rows higher or lower at the crown or the feet than the frame on screen — a walk
+  stopping on a high stride, a fright in mid-stride, a step up onto a ledge to sit — the companion
+  passes through its plain settle for one tick on the way. A loop going round, a change from or to
+  the settle, a body held, thrown, landing, climbing, hanging, asleep or seated, and a frame with
+  something in its paws all cut as before, and reduced motion never bridges. No new frames and
+  nothing saved: the overlay keeps what it showed last, and the picture, the bubble and the grab
+  mask show the settle together. `formiga-tools bridge-sheet` draws it tick by tick.
+- Sitting and sleeping companions breathe. Sat up on a window or on its doorstep, a companion
+  draws a slow breath every two seconds, chest up a pixel and the ears lifting and settling a
+  frame behind, with a flick of the tail every other breath; up on a window its glances go mostly
+  down over the edge. Asleep curled, sprawled or loafed it takes one slow breath in four frames,
+  and the little z over its head rises three pixels and fades with each breath. Tails on the
+  shared bob (looking at the cursor, riding a window, carried) and hanging from a ledge swing at
+  half the rate they ticked at. A wash, a shake or a sniff started from a resident's sit at home
+  begins and ends on the plain settle, as one at rest elsewhere already did, and a companion
+  turning round while it rests or walks passes through the settle for one tick on the turn.
+  Reduced motion holds each pose still as before and never bridges. Nothing is saved; a
+  companion's textures grow by one row of cells, from 1.70 MB to 1.80 MB.
+- A companion standing on a window you drag now glides along with it instead of being left behind
+  and jumping after it a body's length or more two or three times a second. Between the moments the
+  app reads where windows are, it carries the rider on at the speed the window was last measured
+  moving, for as long as the pointer keeps dragging, and the next read sets it exactly back on its
+  ledge. While a rider's window is moving the overlay is drawn twenty times a second, and the window
+  list is read on time four times a second rather than every 400 ms when the colony ticks slowly.
+  Only where the rider is drawn changes: what it does, the colony file and where it can be grabbed
+  are untouched, and nothing more is read than the window rectangles and the pointer.
+- The optional creature outline is now two-tone, so it shows on dark wallpaper too: the soft dark
+  edge is ringed by a faint pale rim one pixel further out, which is nearly invisible on light
+  wallpaper and is what you see on dark. The rim stops at the feet, so the shadow underneath stays
+  dark. The setting reads "Outline creatures for busy or dark wallpaper". It is baked into the
+  sprite pixels the outline already used, so it costs no texture and no frame time.
+  `formiga-tools ui-sheet` shows three coats plain and outlined on light, dark, near-black and busy
+  wallpaper.
+- With reduced motion a companion holds each clip still on the moment that says what it is doing,
+  rather than always on the first frame. Eating used to show the snack held away from the face
+  before the first bite, drinking the cup held down and a climb the first reach with both paws up;
+  now a companion eating holds its snack up at its mouth with a bite out of it, one drinking has
+  its cup tipped to its mouth, and one climbing is pulling itself up, one paw above the other.
+  Play already held the toy at the paw and is unchanged, as is every clip with motion on. Each
+  clip is still one picture, so it costs no texture. `formiga-tools activity-sheet --reduced`
+  draws the clips as reduced motion shows them.
+- Walks get going and stop rather than starting and stopping at full speed. A companion comes up
+  to its pace over the first quarter of a second of a walk and slows evenly over the last onto
+  exactly the spot it was going to, its feet slowing with it, and one that turns round starts
+  again from standing instead of sliding backwards out of its last step.
+- A companion no longer turns one way and back on consecutive moments. Once it has turned it
+  faces that way for at least a quarter of a second, unless what it is walking to is more than a
+  few points behind it, so a follower whose friend drifts across its middle stops flickering, and
+  a climb up a window keeps the way the creature was facing instead of always turning right.
+- Going to see what the pointer is up to now looks like it: the companion leans in on one foot
+  back with its ears pricked and its paw up, eyes on the pointer, the way it peers at the screen,
+  instead of standing about with a bob.
+- On the review sheets, cards and the notebook's pictures, a stroll and a ride on a window wear
+  the plain face instead of the flat brow of concentrating; squeezing through a gap keeps it, and
+  a run stays determined.
+- A companion slipping through a narrow gap between two windows is drawn squeezed in two frames
+  of its own instead of a walk narrowed on screen, which dropped columns unevenly and broke its
+  outline. The body, face and all, is pinched to about three quarters of its width by taking out
+  the columns that change it least — flat coat and the gaps between ears and legs, never the
+  outline, the eyes or a thin leg — while its feet shuffle one and then the other; every body
+  draws it, the original families, every modular plan including four-pawed bodies, the Echo Fox
+  and sculpted forms. Stopped in the gap it stays squeezed, and it is grabbed by the shape it is
+  drawn in. The two frames fill cells the atlas had spare, so a companion's textures stay 1.70 MB;
+  every other clip draws exactly as before. `motion-sheet` shows the shuffle after the everyday
+  loops.
+- Five thought-bubble icons read at the smallest scale the companion runs at, where they used to
+  blur into smudges: Grumble is an outlined storm cloud over a bolt, Jealous an outlined green
+  heart broken in two, Swoon one big outlined star, Blush a little face with pink cheeks, and
+  Watching an eye with a big round iris. `formiga-tools ui-sheet` shows them in its 2x rows.
+- A mini of logical size 28 or smaller wears the moon clip, the shell necklace and the snail pack
+  in plainer, bolder shapes, so they no longer turn to blobs at its size: a taller crescent, a
+  ridged shell on a darker cord, and a pale snail shell with its spiral, sat clear of the face.
+  Adults, and every other piece, are drawn exactly as before.
+- The little marks round a companion move now. The sparkle or heart over a greeting, a game with a
+  friend or a cheer drifts up and away from the head and fades, instead of hovering in one spot;
+  crumbs from a bite fall from the mouth to the ground; and a chew fills the cheek out a pixel.
+- A companion startled by a window jumping crouches for a moment before it scrambles, and one
+  shying from the cursor leans away from it, so the two startles no longer look alike.
+- A companion's bubble holds still over a bouncing greeting, a hop or a breath at rest, rather than
+  bobbing with its head. `formiga-tools ui-sheet` shows a bubble over a greeting and a cheer frame
+  by frame.
+- A companion's face changes behind a blink. Where the new expression differs from the last both
+  in the eyes and at the mouth, the plain face shows for one tick with its lids half down on the
+  way, rather than one face swapping for the other between two frames. A change of only the eyes or
+  only the mouth still cuts straight across, a fright still lands at once, and under reduced motion
+  nothing comes between two faces. It uses faces every companion already has.
+- Sleepy and startled faces have mouths of their own. Sleepy shared the resting mouth and a fright
+  the classic face's little round "o" of a question, so each pair told itself apart only by a brow;
+  now a sleepy companion's jaw goes slack and a startled classic face gasps open, as the authored
+  faces already did. Every other expression draws exactly as before.
 
 ### Fixed
 

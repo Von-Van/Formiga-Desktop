@@ -152,6 +152,19 @@ pub(super) fn snores(clock: f32) -> impl Iterator<Item = (f32, f32)> {
     })
 }
 
+/// Which cell a tree at this end of the village is drawn from: the still tree, or in a gust the
+/// one leaning the way the pennants fly, which for the mirrored inward tree is the cell leaning
+/// the other way.
+pub(super) fn tree_cell(end: formiga_core::TreeEnd, gust: bool) -> VillageCell {
+    if gust {
+        VillageCell::TreeInWind {
+            leaning_right: !tree_is_mirrored(end),
+        }
+    } else {
+        VillageCell::Tree
+    }
+}
+
 /// Whether a tree at this end of the village samples its cell mirrored. The inward bookend does,
 /// so the pair reads as two trees rather than one drawn twice; the anchors come in mirrored
 /// pairs, so every keepsake still lands on a cord.
@@ -530,7 +543,15 @@ impl OverlayRenderer {
         let depths = save.home.house_depth_list(&save.creatures);
         let points_per_pixel =
             f32::from(save.settings.display_scale) / self.monitor.scale_factor.max(1.0);
-        let mut quads = Vec::with_capacity(cottages.len() + 3);
+        let mut quads = Vec::with_capacity(cottages.len() * 2 + 4);
+        // A breath of wind, on whatever frame is being drawn anyway: it is only ever looked up,
+        // so it never asks for a frame of its own.
+        let gust =
+            formiga_art::village_gust(scene.clock, save.colony_seed, save.settings.reduce_motion);
+        let (genome, styles) = (
+            save.home.drawn_shelter(),
+            save.home.house_style_list(&save.creatures),
+        );
         for slot in 0..=cottages.len() {
             let Some((monitor_id, point)) = formiga_core::home_dwelling_position(
                 &save.home,
@@ -573,6 +594,24 @@ impl OverlayRenderer {
                     house_sway(motion),
                 ),
             });
+            // A tent's pennant blown out in the gust, laid straight over its own house and so
+            // drawn as far back as it. Not while the tent is swaying under its keeper's hands,
+            // whose lean the patch would not follow.
+            let style = styles[slot.min(styles.len() - 1)];
+            if gust && motion.is_none() && style == formiga_core::ShelterStyle::Tent {
+                quads.push(VillageQuad {
+                    depth,
+                    vertices: self.pennant_vertices(
+                        point,
+                        ShelterRenderer::pennant_origin(
+                            &formiga_core::ShelterGenome { style, ..genome },
+                            slot,
+                        ),
+                        ShelterRenderer::pennant_patch(slot, night),
+                        save.settings.display_scale,
+                    ),
+                });
+            }
         }
         // The trees after the houses: each stands a little in over the house at its end, and is
         // drawn in front of it.
@@ -590,7 +629,7 @@ impl OverlayRenderer {
                     depth: 0.0,
                     vertices: self.village_cell_vertices(
                         point,
-                        village_cell(VillageCell::Tree),
+                        village_cell(tree_cell(end, gust)),
                         tree_is_mirrored(end),
                         save.settings.display_scale,
                         (0.0, 0.0),
@@ -684,6 +723,50 @@ impl OverlayRenderer {
             vertex([top_left, top], [u_left, v]),
             vertex([right, bottom], [u_right, v + cell_v]),
             vertex([left, bottom], [u_left, v + cell_v]),
+        ]
+    }
+
+    /// A blown-out pennant's patch laid over the house standing on the ground line at `anchor`:
+    /// `origin` is where the patch's top-left falls in the house's own cell and `(x, y)` where
+    /// the patch sits in the village atlas, both in shelter pixels.
+    pub(super) fn pennant_vertices(
+        &self,
+        anchor: formiga_core::Point,
+        (origin_x, origin_y): (i32, i32),
+        (atlas_x, atlas_y): (u32, u32),
+        display_scale: u8,
+    ) -> [Vertex; 6] {
+        let unit = f32::from(display_scale);
+        let size = SHELTER_SIZE as f32 * unit;
+        let patch = formiga_art::PENNANT_PATCH as f32;
+        let local_x = self.snap((anchor.x - self.monitor.bounds.x) * self.monitor.scale_factor);
+        let local_y = self.snap((anchor.y - self.monitor.bounds.y) * self.monitor.scale_factor);
+        let x = |value: f32| value / self.layout.width as f32 * 2.0 - 1.0;
+        let y = |value: f32| 1.0 - value / self.layout.height as f32 * 2.0;
+        let left_px = local_x - size / 2.0 + origin_x as f32 * unit;
+        let top_px = local_y - size + origin_y as f32 * unit;
+        let (left, right) = (x(left_px), x(left_px + patch * unit));
+        let (top, bottom) = (y(top_px), y(top_px + patch * unit));
+        let (u_left, u_right) = (
+            atlas_x as f32 / VILLAGE_ATLAS_WIDTH as f32,
+            (atlas_x as f32 + patch) / VILLAGE_ATLAS_WIDTH as f32,
+        );
+        let (v_top, v_bottom) = (
+            atlas_y as f32 / VILLAGE_ATLAS_HEIGHT as f32,
+            (atlas_y as f32 + patch) / VILLAGE_ATLAS_HEIGHT as f32,
+        );
+        let vertex = |position, uv| Vertex {
+            position,
+            uv,
+            occlusion_enabled: 1.0,
+        };
+        [
+            vertex([left, top], [u_left, v_top]),
+            vertex([right, top], [u_right, v_top]),
+            vertex([right, bottom], [u_right, v_bottom]),
+            vertex([left, top], [u_left, v_top]),
+            vertex([right, bottom], [u_right, v_bottom]),
+            vertex([left, bottom], [u_left, v_bottom]),
         ]
     }
 

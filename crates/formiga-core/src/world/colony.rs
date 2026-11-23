@@ -122,6 +122,7 @@ impl World {
             &mut self.events,
             WorldEvent::CreatureSpawned { creature_id: id },
         );
+        self.begin_entrance(id, desktop);
         Ok(id)
     }
 
@@ -216,6 +217,7 @@ impl World {
             &mut self.events,
             WorldEvent::CreatureSpawned { creature_id: id },
         );
+        self.begin_entrance(id, desktop);
         Ok(id)
     }
 

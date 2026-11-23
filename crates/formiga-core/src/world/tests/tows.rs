@@ -170,3 +170,79 @@ fn with_nobody_free_the_sleeper_wriggles_over_and_a_tow_cut_short_is_finished_by
         "the rope is still drawn"
     );
 }
+
+/// The rope is only ever drawn in a paw. The friend turns to the sleeper and reaches back for it
+/// for a moment before the rope appears, and when the sleeper is clear its paws are down, standing
+/// still, on the last tick the rope is drawn, so the rope neither appears in an empty paw nor
+/// vanishes out of a full one.
+#[test]
+fn a_friend_reaches_for_the_rope_before_it_appears_and_puts_its_paws_down_before_it_goes() {
+    let (mut world, desktop, now) = two_sleepers_and_a_friend([103; 32]);
+    let (lighter, friend) = (world.save.creatures[1].id, world.save.creatures[2].id);
+    // Per tick: whether the rope is drawn, whether the friend is reaching, whether it is standing
+    // with its paws down, whether it faces right, and whether the sleeper is to its left.
+    let mut ticks = Vec::new();
+    for step in 1..=400 {
+        world.tick(now + Duration::milliseconds(step * 50), 0.05, &desktop);
+        world.drain_events().for_each(drop);
+        let sleeper = world
+            .save
+            .creatures
+            .iter()
+            .find(|c| c.id == lighter)
+            .unwrap();
+        let tower = world
+            .save
+            .creatures
+            .iter()
+            .find(|c| c.id == friend)
+            .unwrap();
+        let reaching = tower
+            .state
+            .attention
+            .is_some_and(|pose| pose.gesture == Some(Gesture::Reach));
+        let paws_down = tower.state.attention.is_none()
+            && tower.state.action == ActionKind::Idle
+            && tower.state.velocity == Point::default();
+        ticks.push((
+            sleeper.state.nudge == Some(SleepNudge::Towed { by: friend }),
+            reaching,
+            paws_down,
+            tower.state.facing_right,
+            sleeper.state.position.x < tower.state.position.x,
+        ));
+    }
+    let first_rope = ticks.iter().position(|tick| tick.0).expect("no tow");
+    let last_rope = ticks.iter().rposition(|tick| tick.0).unwrap();
+    assert!(
+        ticks[first_rope..=last_rope].iter().all(|tick| tick.0),
+        "the rope came and went more than once"
+    );
+    // Reaching for the rope, turned to the sleeper, for the 0.3 s just before it appears, and
+    // never once the rope is there.
+    let reach_ticks = (super::super::tows::REACH_SECONDS / 0.05).round() as usize;
+    let reach = &ticks[first_rope - reach_ticks..first_rope];
+    assert!(
+        reach.iter().all(|tick| tick.1),
+        "the friend was not reaching for the rope just before it appeared: {reach:?}"
+    );
+    assert!(
+        reach.iter().all(|tick| tick.3 != tick.4 && !tick.0),
+        "the friend reached for the rope without facing the sleeper: {reach:?}"
+    );
+    assert!(
+        ticks[first_rope..=last_rope].iter().all(|tick| !tick.1),
+        "the friend was still reaching once the rope was in its paw"
+    );
+    // Paws down on the last tick the rope is drawn, and the rope gone on the next.
+    assert!(
+        ticks[last_rope].2,
+        "the rope was let go of before the friend's paws were down: {:?}",
+        ticks[last_rope]
+    );
+    assert!(
+        !ticks[last_rope - 1].2,
+        "the friend stood still for more than one tick with the rope drawn"
+    );
+    assert!(!ticks[last_rope + 1].0, "the rope outlived the tow");
+}

@@ -69,18 +69,32 @@ impl Tones {
 /// Leather: a satchel, a strap.
 const LEATHER: Ink = materials::n(0x3e2016, 0x6a3a22, 0x945432, 0xb4744a, 0xd29c70);
 
+/// The largest logical size whose pieces are drawn as specks. Most minis are this size or smaller;
+/// every adult is larger, even set back in the village at 90%, so an adult's pieces never change.
+pub(crate) const SPECK_SIZE: u8 = 28;
+
 /// What one piece is painted on: `solid` is outlined all round once it is done, `bare` is laid on
-/// top afterwards as it is.
+/// top afterwards as it is. `speck` is set for a companion no larger than [`SPECK_SIZE`]: the few
+/// pieces whose fine shading blurs into a blob at that size draw a plainer, bolder shape instead.
 struct Layers {
     solid: Canvas,
     bare: Canvas,
+    speck: bool,
 }
 
-pub(super) fn draw_accessory(canvas: &mut Canvas, art: AccessoryArt, figure: Figure) {
+/// Draw `art` onto a body frame. `logical_size` is the wearer's, which is the same in every frame,
+/// so a piece never switches between its speck and full drawings mid-clip.
+pub(super) fn draw_accessory(
+    canvas: &mut Canvas,
+    art: AccessoryArt,
+    figure: Figure,
+    logical_size: u8,
+) {
     let (width, height) = (canvas.width(), canvas.height());
     let mut layers = Layers {
         solid: Canvas::new(width, height),
         bare: Canvas::new(width, height),
+        speck: logical_size <= SPECK_SIZE,
     };
     let ink = art.ink;
     match art.accessory {
@@ -428,6 +442,15 @@ fn star_clip(l: &mut Layers, ink: TrinketInk, figure: Figure) {
 fn moon_clip(l: &mut Layers, ink: TrinketInk, figure: Figure) {
     let moon = Tones::of(materials::STARLIGHT, ink);
     let (x, y) = (figure.crown.x + figure.head_half / 2 + 1, figure.crown.y);
+    if l.speck {
+        // A taller crescent in two tones, standing a row higher: the shaded tips and the shadow
+        // under them melt into the outline and the ear at a mini's size.
+        const SPECK: [&str; 7] = [
+            "..ll.", ".lb..", "lb...", "lb...", "lb...", ".bb..", "..bb.",
+        ];
+        stamp(&mut l.solid, x - 2, y - 5, &SPECK, moon);
+        return;
+    }
     const MOON: [&str; 6] = [".ll..", "lb...", "lb...", "bb...", "bbs.s", ".sss."];
     for (row, line) in MOON.iter().enumerate() {
         for (column, letter) in line.chars().enumerate() {
@@ -584,6 +607,14 @@ fn shell_necklace(l: &mut Layers, ink: TrinketInk, figure: Figure) {
     );
     let half = figure.neck_half.clamp(3, 10);
     let (x, y) = (figure.neck.x, figure.neck.y);
+    if l.speck {
+        // Ridges in light and shadow side by side, a row higher and on a darker cord: the soft
+        // shading of the full fan is one pale blob at a mini's size.
+        const SPECK: [&str; 4] = [".lsl.", "lslsl", "lslsl", "..b.."];
+        stamp(&mut l.solid, x - 1, y + 1, &SPECK, shell);
+        cord(l, x, y, half, twine.edge);
+        return;
+    }
     let (sx, sy) = (x + 1, y + 3);
     const FAN: [&str; 4] = [".lll.", "lbbbs", "lbsbs", ".bss."];
     for (row, line) in FAN.iter().enumerate() {
@@ -599,10 +630,30 @@ fn shell_necklace(l: &mut Layers, ink: TrinketInk, figure: Figure) {
         }
     }
     l.solid.set(sx - 1, sy - 1, shell.shine);
+    cord(l, x, y, half, twine.shadow);
+}
+
+/// A cord round the neck, sagging a pixel in the middle, behind whatever hangs from it.
+fn cord(l: &mut Layers, x: i32, y: i32, half: i32, color: Rgba) {
     for dx in -half..=half {
         let sag = i32::from(dx.abs() < half / 2);
         if l.solid.get(x + dx, y + sag).a == 0 {
-            l.bare.set(x + dx, y + sag, twine.shadow);
+            l.bare.set(x + dx, y + sag, color);
+        }
+    }
+}
+
+/// Paint a piece written out as rows: `l`, `b` and `s` are the light, base and shadow tones.
+fn stamp(canvas: &mut Canvas, x: i32, y: i32, rows: &[&str], tones: Tones) {
+    for (row, line) in rows.iter().enumerate() {
+        for (column, letter) in line.chars().enumerate() {
+            let color = match letter {
+                'l' => tones.light,
+                'b' => tones.base,
+                's' => tones.shadow,
+                _ => continue,
+            };
+            canvas.set(x + column as i32, y + row as i32, color);
         }
     }
 }
@@ -677,13 +728,22 @@ fn satchel(l: &mut Layers, ink: TrinketInk, figure: Figure) {
 fn snail_pack(l: &mut Layers, ink: TrinketInk, figure: Figure) {
     let shell = Tones::of(materials::SAND, ink);
     let whorl = Tones::of(materials::NUT, ink);
-    let (x, y) = (figure.back.x, figure.back.y + 1);
-    l.solid.fill_circle(x, y, 3, shell.base);
-    for (dx, dy) in [(-2, -2), (-3, -1), (-1, -3), (-3, 0)] {
-        l.solid.set(x + dx, y + dy, shell.light);
-    }
-    for (dx, dy) in [(3, 1), (2, 2), (1, 3), (3, 0)] {
-        l.solid.set(x + dx, y + dy, shell.shadow);
+    let (x, y) = if l.speck {
+        // Two pixels further back and one up, clear of a mini's face, and in one pale flat tone
+        // so the spiral is the only mark on it.
+        (figure.back.x - 2, figure.back.y)
+    } else {
+        (figure.back.x, figure.back.y + 1)
+    };
+    let fill = if l.speck { shell.light } else { shell.base };
+    l.solid.fill_circle(x, y, 3, fill);
+    if !l.speck {
+        for (dx, dy) in [(-2, -2), (-3, -1), (-1, -3), (-3, 0)] {
+            l.solid.set(x + dx, y + dy, shell.light);
+        }
+        for (dx, dy) in [(3, 1), (2, 2), (1, 3), (3, 0)] {
+            l.solid.set(x + dx, y + dy, shell.shadow);
+        }
     }
     // The spiral: round from the rim to the middle.
     for (dx, dy) in [

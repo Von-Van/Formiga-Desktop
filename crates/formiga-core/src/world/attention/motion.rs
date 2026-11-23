@@ -132,6 +132,7 @@ pub(super) fn landing_point(journey: &WindowJourney) -> Point {
         WindowJourney::Hop(journey) => journey.target,
         WindowJourney::Climb(journey) => journey.target,
         WindowJourney::Squeeze(journey) => journey.target,
+        WindowJourney::Entrance(journey) => journey.target,
     }
 }
 
