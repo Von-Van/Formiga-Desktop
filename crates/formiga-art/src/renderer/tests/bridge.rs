@@ -216,6 +216,8 @@ fn only_a_jump_between_standing_clips_bridges() {
         BodyClip::Action(ActionKind::Sleep),
         BodyClip::Gesture(Gesture::Sprawl),
         BodyClip::Gesture(Gesture::Sit),
+        BodyClip::Gesture(Gesture::Mantle),
+        BodyClip::Gesture(Gesture::Leap),
     ] {
         assert!(!stands(clip), "{clip:?}");
         assert_eq!(bridge_reason(rest, (at(clip, 0), outline(4))), None);
