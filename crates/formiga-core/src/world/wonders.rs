@@ -84,6 +84,15 @@ impl Wonders {
             .is_some_and(|active| !active.leaving() && active.players.iter().any(|p| p.id == id))
     }
 
+    /// Where this companion is in a hop on its way over, if it is hopping.
+    pub(super) fn hop_moment(&self, id: CreatureId) -> Option<HopMoment> {
+        let player = self.active.as_ref()?.players.iter().find(|p| p.id == id)?;
+        match player.legs.front()? {
+            Leg::Journey(journey) => journey.hop_moment(),
+            Leg::Walk => None,
+        }
+    }
+
     /// Both players of the same wonder, held together on purpose.
     pub(super) fn together(&self, a: CreatureId, b: CreatureId) -> bool {
         self.owns(a) && self.owns(b)
@@ -1675,7 +1684,8 @@ fn wonder_route(
             start: from.state.position,
             target: floor,
             surface: surface.clone(),
-            elapsed: 0.0,
+            // A crouch to spring from first.
+            elapsed: -HOP_GATHER_SECS,
             duration: (from.state.position.distance(floor) / 180.0).max(0.25),
             lift: 0.0,
             ballistic: false,

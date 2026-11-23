@@ -347,8 +347,10 @@ pub(super) fn draw_head_appendages(
     s: f32,
     pose: Pose,
 ) {
-    let size = ((genome.head_appendages.size as f32 * s).round() as i32).clamp(2, 8)
-        + pose.ear_perk.clamp(0, 2);
+    let size = (((genome.head_appendages.size as f32 * s).round() as i32).clamp(2, 8)
+        + pose.ear_perk.clamp(0, 2)
+        - pose.ears_back.clamp(0, 3))
+    .max(2);
     match genome.family {
         // Cats and rabbits always keep ears; the style gene varies their shape instead of
         // removing them, so both families stay recognizable across every genome.
@@ -756,14 +758,18 @@ pub(super) fn limb_targets(
         }
         ActionKind::Follow => offset_pair(left, right, ((-2, length - 2), (length + 2, -1))),
         ActionKind::SocialPlay => offset_pair(left, right, ((2, 1), (length + 2, -length + pulse))),
-        ActionKind::Dragged => offset_pair(
-            left,
-            right,
-            ((-1 + pulse, length + 2), (1 - pulse, length + 2)),
-        ),
-        ActionKind::Landing => {
-            offset_pair(left, right, ((-length, length - 1), (length, length - 1)))
-        }
+        // Hanging straight down from the shoulders, still.
+        ActionKind::Dragged => offset_pair(left, right, ((-1, length + 2), (1, length + 2))),
+        // Thrown out wide to catch itself on the touch, coming in, and back at its sides.
+        ActionKind::Landing => match frame {
+            0 => offset_pair(left, right, ((-length, length - 1), (length, length - 1))),
+            1 => offset_pair(
+                left,
+                right,
+                ((-length / 2 - 1, length - 1), (length / 2 + 1, length - 1)),
+            ),
+            _ => side_rest(),
+        },
         // A stroke with each paw, as a modular climber's (see `Pose::climb`): the back paw up
         // behind the head and the front one in front of the face, the reaching one high while the
         // other holds low, pulled down toward the body on the pull, and the other coming up on
@@ -840,6 +846,8 @@ pub(super) fn gesture_limb_targets(
             at(middle + 1, right.y + 2 - beat),
         ),
         Gesture::Crouch => offset_pair(left, right, ((-2, length + 1), (2, length + 1))),
+        // Drawn in to the chest in the air.
+        Gesture::Leap => offset_pair(left, right, ((2, 2), (-2, 2))),
         Gesture::Heave => {
             let pull = [0, 1, 2, 1][usize::from(frame % 4)];
             (

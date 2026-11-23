@@ -36,6 +36,9 @@ pub(super) struct Pose {
     /// The back foot hanging this many pixels below the ground: a leg still trailing over the
     /// edge of a ledge the rest of the body is up on. Only the mantle asks for it.
     pub(super) trail: i32,
+    /// Ears laid back flat against the head, in art pixels shorter than they stand: tucked in
+    /// for a leap. Only a leap asks for it, so no other clip changes shape.
+    pub(super) ears_back: i32,
 }
 
 /// Keep-up, beat by beat, in time with [`ActionKind::SoloPlay`]'s four frames: caught against
@@ -268,16 +271,35 @@ impl Pose {
                 tail_sway: -2,
                 ..Self::default()
             },
-            ActionKind::Landing => Self {
-                bob: -2 - walk.abs(),
-                squash_x: -walk,
-                squash_y: walk,
-                step_a: walk * 2,
-                step_b: alternate * 2,
-                play_lift: 1,
-                appendage_lift: 1,
-                tail_sway: walk,
-                ..Self::default()
+            // Down, played once: squashed low and wide on the touch with its legs folding under
+            // it, drawn back up, a pixel past standing with its ears up, and standing as it rests,
+            // so whatever it does next starts from the frame it ends on.
+            ActionKind::Landing => match frame {
+                0 => Self {
+                    bob: 1,
+                    squash_x: 2,
+                    squash_y: -2,
+                    appendage_lift: -1,
+                    tail_sway: -1,
+                    crouch: 2,
+                    ..Self::default()
+                },
+                1 => Self {
+                    squash_x: 1,
+                    squash_y: -1,
+                    crouch: 1,
+                    ..Self::default()
+                },
+                2 => Self {
+                    bob: -1,
+                    squash_x: -1,
+                    squash_y: 1,
+                    appendage_lift: 1,
+                    tail_sway: 1,
+                    ear_perk: 1,
+                    ..Self::default()
+                },
+                _ => Self::resting(genome, 0),
             },
             ActionKind::ClimbWindow => Self::climb(frame),
             // Hanging by its paws with its legs swinging slowly together, out to one side and
@@ -331,6 +353,16 @@ impl Pose {
                 tail_sway: -2,
                 lean: -1,
                 crouch: 4,
+                ear_perk: -1,
+                ..Self::default()
+            },
+            // Carried: hanging from the hand, drawn out a pixel longer, its paws, ears and tail
+            // hanging still, and the head swaying a pixel over and back, slowly.
+            ActionKind::Dragged => Self {
+                squash_y: 1,
+                appendage_lift: -2,
+                tail_sway: -2,
+                lean: i32::from(frame >= 2),
                 ear_perk: -1,
                 ..Self::default()
             },
@@ -540,6 +572,7 @@ impl Pose {
             splay: 0,
             knee: 0,
             trail: 0,
+            ears_back: 0,
         }
     }
 
@@ -702,6 +735,7 @@ impl Pose {
                 splay: 0,
                 knee: 0,
                 trail: 0,
+                ears_back: 0,
             },
             // Breathing in, drawn up tall with the head tipped back as the paw comes up to the
             // mouth, held at the top, and settling down a little lower than it began. Played once:
@@ -881,6 +915,25 @@ impl Pose {
                     tail_sway: up,
                     lean: -up,
                     ear_perk: i32::from(up > 0),
+                    ..Self::default()
+                }
+            }
+            // In the air: stretched out long with the paws drawn in and the ears laid back, the
+            // tail trailing as it rises, then a little less stretched and the tail up as it
+            // comes down.
+            Gesture::Leap => {
+                let rising = frame.is_multiple_of(2);
+                Self {
+                    squash_x: -i32::from(rising),
+                    squash_y: 1 + i32::from(rising),
+                    step_a: -1 - i32::from(rising),
+                    step_b: 1 + i32::from(rising),
+                    play_lift: 1 + i32::from(rising),
+                    appendage_lift: -1,
+                    tail_sway: if rising { -2 } else { 1 },
+                    lean: i32::from(rising),
+                    ear_perk: -1,
+                    ears_back: 2,
                     ..Self::default()
                 }
             }

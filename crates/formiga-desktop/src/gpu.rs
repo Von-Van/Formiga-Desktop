@@ -3,12 +3,12 @@ use anyhow::{Context, Result};
 use bytemuck::{Pod, Zeroable};
 use formiga_art::{
     AccessoryArt, AnimationSpec, BodyClip, BodyPresentation, COLONY_OBJECT_ATLAS_HEIGHT,
-    COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE, ClipBridge, ColonyObjectRenderer, CreatureRenderer,
-    FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement, FrameShape, HELD_CELL, HELD_SHEET_HEIGHT,
-    HELD_SHEET_WIDTH, HeldPlacement, HeldThing, MenuIcon, MenuLayout, MilestoneBubbleRenderer,
-    PixelPoint, PropSprite, Rgba, SHELTER_SIZE, ShelterRenderer, SpriteRect, TALK_BUBBLE,
-    TALK_DETAIL, TALK_ICON, TALK_ICON_AT, TALK_SHEET_HEIGHT, TALK_SHEET_WIDTH,
-    TRINKET_ATLAS_HEIGHT, TRINKET_ATLAS_WIDTH, TRINKET_CELL, TRINKET_FRAME_GLINT,
+    COLONY_OBJECT_ATLAS_WIDTH, COLONY_OBJECT_SIZE, ClipBridge, ColonyObjectRenderer,
+    CreatureRenderer, FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement, FrameShape,
+    HELD_CELL, HELD_SHEET_HEIGHT, HELD_SHEET_WIDTH, HeldPlacement, HeldThing, MenuIcon, MenuLayout,
+    MilestoneBubbleRenderer, PixelPoint, PropSprite, Rgba, SHELTER_SIZE, ShelterRenderer,
+    SpriteRect, TALK_BUBBLE, TALK_DETAIL, TALK_ICON, TALK_ICON_AT, TALK_SHEET_HEIGHT,
+    TALK_SHEET_WIDTH, TRINKET_ATLAS_HEIGHT, TRINKET_ATLAS_WIDTH, TRINKET_CELL, TRINKET_FRAME_GLINT,
     TRINKET_FRAME_REST, TalkSheet, TrinketAnchor, TrinketAtlasRenderer, UI_ATLAS_HEIGHT,
     UI_ATLAS_WIDTH, UiAtlasRenderer, VILLAGE_ATLAS_HEIGHT, VILLAGE_ATLAS_WIDTH, VillageCell,
     VillageLook, WONDER_CELL_HEIGHT, WONDER_CELL_WIDTH, WONDER_GROUND, WONDER_MIDDLE,
