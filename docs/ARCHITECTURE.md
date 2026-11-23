@@ -317,7 +317,16 @@ feature exists, and a quadruped only swaps its front legs for arm-style forelimb
 that visibly use them. Every body frame records a face anchor and family-specific forelimb targets.
 Authored clips manipulate those anchors, squash,
 planted contacts, limb gestures, and secondary tail/head-appendage motion. Markings and temporary
-activity effects remain body-local and are rasterized at integer coordinates.
+activity effects remain body-local and are rasterized at integer coordinates. The motif over a
+greeting, a game with a friend or a cheer (`effects.rs`, `draw_drifting_motif`) rises up and out
+from beside the head over the clip's four frames, three pixels out and five up, and is drawn at
+under half opacity on the last, so it drifts off and fades rather than hovering; reduced motion
+holds the first frame, where it always sat. A startle is two bodies: a window that jumps
+(ReactToWindow) is met with 0.15 s drawn down into a crouch, the crouch gesture's own lower frame
+chosen by `BodyPresentation::for_creature`, before the scramble, and none with motion reduced; a
+cursor that comes too close (AvoidCursor) gets the same scramble with the head carried two pixels
+forward. The world turns a creature avoiding the cursor to face away from it, so forward is away
+from the cursor, which the art never sees.
 
 Resting is the clip a companion holds longest, so it is authored as a six-frame loop at three
 frames a second rather than a bob: it settles square and screen-facing, shifts its weight onto one
@@ -344,7 +353,11 @@ and draws the cell as one quad right after the body and face, mirrored with the 
 companion standing in front of another is never drawn under the other's snack; whole-frame renders
 (`render_dressed_composited_frame` and everything built on it: stickers, postcards, review sheets,
 Formiga Home) paint it in the same place. The marks a creature makes while it plays or eats — the
-dashes behind a toy, the knock on the paw, crumbs — stay baked in its frame. A body holding
+dashes behind a toy, the knock on the paw, crumbs — stay baked in its frame. A mouthful's two
+crumbs fall over the Eat clip's `CRUMB_FRAMES` (2 and 3): just under the mouth as the bite knocks
+them off, then on `PropHold::ground`. On `FULL_CHEEK_FRAME` (3) the chew fills the cheek out: the
+head's edge beside the mouth, found by walking out from the face anchor along two rows, is pushed
+out a pixel on the side the face looks toward. A body holding
 something else needs no new frames; sprinting reuses the existing movement tick with a distinct
 six-frame gait.
 
@@ -936,9 +949,14 @@ somebody else's pet, Swoon, Snack over begging, Sparkle over a strut, Blush or S
 paws, Music over a pounce, Ellipsis over a tapped foot, and Watching, Blush, Sparkle or Grumble from
 a resident answering a visitor. See [antics](#beats-and-a-yawn-going-round).
 
-The overlay draws bubbles from the UI atlas, anchored at the real crown of the creature's current
-baked frame — the per-frame silhouette rows measured during the existing atlas bake — so a mini's
-bubble sits as close to its head as an adult's. Bubbles are clamped inside the monitor and are
+The overlay draws bubbles from the UI atlas, anchored at the real crown of the creature — the
+per-frame silhouette rows measured during the existing atlas bake — so a mini's bubble sits as
+close to its head as an adult's. The crown a bubble hangs off is the highest any frame of the clip
+being shown reaches (`OverlayRenderer::bubble_extent`, `clip_crown`), not the current frame's, so
+over a bouncing greeting, a hop or a breathing rest the bubble holds still while the body moves
+under it, its tail never comes down onto the head, and it moves only when the clip changes. The
+menu reads the current frame's crown (`creature_extent`) as before. `formiga-tools ui-sheet` shows a
+greeting and a cheer frame by frame with the bubble hung both ways. Bubbles are clamped inside the monitor and are
 occluded and hidden exactly as their creature is.
 
 ## The interface atlas

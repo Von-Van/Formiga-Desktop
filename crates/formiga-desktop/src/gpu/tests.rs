@@ -962,6 +962,46 @@ fn a_smaller_creature_keeps_its_bubble_as_close_to_its_head_as_an_adult() {
     }
 }
 
+/// A bubble hangs off the highest crown its clip reaches, not off each frame's own, so over a
+/// bouncing greeting or a hop it holds still while the head moves under it, and its tail stays
+/// clear of the head at the top of every bounce.
+#[test]
+fn a_bubble_holds_still_over_a_bobbing_clip() {
+    let world = ui_world();
+    let atlas = build_atlas_pixels(&world.save.creatures[0], false, false, None, 1);
+    let size = (TALK_BUBBLE.0 as f32, TALK_BUBBLE.1 as f32);
+    let scale = 3.0;
+    let frame_top = 300.0;
+    for clip in [
+        BodyClip::Action(ActionKind::Greet),
+        BodyClip::Action(ActionKind::Idle),
+        BodyClip::Gesture(formiga_core::Gesture::Cheer),
+    ] {
+        let tops: Vec<u8> = (0..AnimationSpec::for_clip(clip).frames)
+            .map(|frame| atlas.silhouette[atlas_slot(clip, frame) as usize].0)
+            .collect();
+        let crown = clip_crown(&atlas.silhouette, clip).expect("baked");
+        assert_eq!(crown, *tops.iter().min().unwrap(), "{clip:?}");
+        let placed: Vec<f32> = tops
+            .iter()
+            .map(|top| {
+                let foot_bottom = frame_top + 47.0 * scale;
+                let head_top = frame_top + f32::from(crown) * scale;
+                let y = talk_origin(700.0, (head_top, foot_bottom), scale, DRAWABLE, size).y;
+                // The tail's tip is above this frame's own crown too.
+                assert!(y + size.1 * scale < frame_top + f32::from(*top) * scale);
+                y
+            })
+            .collect();
+        assert!(placed.windows(2).all(|pair| pair[0] == pair[1]), "{clip:?}");
+    }
+    // The greeting does bob, which is why this matters.
+    let greet: Vec<u8> = (0..4)
+        .map(|frame| atlas.silhouette[atlas_slot(ActionKind::Greet, frame) as usize].0)
+        .collect();
+    assert!(greet.iter().any(|top| *top != greet[0]), "{greet:?}");
+}
+
 #[test]
 fn a_bubble_is_centred_on_the_head_with_its_tail_a_pixel_clear_of_it() {
     let frame = TalkSheet::frame(

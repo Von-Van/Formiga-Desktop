@@ -3,16 +3,18 @@
 //! Everything is drawn at 4x nearest neighbour over three backgrounds — light, dark, and a busy
 //! checker — because the overlay has no say in what is behind it. The last section repeats the
 //! full bubbles and the menus at 2x, which is the smallest scale anyone runs the companion at
-//! and therefore the only scale that really decides whether an icon reads.
+//! and therefore the only scale that really decides whether an icon reads. Between them, a
+//! greeting and a cheer frame by frame show a bubble holding still over a bouncing head.
 
 use anyhow::{Context, Result};
 use formiga_art::{
-    BUBBLE_ANCHOR, BUBBLE_CELL, Canvas, CreatureRenderer, LABEL_TAB_GAP, LABEL_TAB_HEIGHT,
+    AnimationSpec, BUBBLE_ANCHOR, BUBBLE_CELL, BodyClip, Canvas, CreatureRenderer, ExpressionKind,
+    EyelidPose, FRAME_SIZE, FaceRenderState, GazeDirection, LABEL_TAB_GAP, LABEL_TAB_HEIGHT,
     MENU_STRIP_HEIGHT, MenuIcon, MenuLayout, SpriteRect, UiAtlasRenderer,
 };
 use formiga_core::{
-    ActionKind, BubbleGrowth, BubbleIcon, Creature, DesktopRect, DesktopSnapshot, DisplayKey,
-    MonitorInfo, World,
+    ActionKind, AppearanceGenome, BubbleGrowth, BubbleIcon, Creature, DesktopRect, DesktopSnapshot,
+    DisplayKey, Gesture, MonitorInfo, World,
 };
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
@@ -28,6 +30,19 @@ const BUBBLE_SCENE: (u32, u32) = (40, 40);
 const MENU_SCENE: (u32, u32) = (140, 56);
 /// One moments scene: a colony menu with the strip of moments open beside it.
 const MOMENT_SCENE: (u32, u32) = (180, 56);
+/// One scene of a bubble over a bouncing clip, in art pixels: a whole frame, with room above it
+/// for the bubble at its highest.
+const BOUNCE_SCENE: (u32, u32) = (56, 70);
+/// How far down a bounce scene the top of the creature's frame is, in art pixels.
+const BOUNCE_FRAME_TOP: i32 = 20;
+/// The clips a bubble is shown over frame by frame, with the face each is seen with.
+const BOUNCES: [(BodyClip, ExpressionKind); 2] = [
+    (
+        BodyClip::Action(ActionKind::Greet),
+        ExpressionKind::Affectionate,
+    ),
+    (BodyClip::Gesture(Gesture::Cheer), ExpressionKind::Joy),
+];
 /// Art pixels between a menu and the strip beside it, as the desktop places it.
 const SIDE_GAP: i32 = 2;
 
@@ -132,7 +147,8 @@ pub fn run(path: PathBuf) -> Result<()> {
     let menu_band = HEADER + MENUS.len() as u32 * MENU_SCENE.1 * SCALE + BAND_GAP;
     let moment_band = HEADER + MOMENT_SCENE.1 * SCALE + BAND_GAP;
     let small_band = HEADER + 116 + BAND_GAP;
-    let height = 8 + 3 * (bubble_band + menu_band + moment_band + small_band) + 8;
+    let bounce_band = HEADER + 2 * BOUNCE_SCENE.1 * SCALE + BAND_GAP;
+    let height = 8 + 3 * (bubble_band + menu_band + moment_band + small_band) + bounce_band + 8;
 
     let mut painter = Painter {
         sheet: Sheet::new(SHEET_WIDTH, height),
@@ -149,6 +165,7 @@ pub fn run(path: PathBuf) -> Result<()> {
     for background in BACKGROUNDS {
         y = painter.moment_band(background, y);
     }
+    y = painter.bounce_band(&creature.appearance, y);
     for background in BACKGROUNDS {
         y = painter.small_band(background, y);
     }
@@ -302,6 +319,78 @@ impl Painter<'_> {
                 scale,
             );
         }
+    }
+
+    /// A greeting and a cheer frame by frame with a full bubble over each. The top row hangs
+    /// the bubble off each frame's own crown, as bubbles used to hang, so it bobs with the head;
+    /// the bottom row hangs it off the highest crown the clip reaches, as the overlay does, so it
+    /// holds still while the body bounces under it. A tick in each scene's margin marks that
+    /// frame's own crown.
+    fn bounce_band(&mut self, appearance: &AppearanceGenome, top: u32) -> u32 {
+        let background = Background::Light;
+        self.sheet
+            .header(top, "bubbles 4x over a bounce  each frame then the clip");
+        let grid_y = top + HEADER;
+        let rect = UiAtlasRenderer::bubble(BubbleIcon::Heart, BubbleGrowth::Full);
+        let mut column = 0;
+        for (clip, expression) in BOUNCES {
+            let face = FaceRenderState {
+                expression,
+                eyelids: EyelidPose::Open,
+                gaze: GazeDirection::default(),
+            };
+            let frames: Vec<(Canvas, i32)> = (0..AnimationSpec::for_clip(clip).frames)
+                .map(|frame| {
+                    let picture = CreatureRenderer::render_composited_frame(
+                        appearance, clip, frame, true, false, face,
+                    );
+                    // The crown as the overlay measures it: the body frame's own first row.
+                    let body = CreatureRenderer::render_body_frame(appearance, clip, frame, false);
+                    let crown = body
+                        .canvas
+                        .alpha_bounds()
+                        .map_or(0, |bounds| bounds.1 as i32);
+                    (picture, crown)
+                })
+                .collect();
+            let clip_crown = frames.iter().map(|(_, crown)| *crown).min().unwrap_or(0);
+            for (picture, crown) in &frames {
+                let x = GUTTER + column * BOUNCE_SCENE.0 * SCALE;
+                for (row, hung_from) in [*crown, clip_crown].into_iter().enumerate() {
+                    let y = grid_y + row as u32 * BOUNCE_SCENE.1 * SCALE;
+                    let (width, height) = (BOUNCE_SCENE.0 * SCALE, BOUNCE_SCENE.1 * SCALE);
+                    self.sheet.fill(x, y, width, height, background.base());
+                    let frame_x = (BOUNCE_SCENE.0 as i32 - FRAME_SIZE as i32) / 2;
+                    self.sheet.blit_canvas(
+                        picture,
+                        x as i32 + frame_x * SCALE as i32,
+                        y as i32 + BOUNCE_FRAME_TOP * SCALE as i32,
+                        SCALE,
+                    );
+                    let tick_y = y + (BOUNCE_FRAME_TOP + crown) as u32 * SCALE;
+                    self.sheet.fill(x, tick_y, 2 * SCALE, SCALE, CROWN_TICK);
+                    let centre = BOUNCE_SCENE.0 as i32 / 2;
+                    self.sheet.blit(
+                        self.atlas,
+                        rect,
+                        x as i32 + (centre - BUBBLE_ANCHOR.0 as i32) * SCALE as i32,
+                        y as i32
+                            + (BOUNCE_FRAME_TOP + hung_from - 1 - BUBBLE_ANCHOR.1 as i32)
+                                * SCALE as i32,
+                        SCALE,
+                    );
+                }
+                column += 1;
+            }
+            column += 1;
+        }
+        for (row, label) in ["per frame", "clip"].into_iter().enumerate() {
+            let y = grid_y + row as u32 * BOUNCE_SCENE.1 * SCALE;
+            self.sheet
+                .fill(0, y, GUTTER, BOUNCE_SCENE.1 * SCALE, LABEL_GROUND);
+            self.sheet.text(12, y + 14, label, 3, INK);
+        }
+        grid_y + 2 * BOUNCE_SCENE.1 * SCALE + BAND_GAP
     }
 
     /// The scale that decides everything: 2x, with the bubbles in a clear row and one creature
@@ -565,6 +654,10 @@ impl Background {
 }
 
 const INK: [u8; 4] = [224, 226, 232, 255];
+/// Behind the labels of the bounce band, which has no dark band behind it.
+const LABEL_GROUND: [u8; 4] = [34, 32, 42, 255];
+/// The tick marking a frame's own crown in a bounce scene.
+const CROWN_TICK: [u8; 4] = [214, 92, 108, 255];
 
 // ---------------------------------------------------------------------------------------------
 // A plain RGBA sheet

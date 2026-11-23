@@ -2,6 +2,9 @@
 //! frame.
 use super::*;
 
+/// How far a creature shying away from the cursor carries its head away from it, in art pixels.
+pub(super) const AVOID_LEAN: i32 = 2;
+
 #[derive(Clone, Copy, Default)]
 pub(super) struct Pose {
     pub(super) bob: i32,
@@ -214,6 +217,11 @@ impl Pose {
                 ear_perk: i32::from(frame % 2 == 1),
                 ..Self::default()
             },
+            // Startled: a scrambling shuffle on the spot, shoulders up and the tail tucked. A
+            // window that jumps is met with it straight away, after a moment drawn down into a
+            // crouch (see `BodyPresentation::for_creature`); a cursor that comes too close is
+            // shied away from, the head carried forward. The world turns a creature avoiding the
+            // cursor to face away from it, so forward is away from the cursor.
             ActionKind::AvoidCursor | ActionKind::ReactToWindow => Self {
                 bob: -walk.abs(),
                 squash_x: 1,
@@ -223,6 +231,11 @@ impl Pose {
                 play_lift: 0,
                 appendage_lift: 2,
                 tail_sway: -2,
+                lean: if action == ActionKind::AvoidCursor {
+                    AVOID_LEAN
+                } else {
+                    0
+                },
                 ..Self::default()
             },
             ActionKind::Landing => Self {

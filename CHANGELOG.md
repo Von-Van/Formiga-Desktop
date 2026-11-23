@@ -2,6 +2,19 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Changed
+
+- The little marks round a companion move now. The sparkle or heart over a greeting, a game with a
+  friend or a cheer drifts up and away from the head and fades, instead of hovering in one spot;
+  crumbs from a bite fall from the mouth to the ground; and a chew fills the cheek out a pixel.
+- A companion startled by a window jumping crouches for a moment before it scrambles, and one
+  shying from the cursor leans away from it, so the two startles no longer look alike.
+- A companion's bubble holds still over a bouncing greeting, a hop or a breath at rest, rather than
+  bobbing with its head. `formiga-tools ui-sheet` shows a bubble over a greeting and a cheer frame
+  by frame.
+
 ## [0.68.23] - 2026-11-12
 
 The village on the desktop, wonders put out, visitors among the houses and a run of fixes, released

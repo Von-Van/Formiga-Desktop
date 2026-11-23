@@ -172,9 +172,10 @@ pub(super) fn activity_held(
     }
 }
 
-/// The marks play and a mouthful leave on the body's own frame: the dashes behind a toy in the
-/// air, the knock where it meets the paw, and the crumbs at the end of a mouthful. They are the
-/// creature's own doing, so they stay in its frame while the thing it holds is drawn apart.
+/// The marks play leaves on the body's own frame: the dashes behind a toy in the air and the knock
+/// where it meets the paw. They are the creature's own doing, so they stay in its frame while the
+/// thing it holds is drawn apart. A mouthful's crumbs are drawn with the meal's other marks (see
+/// `effects::draw_falling_crumbs`).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn draw_activity_marks(
     canvas: &mut Canvas,
@@ -186,40 +187,24 @@ pub(super) fn draw_activity_marks(
     frame: u8,
     reduce_motion: bool,
 ) {
+    if action != ActionKind::SoloPlay {
+        return;
+    }
     let phase = if reduce_motion { 0 } else { frame % 4 };
     // Marks are coloured against the creature, not from it, so they stay readable on its coat.
     let palette = crate::prop_palette(palette, prop_signature(genome));
     let hold = prop_hold(genome, pose, face, BodyClip::Action(action));
-    match action {
-        ActionKind::SoloPlay => {
-            let at = |phase: u8| play_path(hold, phase);
-            let (x, y, _) = at(phase);
-            if !reduce_motion {
-                let (px, py, _) = at((phase + 3) % 4);
-                draw_prop_trail(canvas, palette, (px, py), (x, y));
-            }
-            if phase == 0 || phase == 3 {
-                // The knock itself: two ticks where the toy meets the paw that is keeping it up.
-                for (dx, dy) in [(-1, 3), (1, 4)] {
-                    canvas.set(x + dx * hold.forward, y + dy, palette.highlight);
-                }
-            }
+    let at = |phase: u8| play_path(hold, phase);
+    let (x, y, _) = at(phase);
+    if !reduce_motion {
+        let (px, py, _) = at((phase + 3) % 4);
+        draw_prop_trail(canvas, palette, (px, py), (x, y));
+    }
+    if phase == 0 || phase == 3 {
+        // The knock itself: two ticks where the toy meets the paw that is keeping it up.
+        for (dx, dy) in [(-1, 3), (1, 4)] {
+            canvas.set(x + dx * hold.forward, y + dy, palette.highlight);
         }
-        ActionKind::Eat if phase == 3 => {
-            // Crumbs, so the last frame is the end of a mouthful rather than an empty hand.
-            // They fall no further than the ground.
-            canvas.set(
-                hold.mouth.x - 2,
-                (hold.mouth.y + 5).min(hold.ground),
-                palette.shadow,
-            );
-            canvas.set(
-                hold.mouth.x + 1,
-                (hold.mouth.y + 6).min(hold.ground),
-                palette.highlight,
-            );
-        }
-        _ => {}
     }
 }
 
