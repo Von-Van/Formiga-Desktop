@@ -1,25 +1,31 @@
 //! The one-tick bridge between clips, tick by tick: every body walking, startled in mid-stride,
-//! walking on and coming to rest, a frame every twentieth of a second as the overlay presents it.
+//! walking on and turning round, coming to rest, and sat on its doorstep as a wash of its own
+//! starts and as it ends, a frame every twentieth of a second as the overlay presents it.
 
 use crate::{blit_scaled_square_alpha, fill_rect, reference_creatures, write_png};
 use anyhow::Result;
 use formiga_art::{
     BodyClip, BodyPresentation, ClipBridge, CreatureRenderer, FRAME_SIZE, FrameShape,
+    MotionSignature, RestMoment,
 };
 use formiga_core::*;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use time::OffsetDateTime;
 
-/// Walking, a fright, walking on and a rest, each this many ticks.
+/// Walking, a fright, walking on and turning round, a rest, and the start and the end of a moment
+/// of its own at home, each this many ticks.
 const STRETCH: u32 = 8;
-const COLUMNS: u32 = 4 * STRETCH;
+const COLUMNS: u32 = 6 * STRETCH;
+/// The tick of the walk on where the walker turns round.
+const TURN: u32 = 2 * STRETCH + 4;
 
 /// Each body has two rows: on top, the cut the overlay made before the bridge, every tick as
 /// the body's clip says; under it, what the overlay draws now, with each tick that passes through
 /// the settle on a pale amber ground. Beneath every column but the first, a mark where the clip
-/// changed. A change from or to the plain settle, or one that moves the outline less than
-/// `formiga_art::BRIDGE_ROWS` rows, cuts as before.
+/// changed or the body turned round. A change from or to the plain settle, or one that moves the
+/// outline less than `formiga_art::BRIDGE_ROWS` rows and is neither a turn nor a moment of its
+/// own starting or ending, cuts as before.
 pub fn run(path: PathBuf) -> Result<()> {
     const SCALE: u32 = 2;
     const GAP: u32 = 16;
@@ -48,7 +54,7 @@ pub fn run(path: PathBuf) -> Result<()> {
     let mut bridges = 0;
     for (index, subject) in subjects.iter().enumerate() {
         let top = index as u32 * block;
-        let mut previous: Option<BodyClip> = None;
+        let mut previous: Option<(BodyClip, bool)> = None;
         for (column, (creature, body, shown)) in ticks(subject).into_iter().enumerate() {
             let column = column as u32;
             let face = CreatureRenderer::resolve_face_state_among(
@@ -70,7 +76,7 @@ pub fn run(path: PathBuf) -> Result<()> {
                     [246, 214, 140, 255],
                 );
             }
-            if previous.is_some_and(|clip| clip != body.clip) {
+            if previous.is_some_and(|was| was != (body.clip, body.facing_right)) {
                 fill_rect(
                     &mut pixels,
                     width,
@@ -81,7 +87,7 @@ pub fn run(path: PathBuf) -> Result<()> {
                     [120, 116, 108, 255],
                 );
             }
-            previous = Some(body.clip);
+            previous = Some((body.clip, body.facing_right));
             for (row, drawn) in [body, shown].into_iter().enumerate() {
                 let rendered = CreatureRenderer::render_composited_frame(
                     &creature.appearance,
@@ -127,12 +133,32 @@ fn ticks(subject: &Creature) -> Vec<(Creature, BodyPresentation, BodyPresentatio
     let mut bridge = ClipBridge::default();
     let mut since = 0.0;
     let mut stride = 0.0;
+    // When this companion's first wash, shake or sniff at home starts and ends, so the last two
+    // stretches can open a little before each.
+    let motion = MotionSignature::for_creature(&creature);
+    let own = |at: f32| matches!(motion.rest_moment(at, true), RestMoment::Own(..));
+    let starts = (0..2400).map(|tick| tick as f32 * 0.05).find(|at| own(*at));
+    let ends = starts.and_then(|start| {
+        (0..2400)
+            .map(|tick| start + tick as f32 * 0.05)
+            .find(|at| !own(*at))
+    });
     (0..COLUMNS)
         .map(|tick| {
             let walking = tick < 3 * STRETCH;
             if tick == 3 * STRETCH {
                 since = 0.0;
             }
+            let home = tick >= 4 * STRETCH;
+            if let Some(from) = [starts, ends]
+                .get(((tick / STRETCH) as usize).wrapping_sub(4))
+                .filter(|_| tick % STRETCH == 0)
+                .copied()
+                .flatten()
+            {
+                since = from - 0.2;
+            }
+            creature.state.facing_right = !(TURN..3 * STRETCH).contains(&tick);
             creature.state.attention =
                 (STRETCH..2 * STRETCH)
                     .contains(&tick)
@@ -144,6 +170,8 @@ fn ticks(subject: &Creature) -> Vec<(Creature, BodyPresentation, BodyPresentatio
                     });
             creature.state.action = if walking {
                 ActionKind::Traverse
+            } else if home {
+                ActionKind::Homebound
             } else {
                 ActionKind::Idle
             };

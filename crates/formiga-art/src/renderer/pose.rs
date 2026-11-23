@@ -107,37 +107,53 @@ impl Pose {
         let phase = frame as usize % 6;
         let walk: i32 = [0, 1, 0, -1, 0, 1][phase];
         let alternate: i32 = [1, 0, -1, 0, 1, 0][phase];
+        // The same swing stepped every other frame, for a tail that should read as weight
+        // rather than tick at the clip's own rate.
+        let slow_alternate: i32 = [1, 0, -1, 0, 1, 0][(phase / 2) % 6];
         let bob_amount = genome.gait_bob.max(0.2).round() as i32;
         let mut pose = match action {
             ActionKind::Traverse | ActionKind::SqueezeWindow | ActionKind::Follow => {
                 Self::stride(genome, phase, bob_amount, false)
             }
             ActionKind::Sprint => Self::stride(genome, phase, bob_amount.max(1), true),
-            // Curled up and breathing: a little fuller on the breath in, the ears drooping a
-            // touch further on the breath out.
-            ActionKind::Sleep => Self {
-                bob: frame as i32 % 2,
-                squash_x: 3 + i32::from(frame.is_multiple_of(2)),
-                squash_y: -3,
-                step_a: 0,
-                step_b: 0,
-                play_lift: 0,
-                appendage_lift: -1,
-                tail_sway: 0,
-                ear_perk: -i32::from(frame % 2 == 1),
-                ..Self::default()
-            },
-            ActionKind::Perch | ActionKind::Homebound => Self {
-                bob: 2,
-                squash_x: 1,
-                squash_y: -1,
-                step_a: 0,
-                step_b: 0,
-                play_lift: 0,
-                appendage_lift: 0,
-                tail_sway: 0,
-                ..Self::default()
-            },
+            // Curled up and breathing, one slow breath across the four frames: full on the breath
+            // in, sinking a pixel, drawing in narrower with the ears drooping a touch further,
+            // and rising again before it fills out, so each frame moves one thing a pixel.
+            ActionKind::Sleep => {
+                let (sink, fill) = BREATH[usize::from(frame % 4)];
+                Self {
+                    bob: sink,
+                    squash_x: 3 + fill,
+                    squash_y: -3,
+                    step_a: 0,
+                    step_b: 0,
+                    play_lift: 0,
+                    appendage_lift: -1,
+                    tail_sway: 0,
+                    ear_perk: -i32::from(frame % 4 >= 2),
+                    ..Self::default()
+                }
+            }
+            // Sat down and breathing, a breath every two seconds: drawn up a pixel taller and
+            // narrower as the breath comes in, filling out with the ears lifting at the top of it,
+            // let out a pixel wider and lower, and settling as the ears do, a frame behind the
+            // chest. Each frame moves the outline a pixel. Every other breath ends on a flick of
+            // the tail.
+            ActionKind::Perch | ActionKind::Homebound => {
+                let breath = usize::from(frame % 4);
+                Self {
+                    bob: 2,
+                    squash_x: [1, 0, 1, 2][breath],
+                    squash_y: [-1, 0, 0, -1][breath],
+                    step_a: 0,
+                    step_b: 0,
+                    play_lift: 0,
+                    appendage_lift: 0,
+                    tail_sway: if frame % 8 == 7 { 2 } else { 0 },
+                    ear_perk: i32::from(breath >= 2),
+                    ..Self::default()
+                }
+            }
             // Keeping a toy up off its paw: crouched ready as it rests there, stretched up to knock
             // it, watching it at the top of its arc with its ears up, and bobbing to catch it.
             ActionKind::SoloPlay => match frame % 4 {
@@ -315,7 +331,7 @@ impl Pose {
                     step_b: swing,
                     play_lift: 1,
                     appendage_lift: 2,
-                    tail_sway: alternate * 2,
+                    tail_sway: slow_alternate * 2,
                     ..Self::default()
                 }
             }
@@ -376,7 +392,8 @@ impl Pose {
                 step_b: 0,
                 play_lift: 0,
                 appendage_lift: 0,
-                tail_sway: alternate,
+                // A tail hangs on the body's bob rather than ticking with it.
+                tail_sway: slow_alternate,
                 ..Self::default()
             },
         };
@@ -949,10 +966,11 @@ impl Pose {
                 play_lift: i32::from(frame % 4 == 1),
                 ..Self::default()
             },
-            // Flat out on its side, legs out and the head laid down ahead of it, breathing.
+            // Flat out on its side, legs out and the head laid down ahead of it, breathing slowly:
+            // drawn in, filling out, sinking into the breath, and drawing in again.
             Gesture::Sprawl => Self {
-                bob: tick,
-                squash_x: 3 + tick,
+                bob: BREATH[usize::from((frame + 3) % 4)].0,
+                squash_x: 3 + BREATH[usize::from((frame + 3) % 4)].1,
                 squash_y: -3,
                 appendage_lift: -1,
                 tail_sway: 2,
@@ -961,10 +979,11 @@ impl Pose {
                 splay: 3,
                 ..Self::default()
             },
-            // Sat tucked up, nothing showing below it, the head drawn in and nodding.
+            // Sat tucked up, nothing showing below it, the head drawn in and nodding as it
+            // breathes: nodding down, filling out, coming up, and drawing in again.
             Gesture::Loaf => Self {
-                bob: 1 + tick,
-                squash_x: 2,
+                bob: 1 + i32::from(frame % 4 == 1 || frame % 4 == 2),
+                squash_x: 2 + i32::from(frame % 4 >= 2),
                 squash_y: -1,
                 appendage_lift: -1,
                 tail_sway: -1,
@@ -1123,6 +1142,10 @@ pub(super) fn resting_manner(genome: &AppearanceGenome) -> (i32, bool) {
         genome.marking_seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) ^ u64::from(genome.face_signature);
     (if mixed & 1 == 0 { -1 } else { 1 }, mixed & 2 == 0)
 }
+
+/// One slow breath of a body lying down, four frames of how far it has sunk and how much fuller
+/// it is than when drawn in: full, sunk, drawn in, risen. Each frame moves one of the two a pixel.
+const BREATH: [(i32, i32); 4] = [(0, 1), (1, 1), (1, 0), (0, 0)];
 
 /// Whether a creature stretches on all fours rather than standing up to do it: the original
 /// soft quadrupeds, and the long body plan among the modular ones.

@@ -793,3 +793,208 @@ fn a_hop_shows_the_crouch_then_the_leap_then_the_landing() {
     creature.state.presence.hop = Some(HopMoment::Flight(0.5));
     assert_eq!(shown(&creature).0, BodyClip::Action(ActionKind::Dragged));
 }
+
+/// The three original families and every modular plan, with and without limbs, and the fox.
+fn every_body() -> Vec<(String, AppearanceGenome)> {
+    let preview = measured(29).appearance;
+    let mut bodies: Vec<(String, AppearanceGenome)> = [
+        BodyFamily::Blob,
+        BodyFamily::Hopper,
+        BodyFamily::SoftQuadruped,
+    ]
+    .into_iter()
+    .flat_map(|family| {
+        [
+            (format!("{family:?}"), genome(family)),
+            (
+                format!("fox {family:?}"),
+                AppearanceGenome {
+                    echo_fox: true,
+                    ..genome(family)
+                },
+            ),
+        ]
+    })
+    .collect();
+    for limbs in 0..=2 {
+        for plan in formiga_core::BodyPlan::ALL {
+            let mut appearance = preview.clone();
+            let mut design = formiga_core::CreatureDesign::modular([29; 32], 0, None);
+            design.body = plan;
+            design.classic.limbs = limbs;
+            appearance.design = Some(design);
+            bodies.push((format!("{plan:?} limbs {limbs}"), appearance));
+        }
+    }
+    bodies
+}
+
+/// Sat on a window or on its doorstep, and asleep however it lies, a body breathes: four frames
+/// of one breath, no two alike, and each a pixel's move from the one before, never a jump. A
+/// seated breath is eight frames, the second breath the first again but for a flick of the tail
+/// at its end, so the atlas keeps one cell for each frame alike.
+#[test]
+fn sitting_and_sleeping_bodies_breathe() {
+    let breathing = [
+        BodyClip::Action(ActionKind::Perch),
+        BodyClip::Action(ActionKind::Homebound),
+        BodyClip::Action(ActionKind::Sleep),
+        BodyClip::Gesture(Gesture::Sprawl),
+        BodyClip::Gesture(Gesture::Loaf),
+    ];
+    for clip in breathing {
+        let spec = AnimationSpec::for_clip(clip);
+        assert_eq!(spec.fps, 2, "{clip:?} breathes slowly");
+        assert_eq!(spec.playback, PlaybackMode::Loop);
+    }
+    for (body, genome) in every_body() {
+        for clip in breathing {
+            let frames: Vec<_> = (0..AnimationSpec::for_clip(clip).frames)
+                .map(|frame| CreatureRenderer::render_body_frame(&genome, clip, frame, false))
+                .collect();
+            // The top of the breath is never the bottom, and the breath has four frames. A body
+            // already as wide or as tall as its plan draws one, or a cat whose ears are as tall
+            // as they go, has a frame fewer to breathe with, but never fewer than three.
+            assert_ne!(frames[0].canvas, frames[2].canvas, "{body}: {clip:?}");
+            let distinct: std::collections::HashSet<_> = frames[..4]
+                .iter()
+                .map(|frame| frame.canvas.rgba_bytes())
+                .collect();
+            assert!(
+                distinct.len() >= 3,
+                "{body}: {clip:?} breathes in {} frames",
+                distinct.len()
+            );
+            // The body moves a step at a time: its outline, the little z aside, never shifts by
+            // more than a step from one frame to the next, the loop coming round included. A
+            // step is a pixel, or two at the crown of a blob, whose one mass grows up from the
+            // floor on both sides of its middle.
+            let figure = |frame: &RenderedBodyFrame| {
+                let mut canvas = frame.canvas.clone();
+                let face = frame.face_anchor;
+                for y in 0..FRAME_SIZE as i32 {
+                    for x in (face.x + 6).max(0)..FRAME_SIZE as i32 {
+                        if y < face.y - 3 {
+                            canvas.set(x, y, Rgba::TRANSPARENT);
+                        }
+                    }
+                }
+                canvas.alpha_bounds().expect("drawn")
+            };
+            for a in 0..4 {
+                let (one, other) = (figure(&frames[a]), figure(&frames[(a + 1) % 4]));
+                let moved = [
+                    one.0.abs_diff(other.0),
+                    one.1.abs_diff(other.1),
+                    one.2.abs_diff(other.2),
+                    one.3.abs_diff(other.3),
+                ];
+                assert!(
+                    moved.iter().all(|step| *step <= 2),
+                    "{body}: {clip:?} jumps from frame {a} {one:?} to {other:?}"
+                );
+            }
+            if frames.len() == 8 {
+                for frame in 4..7 {
+                    assert_eq!(
+                        frames[frame],
+                        frames[frame - 4],
+                        "{body}: {clip:?} frame {frame} is the first breath again"
+                    );
+                }
+                // A hopper's cotton tail sits where it is in every pose.
+                if genome.design.is_none()
+                    && !genome.echo_fox
+                    && genome.family != BodyFamily::Hopper
+                {
+                    assert_ne!(
+                        frames[7].canvas, frames[3].canvas,
+                        "{body}: {clip:?} ends its second breath on a flick of the tail"
+                    );
+                }
+            }
+            // With motion reduced it holds the first frame, still.
+            for frame in 1..AnimationSpec::for_clip(clip).frames {
+                assert_eq!(
+                    CreatureRenderer::render_body_frame(&genome, clip, frame, true),
+                    CreatureRenderer::render_body_frame(&genome, clip, 0, true),
+                    "{body}: {clip:?}"
+                );
+            }
+        }
+    }
+}
+
+/// The little z over a sleeper rises a pixel a frame for three pixels, fading as it goes, and
+/// with motion reduced it stays put and solid.
+#[test]
+fn a_sleepers_z_rises_three_pixels_and_fades() {
+    let colour = Rgba::new(200, 120, 60, 255);
+    let face = PixelPoint { x: 22, y: 24 };
+    let drawn = |frame: u8, reduce: bool| {
+        let mut canvas = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+        draw_sleep_z(&mut canvas, face, colour, frame, reduce);
+        let (_, top, _, _) = canvas.alpha_bounds().expect("a z");
+        let alpha = canvas.pixels().iter().map(|pixel| pixel.a).max().unwrap();
+        (top, alpha)
+    };
+    let frames: Vec<_> = (0..4).map(|frame| drawn(frame, false)).collect();
+    assert_eq!(frames[0], (16, 255), "it starts where it always has, solid");
+    for frame in 1..4 {
+        assert_eq!(frames[frame].0 + 1, frames[frame - 1].0, "a pixel a frame");
+        assert!(frames[frame].1 < frames[frame - 1].1, "fading");
+    }
+    assert!(frames[3].1 > 16, "still there on its last frame");
+    assert_eq!(
+        drawn(4, false),
+        frames[0],
+        "and a new one with the next breath"
+    );
+    for frame in 0..4 {
+        assert_eq!(
+            drawn(frame, true),
+            frames[0],
+            "held still with motion reduced"
+        );
+    }
+    // Over a head near the top of the frame it never reaches the top row.
+    let mut canvas = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+    draw_sleep_z(&mut canvas, PixelPoint { x: 22, y: 9 }, colour, 3, false);
+    assert_eq!(canvas.alpha_bounds().expect("a z").1, 1);
+}
+
+/// A tail on the shared bob — investigating the cursor, riding a window — and a tail hanging
+/// from a ledge swing at half the clip's rate: the same swing stepped every other frame. Carried,
+/// a body hangs still, its tail with it (see
+/// `landing_holds_standing_a_leap_has_its_own_frames_and_a_carry_hangs_still`).
+#[test]
+fn tails_on_the_shared_bob_and_hanging_swing_at_half_rate() {
+    let genome = genome(BodyFamily::SoftQuadruped);
+    for action in [
+        ActionKind::InvestigateCursor,
+        ActionKind::RideWindow,
+        ActionKind::Dangle,
+    ] {
+        let sway: Vec<i32> = (0..8)
+            .map(|frame| Pose::new(&genome, BodyClip::Action(action), frame, false).tail_sway)
+            .collect();
+        for pair in sway.chunks_exact(2) {
+            assert_eq!(pair[0], pair[1], "{action:?} {sway:?}: every other frame");
+        }
+        assert!(
+            sway.windows(2).any(|pair| pair[0] != pair[1]),
+            "{action:?} {sway:?}: it still swings"
+        );
+        // Where it ticked with every frame before.
+        let bob: Vec<i32> = (0..4)
+            .map(|frame| Pose::new(&genome, BodyClip::Action(action), frame, false).bob)
+            .collect();
+        if action != ActionKind::Dangle {
+            assert_eq!(
+                bob,
+                [0, 1, 0, 1],
+                "{action:?}: the body still bobs at the clip's rate"
+            );
+        }
+    }
+}

@@ -41,10 +41,10 @@ pub use renderer::{
     FRAME_SIZE, FaceRenderState, FramePlacement, FrameRect, FrameShape, GazeDirection, HELD_CELL,
     HELD_CELLS, HELD_SHEET_COLUMNS, HELD_SHEET_HEIGHT, HELD_SHEET_WIDTH, HELD_UP_REACH,
     HeldPlacement, HeldThing, HoldPoints, Holding, KITE_STRING, MealPose, MotionSignature,
-    NAP_TURN_SECS, NapTurn, PixelPoint, PlayPicture, PlaybackMode, RenderedBodyFrame, SETTLE_FRAME,
-    SNACK_KINDS, TOY_COLOURWAYS, TOY_KINDS, footfall_frame, held_now, held_tether, held_up_at,
-    meal_eyelids, meal_face, meal_held, meal_offset, meal_pose, play_face, play_held, play_offset,
-    play_pose, prop_in_motion, prop_variants, render_held_sheet, shown_set_back,
+    NAP_TURN_SECS, NapTurn, PixelPoint, PlayPicture, PlaybackMode, RenderedBodyFrame, RestMoment,
+    SETTLE_FRAME, SNACK_KINDS, TOY_COLOURWAYS, TOY_KINDS, footfall_frame, held_now, held_tether,
+    held_up_at, meal_eyelids, meal_face, meal_held, meal_offset, meal_pose, play_face, play_held,
+    play_offset, play_pose, prop_in_motion, prop_variants, render_held_sheet, shown_set_back,
     shows_held_by_default, village_held,
 };
 pub use shelter::{

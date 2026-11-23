@@ -846,18 +846,20 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     let bake_time = started.elapsed();
     let total_bytes = atlas.body_pixels.len() + atlas.face_pixels.len();
     eprintln!("layered atlas: {total_bytes} bytes, baked in {bake_time:?}");
-    // 96 action frames — six of them the climb, a stroke with each paw, and two the toss's own —
-    // and 126 gesture frames — three of them the mantle a climb tops out with, eight the seat and
+    // 108 action frames — six of them the climb, a stroke with each paw, and two the toss's own —
+    // and 130 gesture frames — three of them the mantle a climb tops out with, eight the seat and
     // the sled wonders brought in 0.66.0, twenty-eight a companion's own repertoire (a wash, a shake, a sniff, two
     // more ways to sleep and two more ways to walk), sixteen the chores and a pet leaned into,
     // fourteen the nibble, chomp, chew and gulp of a meal, and two a hop's leap through the air —
+    // and sixteen more for breathing: eight frames each for sitting on a window and on the
+    // doorstep where each had one pose, and four for each way of sleeping where each had two —
     // and fifteen expressions' faces in every eyelid pose
     // and gaze. Until 0.62.0 every one had a cell of its own, ten columns of 48px bodies and
     // twenty-seven of 16px faces to a row, and the face texture ended in eight trinket cells
     // nothing read: 1,824,768 bytes with the temperament poses and their faces. Since 0.62.0 a
     // frame or face that comes out the same as one already baked shares its cell — a held pose,
     // eyes shut whichever way they would be looking — and the trinket cells are gone.
-    assert_eq!(total_animation_frames(), 222);
+    assert_eq!(total_animation_frames(), 238);
     // 1,244,160 until 0.66.0, when the walk, the run, the greeting and the meal stopped repeating
     // frames they had shared and the texture grew by a row of ten cells, to 1,336,320;
     // 1,244,160 again from 0.66.1, whose scoot along on a leaf sled repeats two of its four
@@ -866,9 +868,10 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     // 1,704,960 with the four ways a meal is eaten (fourteen frames), and still that with the
     // climb's two more frames, the mantle's three and the toss's two, which fit in cells the last
     // row had spare, and with the leap's two, which take the two cells being carried gave up when
-    // it stopped bobbing and came to repeat its frames.
-    assert_eq!(total_bytes, 1_704_960);
-    assert_eq!(full_layout_bytes(), 2_534_400);
+    // it stopped bobbing and came to repeat its frames; and 1,797,120 with the breathing, one row
+    // more: a seated breath's second loop is its first but for the tail.
+    assert_eq!(total_bytes, 1_797_120);
+    assert_eq!(full_layout_bytes(), 2_626_560);
     // Tripled in 0.58.0 so the pose vocabulary has somewhere to grow: the budget is what
     // stops a creature costing more than a creature should, not what stops it having poses.
     assert!(full_layout_bytes() <= 4_500_000);
@@ -919,7 +922,7 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
         atlas_slot(ActionKind::Traverse, 2)
     );
     // Gestures follow the action clips, and every baked frame owns exactly one slot.
-    assert_eq!(atlas_slot(formiga_core::Gesture::Cheer, 0), 96);
+    assert_eq!(atlas_slot(formiga_core::Gesture::Cheer, 0), 108);
     let mut slots = BTreeSet::new();
     for clip in BodyClip::baked() {
         for frame in 0..AnimationSpec::for_clip(clip).frames {

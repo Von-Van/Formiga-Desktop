@@ -326,10 +326,12 @@ where a loop that hitches or repeats itself shows. `rest-sheet` draws ten
 seconds of every body at rest, a frame every third of a second with its face, once as the action
 alone draws it and once as a companion carries itself on the desktop, holding still, shifting,
 glancing about and blinking. `bridge-sheet` draws every body walking, startled in mid-stride, walking
-on and coming to rest, a frame every twentieth of a second: in two rows a body, the cut each change
-of clip used to make over what the overlay draws now, with each tick that passes through the plain
-settle on an amber ground and a tick mark under each change of clip. `repertoire-sheet` draws every body washing, shaking and sniffing,
-sleeping curled, sprawled and loafed, and walking plainly, skipping and trudging, and
+on and turning round, coming to rest, and sat on its doorstep as a wash starts and as it ends, a
+frame every twentieth of a second: in two rows a body, the cut each change of clip used to make over
+what the overlay draws now, with each tick that passes through the plain settle on an amber ground
+and a tick mark under each change of clip or turn. `repertoire-sheet` draws every body washing,
+shaking and sniffing, sleeping curled, sprawled and loafed, walking plainly, skipping and trudging,
+and sitting on its doorstep and up on a window, breathing, and
 `doings-sheet` draws every body watering, picking, tending, holding up what it grew, eating,
 drinking, playing alone and with a friend, saying hello and being petted, at 2x, the size the
 desktop shows them. `accessory-sheet` draws everything a companion can wear on six kinds of body, resting,

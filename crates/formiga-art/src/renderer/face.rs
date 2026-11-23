@@ -1583,7 +1583,8 @@ fn glance_near(creature: &Creature, clock: f32) -> Option<Glance> {
 
 /// Where a creature's eyes go when nothing in particular has them: where it is going while it
 /// walks, and straight out while it rests, with now and then a glance — at a friend nearby, a
-/// sociable companion more often than a solitary one, or off to one side, down or up — a
+/// sociable companion more often than a solitary one, or off to one side, down or up, and
+/// mostly down over the edge while it sits up on a window — a
 /// companion walking with or waiting on a friend keeping an eye on them throughout, and one a
 /// friend is walking over to watching it come.
 ///
@@ -1628,6 +1629,16 @@ fn wandering_gaze(creature: &Creature, colony: &[Creature]) -> GazeDirection {
     if walking {
         // A walker glances out at the desk, or down at where its feet are going.
         return [GazeDirection::new(0, 0), GazeDirection::new(forward, 1)][pick % 2];
+    }
+    if state.action == ActionKind::Perch {
+        // Sat up on a window, it looks down over the edge more than anywhere: at the desk below,
+        // ahead and behind, and now and then out across it.
+        return [
+            GazeDirection::new(forward, 1),
+            GazeDirection::new(0, 1),
+            GazeDirection::new(-forward, 1),
+            GazeDirection::new(forward, 0),
+        ][pick % 4];
     }
     [
         GazeDirection::new(forward, 0),
