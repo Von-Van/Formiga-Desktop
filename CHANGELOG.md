@@ -16,6 +16,13 @@ All notable changes are documented here.
 ### Changed
 
 - The test ceiling on a full colony's creature textures, counted as if no two frames were alike, is 16 MiB instead of 15 MiB, so the animation pass's new clips fit. A real colony of six still uses about 11.3 MB.
+- A companion climbs up the side of a window a paw at a time. The climb was four nearly identical
+  frames, the paws alternating three pixels while the body slid up at a steady speed out of step
+  with them; it is six frames now, a reach, a pull and a settle with one paw and then the other,
+  the leg on the reaching side bent up against the wall on the pull. The body rises on the pulls
+  and hardly at all on the reaches, frame for frame, and the climb still starts, ends and takes
+  as long as it did. Every companion climbs on the same beat. The two frames fit in cells each
+  creature's texture already had spare, so it costs no memory, and no other clip draws differently.
 - The notebook reads less like a settings window. Apply and Revert are only under Habitat,
   Applications and Preferences, the pages with preferences on them (and under any page while a
   change is waiting to be applied); elsewhere the foot of the page holds only the undo offer and

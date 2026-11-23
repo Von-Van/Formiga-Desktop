@@ -620,3 +620,197 @@ fn a_climb_begun_on_demand_runs_every_stage_and_perches() {
     assert_eq!(creature.state.position.y, floor - 120.0);
     assert_eq!(creature.state.surface.window_key, Some(96));
 }
+
+/// Which beat of a stroke a climb is on `into` seconds in: 0 the reach, 1 the pull, 2 the
+/// settle, as the art draws them at the climb's own rate.
+fn climb_beat(into: f32) -> u32 {
+    (into * f32::from(CLIMB_FRAMES_PER_SECOND)) as u32 % u32::from(CLIMB_STROKE_FRAMES)
+}
+
+/// A climb goes up a paw at a time instead of sliding up the window's side at a steady speed: it
+/// rises mostly on the pulls and hardly at all on the reaches, yet it starts where it did, gets
+/// to the top of its climb at the same moment, and never slips back down.
+#[test]
+fn a_climb_rises_on_its_pulls_and_keeps_its_time_and_ends() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let mut desktop = desktop();
+    let world = World::new([33; 32], created, &desktop);
+    for (lift, offset) in [(120.0, -40.0), (260.0, 30.0), (60.0, -8.0)] {
+        let mut creature = world.save.creatures[0].clone();
+        let start = creature.state.position;
+        let bounds = DesktopRect {
+            x: start.x + offset,
+            y: start.y - lift,
+            width: 320.0,
+            height: lift,
+        };
+        desktop.windows.retain(|window| window.key != 97);
+        desktop.windows.push(DesktopWindow {
+            key: 97,
+            bounds,
+            z_order: 0,
+            visible: true,
+            minimized: false,
+            application: None,
+            application_name: None,
+        });
+        creature.state.position = start;
+        let mut journey = build_window_journey(
+            &creature,
+            Point {
+                x: bounds.x + 18.0,
+                y: bounds.y,
+            },
+            SurfaceAttachment {
+                kind: SurfaceKind::WindowLedge,
+                monitor_id: 1,
+                window_key: Some(97),
+                relative_x: 0.1,
+            },
+            &desktop,
+        );
+        let WindowJourney::Climb(climb) = journey.clone() else {
+            panic!("an upward transfer climbs");
+        };
+        let climb_end_at = climb.approach_duration + climb.climb_duration;
+        let speed = climb.approach.distance(climb.climb_end) / climb.climb_duration;
+        // One tick of the steady climb this one replaces.
+        let one_tick = speed * 0.05;
+        let mut elapsed = 0.0;
+        let mut climbing: Vec<(f32, Point)> = Vec::new();
+        let mut after = None;
+        for _ in 0..400 {
+            let step = journey.advance(0.05);
+            elapsed += 0.05;
+            if elapsed >= climb.approach_duration && elapsed < climb_end_at {
+                assert_eq!(step.action, ActionKind::ClimbWindow);
+                climbing.push((elapsed - climb.approach_duration, step.position));
+            } else if elapsed >= climb_end_at && after.is_none() {
+                after = Some(step.position);
+            }
+            if step.complete {
+                break;
+            }
+        }
+        let (first_into, first) = climbing[0];
+        let (_, last) = *climbing.last().expect("a climb takes ticks");
+        // Starts where the steady climb did, a tick's rise at most from the bottom of the wall.
+        assert_eq!(first.x, climb.approach.x);
+        assert!(climb.approach.y - first.y <= one_tick, "{lift}: {first:?}");
+        assert!(first_into < 0.05);
+        // Gets to the top of the climb on the same tick as the steady climb, and not before.
+        assert!(
+            last.y > climb.climb_end.y,
+            "{lift}: up before the climb was over"
+        );
+        assert!(
+            after.expect("the haul follows").y <= climb.climb_end.y + 0.01,
+            "{lift}: not up by the end of the climb"
+        );
+        // Never slips back, and never stands still on the wall.
+        let mut previous = climb.approach.y;
+        let mut rise = [0.0_f32; 3];
+        let mut ticks = [0_u32; 3];
+        let mut was = 0.0;
+        for (into, at) in &climbing {
+            assert!(at.y < previous, "{lift}: stood still or slipped at {into}");
+            assert_eq!(at.x, climb.approach.x);
+            // Each tick's rise counted to the beat in the middle of it.
+            let beat = climb_beat((*into + was) / 2.0) as usize;
+            rise[beat] += previous - at.y;
+            ticks[beat] += 1;
+            previous = at.y;
+            was = *into;
+        }
+        let per_tick = |beat: usize| rise[beat] / ticks[beat].max(1) as f32;
+        assert!(
+            per_tick(1) > 2.0 * per_tick(2) && per_tick(2) > per_tick(0),
+            "{lift}: the rise per tick on reach, pull, settle was {:?}",
+            [per_tick(0), per_tick(1), per_tick(2)]
+        );
+    }
+}
+
+/// The hands drawn and the rise agree in a running colony: the climb's clip counts from the
+/// action's own elapsed time, which starts the moment the journey reached the wall, so the body
+/// goes up on the ticks the clip shows a pull.
+#[test]
+fn a_climbing_companion_rises_on_the_frames_its_clip_pulls() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let mut desktop = desktop();
+    let world = World::new([41; 32], created, &desktop);
+    let floor = world.save.creatures[0].state.position.y;
+    desktop.windows.push(DesktopWindow {
+        key: 98,
+        bounds: DesktopRect {
+            x: 600.0,
+            y: floor - 220.0,
+            width: 320.0,
+            height: 220.0,
+        },
+        z_order: 0,
+        visible: true,
+        minimized: false,
+        application: None,
+        application_name: None,
+    });
+    let mut world = World::new([41; 32], created, &desktop);
+    let mut now = created;
+    for _ in 0..60 {
+        now += Duration::milliseconds(50);
+        world.tick(now, 0.05, &desktop);
+    }
+    let_colony_wander(&mut world, now);
+    world.clear_attention();
+    let id = world.save.creatures[0].id;
+    let creature = &mut world.save.creatures[0];
+    creature.state.position = Point { x: 570.0, y: floor };
+    creature.state.surface = SurfaceAttachment {
+        kind: SurfaceKind::ScreenFloor,
+        monitor_id: 1,
+        window_key: None,
+        relative_x: 0.5,
+    };
+    assert!(world.begin_window_climb(id, 98, &desktop));
+    let mut rise = [0.0_f32; 3];
+    let mut ticks = [0_u32; 3];
+    let mut last: Option<(f32, f32)> = None;
+    for _ in 0..300 {
+        now += Duration::milliseconds(50);
+        world.tick(now, 0.05, &desktop);
+        let creature = world
+            .save
+            .creatures
+            .iter()
+            .find(|creature| creature.id == id)
+            .expect("the climber");
+        let climbing = creature.state.action == ActionKind::ClimbWindow
+            && creature.state.position.y > floor - 220.0 + MANTLE_LIFT_POINTS + 0.01;
+        if !climbing {
+            if last.is_some() {
+                break;
+            }
+            continue;
+        }
+        let (elapsed, y) = (creature.state.action_elapsed, creature.state.position.y);
+        if let Some((was_elapsed, was_y)) = last {
+            assert!((elapsed - was_elapsed - 0.05).abs() < 1e-4);
+            let beat = climb_beat(elapsed - 0.025) as usize;
+            rise[beat] += was_y - y;
+            ticks[beat] += 1;
+        } else {
+            assert!(
+                elapsed < 0.05,
+                "the clip starts with the climb, {elapsed} in"
+            );
+        }
+        last = Some((elapsed, y));
+    }
+    assert!(ticks.iter().all(|count| *count > 0), "{ticks:?}");
+    let per_tick = |beat: usize| rise[beat] / ticks[beat] as f32;
+    assert!(
+        per_tick(1) > 2.0 * per_tick(2) && per_tick(2) > per_tick(0),
+        "the rise per tick on reach, pull, settle was {:?}",
+        [per_tick(0), per_tick(1), per_tick(2)]
+    );
+}

@@ -8,6 +8,18 @@ pub(super) const MANTLE_LIFT_POINTS: f32 = 10.0;
 /// haul is the longer half: it is the effort, and the step is the arrival.
 const HAUL_SHARE: f32 = 0.62;
 
+/// How many frames a second a climb up a window's side is drawn at. The art plays its climb at
+/// this rate, so the rise below and the hands drawn keep step.
+pub const CLIMB_FRAMES_PER_SECOND: u8 = 6;
+/// A climb goes a hand at a time, and each hand's stroke is this many frames: a reach up, a pull
+/// and a settle onto the new grip. The climb's clip is two strokes, one with each hand.
+pub const CLIMB_STROKE_FRAMES: u8 = 3;
+/// How much of a stroke's rise each of its frames takes: hardly any while the hand reaches up,
+/// most of it on the pull, and a little as the body settles onto the new grip. Never none, so a
+/// climber is never stood still on the wall — a journey that holds still is a pause, which a
+/// scene may fill with a pose.
+const CLIMB_STROKE_RISE: [f32; CLIMB_STROKE_FRAMES as usize] = [0.08, 1.0, 0.3];
+
 #[derive(Clone)]
 pub(super) struct HopJourney {
     pub(super) start: Point,
@@ -281,9 +293,8 @@ impl WindowJourney {
                         complete: false,
                     }
                 } else if journey.elapsed < climb_end {
-                    let progress = ((journey.elapsed - approach_end)
-                        / journey.climb_duration.max(0.001))
-                    .clamp(0.0, 1.0);
+                    let progress =
+                        climb_progress(journey.elapsed - approach_end, journey.climb_duration);
                     JourneyStep {
                         position: lerp_point(journey.approach, journey.climb_end, progress),
                         action: ActionKind::ClimbWindow,
@@ -337,6 +348,53 @@ impl WindowJourney {
             }
         }
     }
+
+    /// How far into the action it is on now the journey is, in seconds, for an action it has
+    /// just changed to. The climb counts from the moment it reached the wall, a tick's fraction
+    /// before the tick that saw it, so the clip's frames (drawn from the action's own elapsed
+    /// time) and the rise (shaped from the journey's) fall on the same instants; every other
+    /// action starts from nothing.
+    pub(super) fn action_elapsed(&self) -> f32 {
+        match self {
+            Self::Climb(journey) => {
+                let into = journey.elapsed - journey.approach_duration;
+                if (0.0..journey.climb_duration).contains(&into) {
+                    into
+                } else {
+                    0.0
+                }
+            }
+            _ => 0.0,
+        }
+    }
+}
+
+/// How far up its climb a companion is, from 0 to 1, `into` seconds into a climb that lasts
+/// `duration`: a hand at a time rather than a steady slide. Each stroke rises mostly on its pull
+/// and holds almost still through the reach, frame for frame with the clip, which plays at
+/// [`CLIMB_FRAMES_PER_SECOND`] from the start of the climb. The whole climb still takes
+/// `duration` and ends where it did, so only the shape of the rise changes.
+pub(super) fn climb_progress(into: f32, duration: f32) -> f32 {
+    let total = climb_effort(duration);
+    if total <= f32::EPSILON {
+        return (into / duration.max(0.001)).clamp(0.0, 1.0);
+    }
+    (climb_effort(into.clamp(0.0, duration)) / total).clamp(0.0, 1.0)
+}
+
+/// The rise a climb has made `secs` into it, in strokes' worth of [`CLIMB_STROKE_RISE`].
+fn climb_effort(secs: f32) -> f32 {
+    let frames = secs.max(0.0) * f32::from(CLIMB_FRAMES_PER_SECOND);
+    let per_stroke = f32::from(CLIMB_STROKE_FRAMES);
+    let strokes = (frames / per_stroke).floor();
+    let mut effort = strokes * CLIMB_STROKE_RISE.iter().sum::<f32>();
+    let mut into = frames - strokes * per_stroke;
+    for rise in CLIMB_STROKE_RISE {
+        let part = into.clamp(0.0, 1.0);
+        effort += rise * part;
+        into -= part;
+    }
+    effort
 }
 
 pub(super) fn gap_position(hop: &HopJourney, progress: f32) -> Point {

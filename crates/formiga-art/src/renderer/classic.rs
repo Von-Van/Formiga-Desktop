@@ -761,14 +761,23 @@ pub(super) fn limb_targets(
         ActionKind::Landing => {
             offset_pair(left, right, ((-length, length - 1), (length, length - 1)))
         }
-        ActionKind::ClimbWindow => offset_pair(
-            left,
-            right,
-            (
-                (-length + pulse, -length - 3),
-                (length - pulse, -length + 1),
-            ),
-        ),
+        // A stroke with each paw, as a modular climber's (see `Pose::climb`): the back paw up
+        // behind the head and the front one in front of the face, the reaching one high while the
+        // other holds low, pulled down toward the body on the pull, and the other coming up on
+        // the settle.
+        ActionKind::ClimbWindow => {
+            let (lead, held) = match frame % 3 {
+                0 => (-length - 4, -length + 3),
+                1 => (-length - 1, -length + 3),
+                _ => (-length - 1, -length + 1),
+            };
+            let (back, front) = if frame % 6 < 3 {
+                (held, lead)
+            } else {
+                (lead, held)
+            };
+            offset_pair(left, right, ((-length + 1, back), (length - 1, front)))
+        }
         ActionKind::Dangle => offset_pair(
             left,
             right,

@@ -629,7 +629,21 @@ pub fn ambient_sheet(path: PathBuf) -> Result<()> {
     ];
     let creatures = reference_creatures();
     let cell = CELL_ART_SIZE * SCALE;
-    let rows_per_family = 3;
+    // Every frame of each clip, a clip starting a new row rather than wrapping onto one: the
+    // climb's six on the first row, the dangle and the look on the second, the find on the third,
+    // and the trinkets under them.
+    let mut cells = Vec::new();
+    let mut next = 0_u32;
+    for action in ACTIONS {
+        let frames = u32::from(formiga_art::AnimationSpec::for_action(action).frames);
+        if next % COLS + frames > COLS {
+            next = next.div_ceil(COLS) * COLS;
+        }
+        cells.push(next);
+        next += frames;
+    }
+    let action_rows = next.div_ceil(COLS);
+    let rows_per_family = action_rows + 1;
     let width = COLS * cell;
     let height = creatures.len() as u32 * rows_per_family * cell;
     let mut pixels = vec![0_u8; (width * height * 4) as usize];
@@ -645,8 +659,8 @@ pub fn ambient_sheet(path: PathBuf) -> Result<()> {
         let family_row = family_index as u32 * rows_per_family;
         let baseline = CreatureRenderer::resting_baseline(&creature.appearance, false);
         for (action_index, action) in ACTIONS.into_iter().enumerate() {
-            for frame in 0..4_u8 {
-                let cell_index = action_index as u32 * 4 + u32::from(frame);
+            for frame in 0..formiga_art::AnimationSpec::for_action(action).frames {
+                let cell_index = cells[action_index] + u32::from(frame);
                 let column = cell_index % COLS;
                 let row = family_row + cell_index / COLS;
                 let cell_x = column * cell;
@@ -676,7 +690,7 @@ pub fn ambient_sheet(path: PathBuf) -> Result<()> {
             }
         }
 
-        let trinket_row = family_row + 2;
+        let trinket_row = family_row + action_rows;
         for variant in 0..8_u8 {
             let cell_x = u32::from(variant) * cell;
             let cell_y = trinket_row * cell;

@@ -191,12 +191,13 @@ impl World {
                 );
                 return true;
             }
-            let (step, surface) = {
+            let (step, surface, into) = {
                 let journey = self
                     .window_journeys
                     .get_mut(&creature.id)
                     .expect("validated journey exists");
-                (journey.advance(dt), journey.surface().clone())
+                let step = journey.advance(dt);
+                (step, journey.surface().clone(), journey.action_elapsed())
             };
             let route_point_valid = desktop.monitors.iter().any(|monitor| {
                 monitor.bounds.contains(step.position)
@@ -245,7 +246,9 @@ impl World {
                     },
                 );
                 creature.state.action = step.action;
-                creature.state.action_elapsed = 0.0;
+                // Counted from where the journey says it began, so a climb's hands and its rise
+                // keep step (see `WindowJourney::action_elapsed`).
+                creature.state.action_elapsed = into;
                 creature.state.action_duration = f32::MAX;
                 Self::emit(
                     &mut self.events,

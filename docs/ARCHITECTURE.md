@@ -491,10 +491,24 @@ the picture moved down onto the body (`TalkPlacement::icon_at`). The interface a
 four pixels square, since three square can only join its bars with one middle pixel and reads as
 an I. `formiga-tools talk-sheet` shows every style and a few conversations.
 
-Climbing, dangling, inspection, and discovery presentation add four authored frames each. Upward
-window transfers are staged as ordinary traversal to the nearest inner edge, a 44–62 point/second
-vertical climb, and a 0.7-second continuous climbing mantle; downward transfers keep the existing
-hop. The mantle begins slightly below the ledge and eases upward and inward without switching to a
+Dangling, inspection, and discovery presentation add four authored frames each, and climbing six:
+a stroke with one paw and then the other, each a reach (hanging low, one paw high beside the head
+and the other down at the cheek), a pull (the body up two pixels with its head tucked, the leg on
+the reaching side bent up against the wall, the tail down, a glint of effort) and a settle onto the
+new grip. A four-pawed body's forepaws take the strokes in turn, the near one in front of the face
+and the far one behind the head, its hind legs bracing in turn; a winged one's wings open half
+way on the pull. Upward window transfers are staged as ordinary traversal to the nearest inner
+edge, a vertical climb averaging 44–62 points a second, and a 0.7-second continuous climbing
+mantle; downward transfers keep the existing hop. The climb rises a paw at a time rather than
+sliding up at a steady speed: `climb_progress` in `world/journeys.rs` gives each frame of a stroke
+a share of the rise (0.08 on the reach, 1 on the pull, 0.3 on the settle, never none, so a climbing
+journey never holds still and reads as a pause), normalised over the climb so it starts, ends and
+takes as long as the steady climb did. The world knows only the clip's rate and stroke length
+(`CLIMB_FRAMES_PER_SECOND`, `CLIMB_STROKE_FRAMES`, which `AnimationSpec` reads for the climb), not
+its frames. The two keep step because they count from the same instant: a journey that changes a
+creature's action sets `action_elapsed` from `WindowJourney::action_elapsed` (how far past the
+wall the climb already is, a fraction of a tick) rather than zero, and `MotionSignature::frame`
+plays the climb on that clock without a companion's own tempo and phase. The mantle begins slightly below the ledge and eases upward and inward without switching to a
 landing pose. A shared `FramePlacement` contract seats normal art by its feet and dangling art by
 its slightly raised handhold, so the GPU quad and alpha-aware interaction proxy resolve the same
 bounds.

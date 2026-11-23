@@ -338,7 +338,13 @@ impl AnimationSpec {
             ActionKind::Idle => (6, 3, PlaybackMode::Loop),
             ActionKind::Perch | ActionKind::RideWindow => (4, 4, PlaybackMode::Loop),
             ActionKind::Homebound => (2, 2, PlaybackMode::Loop),
-            ActionKind::ClimbWindow => (4, 6, PlaybackMode::Loop),
+            // A stroke with each hand — reach, pull, settle — at the rate the world raises the
+            // body by (see `formiga_core::CLIMB_FRAMES_PER_SECOND`), so it rises on the pulls.
+            ActionKind::ClimbWindow => (
+                2 * formiga_core::CLIMB_STROKE_FRAMES,
+                formiga_core::CLIMB_FRAMES_PER_SECOND,
+                PlaybackMode::Loop,
+            ),
             ActionKind::Dangle => (4, 3, PlaybackMode::Loop),
             ActionKind::InspectScreen => (4, 4, PlaybackMode::Loop),
             ActionKind::PresentDiscovery => (4, 2, PlaybackMode::Hold),
@@ -728,7 +734,10 @@ impl MotionSignature {
     pub fn frame(self, clip: impl Into<BodyClip>, elapsed: f32) -> u8 {
         let clip = clip.into();
         let spec = AnimationSpec::for_clip(clip);
-        if spec.playback == PlaybackMode::Hold {
+        // A climb keeps the world's beat rather than its own: the body is raised on the pull
+        // frames, counted from the start of the climb at the clip's own rate.
+        if spec.playback == PlaybackMode::Hold || clip == BodyClip::Action(ActionKind::ClimbWindow)
+        {
             return spec.frame_at(elapsed);
         }
         let group = motion_group(clip);
