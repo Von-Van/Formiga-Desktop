@@ -58,6 +58,7 @@ use interaction::*;
 use journeys::*;
 pub use journeys::{
     CLIMB_FRAMES_PER_SECOND, CLIMB_STROKE_FRAMES, MANTLE_FRAMES_PER_SECOND, MANTLE_HAUL_FRAMES,
+    climb_grip_reach,
 };
 use movement::*;
 use objects::*;
@@ -603,7 +604,13 @@ impl World {
                         );
                         if !route.is_empty() {
                             let first = route.remove(0);
-                            let mut journey = build_route_hop_journey(creature, first, desktop);
+                            let mut journey = build_route_hop_journey(
+                                creature,
+                                first,
+                                desktop,
+                                &self.save.settings.habitat,
+                                self.save.settings.display_scale,
+                            );
                             if let WindowJourney::Climb(climb) = &mut journey {
                                 climb.elapsed = -0.7;
                             }

@@ -1122,13 +1122,8 @@ impl World {
             };
             let start_dx = start_offset(kind, role);
             let start = active.place(start_dx, 0.0);
-            let Some(legs) = wonder_route(
-                creature,
-                ground,
-                start,
-                desktop,
-                self.save.settings.display_scale,
-            ) else {
+            let Some(legs) = wonder_route(creature, ground, start, desktop, &self.save.settings)
+            else {
                 if role == Role::Lead || kind.seats() == WonderSeats::Two {
                     return false;
                 }
@@ -1634,8 +1629,9 @@ fn wonder_route(
     ground: Ground,
     start: Point,
     desktop: &DesktopSnapshot,
-    display_scale: u8,
+    settings: &Settings,
 ) -> Option<VecDeque<Leg>> {
+    let display_scale = settings.display_scale;
     let mut legs = VecDeque::new();
     if ground.holds(creature) {
         // Up on its own roof at home: down in a hop first, the way it went up, rather than
@@ -1696,6 +1692,8 @@ fn wonder_route(
             start,
             ground.surface(start.x),
             desktop,
+            &settings.habitat,
+            display_scale,
         )));
     } else if from.state.surface.monitor_id != ground.monitor() {
         return None;
