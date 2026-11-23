@@ -301,8 +301,9 @@ does not depend on a reference file or a temporary preview.
 What a creature owns is generated from bytes it already carries. `prop_variants(genome)` reads one
 signature out of the appearance genome and picks one of eight toys, one of four snacks, and one of
 three kinds of drinkware; none of them adds a gene, and a creature's belongings never change. They
-are baked into the same action atlas as the body, anchored to the paw or the mouth that is actually
-drawn through `modular::prop_hold`, so a toy is held in a real hand rather than at a guessed offset.
+are baked into the same action atlas as the body, anchored to the paw or the mouth that each frame
+actually draws (`RenderedBodyFrame::hands` and `mouth`), so a toy is held in a real hand rather
+than at a guessed offset.
 `prop-sheet` shows all fifteen against the bodies that carry them.
 
 Trinkets are a colony's, not a creature's. `formiga-core::trinkets` is the catalogue — a hundred

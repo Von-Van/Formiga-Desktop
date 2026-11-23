@@ -1061,7 +1061,14 @@ impl World {
         ) else {
             return false;
         };
-        let journey = build_window_journey(creature, target, surface, desktop);
+        let journey = build_window_journey(
+            creature,
+            target,
+            surface,
+            desktop,
+            &self.save.settings.habitat,
+            self.save.settings.display_scale,
+        );
         let next = journey.initial_action();
         self.window_journeys.insert(id, journey);
         self.window_routes.remove(&id);

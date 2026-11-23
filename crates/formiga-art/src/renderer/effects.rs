@@ -73,8 +73,9 @@ pub(super) fn draw_effects(
             canvas.line(face.x - 7, y + 2, face.x - 9, y, 1, palette.accent);
             canvas.line(face.x + 7, y + 2, face.x + 9, y, 1, palette.accent);
         }
+        // A glint of effort on each pull (see `Pose::climb`).
         ActionKind::ClimbWindow => {
-            if !reduce_motion && frame.is_multiple_of(2) {
+            if !reduce_motion && frame % 3 == 1 {
                 canvas.set((face.x + 8).min(45), (face.y - 5).max(2), palette.highlight);
             }
         }
@@ -198,6 +199,12 @@ pub(super) fn draw_gesture_effects(
             let y = (face.y - 6 + pulse).clamp(3, 41);
             canvas.set(x, y, palette.highlight);
             canvas.fill_rect(x - 1, y + 1, 3, 2, palette.highlight);
+        }
+        // A glint of effort on the push, as on each pull of the climb before it.
+        Gesture::Mantle => {
+            if !reduce_motion && frame == 1 {
+                canvas.set((face.x + 8).min(45), (face.y - 5).max(2), palette.highlight);
+            }
         }
         Gesture::Heave => {
             if frame % 4 >= 2 {

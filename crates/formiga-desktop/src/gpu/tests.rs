@@ -271,6 +271,7 @@ fn every_motion_and_readability_choice_bakes_the_same_atlas_every_time() {
         assert_eq!(atlas.body_cells.len(), total_animation_frames() as usize);
         assert_eq!(atlas.face_cells.len(), face_slot_count() as usize);
         assert_eq!(atlas.face_anchors.len(), total_animation_frames() as usize);
+        assert_eq!(atlas.hands.len(), total_animation_frames() as usize);
         assert!(cost(atlas) <= full_layout_bytes(), "{choice:?}");
     }
     assert_eq!(cost(&first[0]), cost(&first[2]));
@@ -552,6 +553,7 @@ fn a_finer_atlas_is_the_same_picture_at_more_pixels() {
     assert_eq!(fine.body_cells, plain.body_cells);
     assert_eq!(fine.face_cells, plain.face_cells);
     assert_eq!(fine.face_anchors, plain.face_anchors);
+    assert_eq!(fine.hands, plain.hands);
     assert_eq!(fine.silhouette, plain.silhouette);
     let pixel = |pixels: &[u8], width: u32, x: u32, y: u32| {
         let at = ((y * width + x) * 4) as usize;
@@ -704,6 +706,117 @@ fn a_sculpted_form_is_baked_no_finer_than_a_half_resolution_overlay_draws_it() {
     assert_eq!(baked_detail(&appearance, 4, 1), 4);
 }
 
+/// The overlay centres a find held up, a watering can and anything picked on the paw each frame
+/// draws, so the atlas keeps that paw for every body slot, exactly as the frame reports it, beside
+/// the face anchor it keeps the same way.
+#[test]
+fn the_atlas_keeps_each_frames_paw_for_every_body_slot() {
+    let world = World::new(
+        [23; 32],
+        time::OffsetDateTime::UNIX_EPOCH,
+        &formiga_core::DesktopSnapshot::default(),
+    );
+    let creature = &world.save.creatures[0];
+    let atlas = build_atlas_pixels(creature, false, false, None, 1);
+    assert_eq!(atlas.hands.len(), total_animation_frames() as usize);
+    assert_eq!(atlas.hands.len(), atlas.face_anchors.len());
+    for clip in BodyClip::baked() {
+        for frame in 0..AnimationSpec::for_clip(clip).frames {
+            let rendered =
+                CreatureRenderer::render_body_frame(&creature.appearance, clip, frame, false);
+            let slot = atlas_slot(clip, frame) as usize;
+            assert_eq!(atlas.hands[slot], rendered.hands, "{clip:?} frame {frame}");
+            assert_eq!(atlas.face_anchors[slot], rendered.face_anchor);
+        }
+    }
+}
+
+/// Through a whole watering beat, ticked as the desktop ticks it, the can is on the paw on every
+/// frame and the water is drawn only while the pour has the can tipped over, its quad centred on
+/// the tipped can's spout whichever way the companion faces and however large it is drawn.
+#[test]
+fn the_water_runs_from_the_cans_spout_only_while_the_pour_tips_it() {
+    use formiga_art::{BodyPresentation, PropSprite};
+    use formiga_core::{Beat, BeatKind, Gesture, VillageProp};
+    let world = World::new(
+        [23; 32],
+        time::OffsetDateTime::UNIX_EPOCH,
+        &formiga_core::DesktopSnapshot::default(),
+    );
+    let mut creature = world.save.creatures[0].clone();
+    creature.state.action = ActionKind::Idle;
+    let hands = (300.0, 400.0);
+    let tipped = ColonyObjectRenderer::prop_cell(PropSprite::WateringCanTipped);
+    let upright = ColonyObjectRenderer::prop_cell(PropSprite::WateringCan);
+    let water = ColonyObjectRenderer::prop_cell(PropSprite::Water);
+    let (spout_x, spout_y) = PropSprite::WateringCanTipped
+        .spout()
+        .expect("the tipped can has a spout");
+    let half = COLONY_OBJECT_SIZE as f32 / 2.0;
+    for facing_right in [true, false] {
+        for display_scale in [1_u8, 2, 3] {
+            creature.state.facing_right = facing_right;
+            let mut beat = Beat::new(BeatKind::Watering, 5.0);
+            beat.held = Some(VillageProp::WateringCan);
+            let (mut poured, mut level) = (0, 0);
+            while beat.elapsed <= beat.length {
+                creature.state.beat = Some(beat);
+                let shown = BodyPresentation::for_creature(&creature);
+                assert_eq!(shown.clip, BodyClip::Gesture(Gesture::Pour));
+                let [can, running] = village_held_cells(
+                    VillageProp::WateringCan,
+                    shown.clip,
+                    shown.frame,
+                    hands,
+                    shown.facing_right,
+                    display_scale,
+                );
+                let (can_cell, can_centre) = can.expect("the can is always in its paws");
+                assert_eq!(can_centre, hands, "the can is on the paw the frame draws");
+                // The pour leans into the can on its second and third frames and is level on the
+                // first and last.
+                let tips = matches!(shown.frame % 4, 1 | 2);
+                assert_eq!(running.is_some(), tips, "frame {}", shown.frame);
+                assert_eq!(can_cell, if tips { tipped } else { upright });
+                if let Some((cell, centre)) = running {
+                    poured += 1;
+                    assert_eq!(cell, water);
+                    let unit = f32::from(display_scale);
+                    let across = (spout_x as f32 - half) * unit;
+                    let spout = (
+                        can_centre.0 + if shown.facing_right { across } else { -across },
+                        can_centre.1 + (spout_y as f32 - half) * unit,
+                    );
+                    close(centre.0, spout.0, "water centre x at the spout");
+                    close(centre.1, spout.1, "water centre y at the spout");
+                } else {
+                    level += 1;
+                }
+                beat.elapsed += 0.05;
+            }
+            assert!(poured > 0 && level > 0, "it pours and comes level");
+        }
+    }
+    // Nothing else the village puts in a paw pours, and the can pours on no other clip's frames.
+    for clip in BodyClip::baked() {
+        for frame in 0..AnimationSpec::for_clip(clip).frames {
+            for prop in [
+                VillageProp::WateringCan,
+                VillageProp::Apple,
+                VillageProp::Leaf,
+                VillageProp::Produce(formiga_core::GardenKind::Vegetables),
+            ] {
+                let [held, running] = village_held_cells(prop, clip, frame, hands, true, 2);
+                assert!(held.is_some());
+                let pours = prop == VillageProp::WateringCan
+                    && clip == BodyClip::Gesture(Gesture::Pour)
+                    && matches!(frame, 1 | 2);
+                assert_eq!(running.is_some(), pours, "{prop:?} {clip:?} frame {frame}");
+            }
+        }
+    }
+}
+
 #[test]
 fn layered_atlas_matches_the_baked_budget_per_creature() {
     let desktop = formiga_core::DesktopSnapshot {
@@ -733,8 +846,9 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     let bake_time = started.elapsed();
     let total_bytes = atlas.body_pixels.len() + atlas.face_pixels.len();
     eprintln!("layered atlas: {total_bytes} bytes, baked in {bake_time:?}");
-    // 92 action frames and 121 gesture frames — eight of them the seat and the sled wonders
-    // brought in 0.66.0, twenty-eight a companion's own repertoire (a wash, a shake, a sniff, two
+    // 96 action frames — six of them the climb, a stroke with each paw, and two the toss's own —
+    // and 124 gesture frames — three of them the mantle a climb tops out with, eight the seat and
+    // the sled wonders brought in 0.66.0, twenty-eight a companion's own repertoire (a wash, a shake, a sniff, two
     // more ways to sleep and two more ways to walk), sixteen the chores and a pet leaned into, and
     // fourteen the nibble, chomp, chew and gulp of a meal —
     // and fifteen expressions' faces in every eyelid pose
@@ -743,23 +857,27 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     // nothing read: 1,824,768 bytes with the temperament poses and their faces. Since 0.62.0 a
     // frame or face that comes out the same as one already baked shares its cell — a held pose,
     // eyes shut whichever way they would be looking — and the trinket cells are gone.
-    assert_eq!(total_animation_frames(), 213);
+    assert_eq!(total_animation_frames(), 220);
     // 1,244,160 until 0.66.0, when the walk, the run, the greeting and the meal stopped repeating
     // frames they had shared and the texture grew by a row of ten cells, to 1,336,320;
     // 1,244,160 again from 0.66.1, whose scoot along on a leaf sled repeats two of its four
     // frames where pedalling a bike repeated none, which brings it back under that row; and
     // 1,520,640 with the repertoire, three rows more, 1,612,800 with the chores and the pet, and
-    // 1,704,960 with the four ways a meal is eaten (fourteen frames).
+    // 1,704,960 with the four ways a meal is eaten (fourteen frames), and still that with the
+    // climb's two more frames, the mantle's three and the toss's two, which fit in cells the last
+    // row had spare.
     assert_eq!(total_bytes, 1_704_960);
     assert_eq!(full_layout_bytes(), 2_442_240);
     // Tripled in 0.58.0 so the pose vocabulary has somewhere to grow: the budget is what
     // stops a creature costing more than a creature should, not what stops it having poses.
     assert!(full_layout_bytes() <= 4_500_000);
     // A full colony of six like this one: 9,676,800 bytes. Even with no two frames alike it
-    // would be 13,547,520, which is why the ceiling was raised from 10 MiB to 15 MiB in 0.62.0.
+    // would be 13,547,520, which is why the ceiling was raised from 10 MiB to 15 MiB in 0.62.0,
+    // and to 16 MiB in 0.68.0, when the animation pass's new clips (climb, mantle, toss, leap,
+    // squeeze, breathing) put the no-two-frames-alike colony just past 15 MiB.
     assert!(
-        full_layout_bytes() * formiga_core::MAX_COLONY_CREATURES < 15 * 1024 * 1024,
-        "a full colony's atlases could exceed 15 MiB"
+        full_layout_bytes() * formiga_core::MAX_COLONY_CREATURES < 16 * 1024 * 1024,
+        "a full colony's atlases could exceed 16 MiB"
     );
     assert!(total_bytes < atlas.body_pixels.len() * 3);
     // The optional outline is baked into the same atlas: no extra texture, no extra frame,
@@ -771,6 +889,7 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     );
     assert_eq!(outlined.body_cells, atlas.body_cells);
     assert_eq!(outlined.face_anchors, atlas.face_anchors);
+    assert_eq!(outlined.hands, atlas.hands);
     let (mut added, mut changed) = (0, 0);
     for (plain, edged) in atlas
         .body_pixels
@@ -789,16 +908,17 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     );
     assert!(added > 0, "an outline does appear around the creature");
     assert_eq!(atlas.face_anchors.len(), total_animation_frames() as usize);
+    // A toss has two frames of its own, after every other action's.
     assert_eq!(
-        atlas_slot(ActionKind::Tossed, 2),
-        atlas_slot(ActionKind::Dragged, 2)
+        atlas_slot(ActionKind::Tossed, 0),
+        atlas_slot(ActionKind::PresentDiscovery, 3) + 1
     );
     assert_eq!(
         atlas_slot(ActionKind::SqueezeWindow, 2),
         atlas_slot(ActionKind::Traverse, 2)
     );
     // Gestures follow the action clips, and every baked frame owns exactly one slot.
-    assert_eq!(atlas_slot(formiga_core::Gesture::Cheer, 0), 92);
+    assert_eq!(atlas_slot(formiga_core::Gesture::Cheer, 0), 96);
     let mut slots = BTreeSet::new();
     for clip in BodyClip::baked() {
         for frame in 0..AnimationSpec::for_clip(clip).frames {
