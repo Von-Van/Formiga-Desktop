@@ -3198,13 +3198,14 @@ fn wonders_are_put_out_and_put_away_from_the_journal() {
 /// have recorded itself.
 fn aged_fixture(day: i64) -> SaveFile {
     use time::Duration;
-    let now = time::macros::datetime!(2026-09-14 12:00 UTC);
+    // Dated from the real clock, as the notebook reads it, so day 1 is today.
+    let now = time::OffsetDateTime::now_utc();
     let (_, monitors) = fixture();
     let desktop = DesktopSnapshot {
         monitors,
         ..Default::default()
     };
-    let founded = now - Duration::days(day - 1) - Duration::hours(3);
+    let founded = now - Duration::days(day - 1) - Duration::minutes(1);
     let mut world = World::new([25; 32], founded, &desktop);
     world.tick(now, 0.05, &desktop);
     let save = &mut world.save;
@@ -3331,6 +3332,7 @@ impl Harness {
 #[test]
 fn the_notebook_through_a_colonys_life() {
     let output = std::env::var_os("FORMIGA_UI_REVIEW_DIR").map(std::path::PathBuf::from);
+    let mut cut = Vec::new();
     for day in [1, 10, 110] {
         let save = aged_fixture(day);
         for tab in [
@@ -3356,11 +3358,12 @@ fn the_notebook_through_a_colonys_life() {
                 h.screen = egui::vec2(width, 720.0);
                 h.frame(Vec::new());
                 h.frame(Vec::new());
-                assert!(
-                    h.cut.is_empty(),
-                    "day {day}, {tab:?} at {width} and {text_scale}%: {:?}",
-                    h.cut
-                );
+                if !h.cut.is_empty() {
+                    cut.push(format!(
+                        "day {day}, {tab:?} at {width} and {text_scale}%: {:?}",
+                        h.cut
+                    ));
+                }
                 for unwanted in ["Apply changes", "Revert", "Preferences are saved"] {
                     assert!(!shown(&h, unwanted), "{unwanted} under {tab:?}");
                 }
@@ -3380,6 +3383,7 @@ fn the_notebook_through_a_colonys_life() {
             }
         }
     }
+    assert!(cut.is_empty(), "{cut:#?}");
 }
 
 /// Apply and Revert are under the pages with preferences on them, and nowhere else unless a
@@ -3472,4 +3476,82 @@ fn every_date_on_the_journal_is_written_one_way() {
         .filter(|text| iso(text))
         .collect();
     assert!(dated.is_empty(), "{dated:?}");
+}
+
+/// The companion is the first thing on its page, at every size: its portrait and its name in the
+/// first screen, beside its temperament and traits, at the widest window and smallest text and at
+/// the narrowest and largest.
+#[test]
+fn the_companion_is_above_the_fold() {
+    for (text_scale, width) in [(100, 940.0), (150, 760.0)] {
+        let mut h = Harness::new(SettingsTab::Colony);
+        configure_style(
+            &h.context,
+            AppearancePreferences {
+                text_scale,
+                ..Default::default()
+            },
+        );
+        h.screen = egui::vec2(width, 560.0);
+        h.frame(Vec::new());
+        h.frame(Vec::new());
+        let phrase = h.save.creatures[0].temperament_phrase();
+        assert!(shown(&h, &phrase), "{phrase} at {width} and {text_scale}%");
+        let fold = h.screen.y - 60.0;
+        let top = h.text_top(&phrase);
+        assert!(
+            top < fold,
+            "the phrase is at {top}, under the fold at {fold}"
+        );
+        for gone in ["TALLY · LIFE HERE", "days together"] {
+            assert!(!shown(&h, gone), "{gone} is still on the page");
+        }
+    }
+}
+
+/// A companion is chosen by its face, and the arrow keys and ⌘[ ⌘] turn between companions;
+/// past the last one, ⌘] turns the page.
+#[test]
+fn companions_are_chosen_by_face_and_turned_from_the_keyboard() {
+    let mut h = Harness::new(SettingsTab::Colony);
+    h.screen = egui::vec2(940.0, 720.0);
+    let ids: Vec<CreatureId> = h.save.creatures.iter().map(|c| c.id).collect();
+    assert!(ids.len() >= 2, "the fixture has company");
+    let second = h.save.creatures[1].name.clone();
+    // The face's name sits under it; clicking the name's face turns to it.
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    let at = h
+        .labels
+        .iter()
+        .find(|(text, _)| *text == second)
+        .expect("a face in the strip")
+        .1;
+    h.click_at(at.center() - egui::vec2(0.0, 20.0));
+    h.frame(Vec::new());
+    assert_eq!(h.selected, Some(ids[1]));
+    h.frame(key(egui::Key::ArrowLeft, egui::Modifiers::NONE));
+    assert_eq!(h.selected, Some(ids[0]), "left turns back");
+    h.frame(key(egui::Key::CloseBracket, egui::Modifiers::COMMAND));
+    assert_eq!(h.selected, Some(ids[1]), "⌘] turns on");
+    h.selected = ids.last().copied();
+    h.frame(key(egui::Key::CloseBracket, egui::Modifiers::COMMAND));
+    assert_eq!(h.selected, ids.last().copied());
+    assert_eq!(h.tab, SettingsTab::Studio, "past the last, the page turns");
+}
+
+/// A companion that has just arrived still has a page: its portrait, who it is, that it arrived
+/// today, and a line saying more will be written — no empty boxes.
+#[test]
+fn a_new_companion_still_has_a_page() {
+    let save = aged_fixture(1);
+    let name = save.creatures[0].name.clone();
+    let mut h = Harness::over(SettingsTab::Colony, save);
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(shown(&h, "Arrived today"));
+    assert!(shown(
+        &h,
+        &format!("Still getting to know {name}. I'll write things here as I see them.")
+    ));
 }

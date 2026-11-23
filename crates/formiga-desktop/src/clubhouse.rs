@@ -12,6 +12,7 @@ use time::OffsetDateTime;
 
 pub(crate) mod arrange;
 pub(crate) mod collection;
+pub(crate) mod companion_page;
 pub(crate) mod home;
 pub(crate) mod journal;
 pub(crate) mod journal_page;

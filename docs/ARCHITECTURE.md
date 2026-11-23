@@ -2593,7 +2593,15 @@ researcher's register is named ("Field notes · Nº 02 · Specimen register"); t
 are called by name, and what each is doing is `activity_label`'s plain words ("playing with a
 toy"), one for every action, so a new action cannot reach the page unworded.
 A page with more to it than reads at a glance keeps the rest in sections (`clubhouse/sections.rs`):
-Your colony shows the companion, its traits and its tally, then a line for each of its notes, its
+Your colony opens on the companion itself (`clubhouse/companion_page.rs`): everyone's face along
+the top as the way to choose one, the chosen face taped, with the left and right arrows and ⌘[ ⌘]
+turning between companions before they turn the page; then the portrait, 144 points where there is
+room beside it and never under 96, beside the name in the hand, the temperament once, the traits
+run over with a highlighter and one line of what it is doing ("Up on a window, playing with
+Tofu.", naming a companion only for a greeting, a follow or a game within reach); its figures
+stamped in the margin ("109 days · 42 pets · 7 finds · 18 climbs"); and, for a companion with
+nothing yet to say about it, "Still getting to know Mallow. I'll write things here as I see
+them." Then a line for each of its notes, its
 name and leaning, what it wears, Formiga Farm while Farm is installed, sharing, keeping and starting
 over, how everyone gets along, and the collection; Home & keepsakes keeps the village and the house
 picked out in it above lines for the ground's gardens, spots and ornaments, where the village

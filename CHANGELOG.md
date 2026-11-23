@@ -17,6 +17,18 @@ All notable changes are documented here.
   rather than as "solo play" or "follow". The Journal's guest book, scrapbook, souvenirs, cups and
   wonders are headed in the same pencil capitals as the rest of the notebook, and the guest book
   shows its latest three visitors with the rest a click away.
+- A companion's page opens on the companion. Everyone's face runs along the top, the chosen one
+  taped, and the arrow keys and ⌘[ ⌘] turn between them. Under it the portrait and the name in
+  the hand come first, with the temperament once, the traits, and one line of what it is doing,
+  naming the friend it is playing with, following or greeting. Its days, pets, finds and climbs
+  are one stamp in the margin instead of four boxes, and a companion that has just arrived says
+  so, with "Still getting to know Mallow. I'll write things here as I see them." At 760 wide and
+  150% text the portrait, name, temperament and traits are all in the first screen.
+
+### Fixed
+
+- Today's tally no longer runs off the edge of its card on a day with a long count in it, such as
+  "1 shared moment" beside "2 new keepsakes": it goes to one count a row when two don't fit.
 
 ## [0.68.23] - 2026-11-12
 

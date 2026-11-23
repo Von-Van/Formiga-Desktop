@@ -186,18 +186,7 @@ pub(crate) fn kicker(ui: &mut Ui, text: &str) -> egui::Response {
 /// it in the notebook's observing voice.
 pub(crate) fn page_heading(ui: &mut Ui, page: SettingsTab, heading: &str, observation: &str) {
     let scale = text_scale(ui);
-    write(
-        ui,
-        kicker_job(
-            &format!(
-                "Field notes · Nº {:02} · {}",
-                page_number(page),
-                page_kind(page)
-            ),
-            kicker_size(scale),
-            forest(),
-        ),
-    );
+    page_kicker(ui, page);
     // The name grows with the text, but not all the way: at the largest text its glyphs would be
     // big enough to double the font atlas the whole window draws from.
     write(
@@ -209,6 +198,23 @@ pub(crate) fn page_heading(ui: &mut Ui, page: SettingsTab, heading: &str, observ
     write(ui, RichText::new(observation).color(muted()));
     // A line left blank under the heading.
     ui.add_space(12.0);
+}
+
+/// What kind of field note a page is and its number, over everything on it: the top line of a
+/// page's heading, and the whole of it on a page whose own subject is its heading.
+pub(crate) fn page_kicker(ui: &mut Ui, page: SettingsTab) {
+    write(
+        ui,
+        kicker_job(
+            &format!(
+                "Field notes · Nº {:02} · {}",
+                page_number(page),
+                page_kind(page)
+            ),
+            kicker_size(text_scale(ui)),
+            forest(),
+        ),
+    );
 }
 
 /// What the Your colony page observes about the colony: how many there are, and how many of them
