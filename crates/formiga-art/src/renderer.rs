@@ -4,15 +4,18 @@ use crate::{Canvas, Palette, Rgba};
 use formiga_core::{
     ActionKind, AppearanceGenome, BodyFamily, BrowStyle, Celebration, CheekStyle, Creature,
     CursorSnapshot, EffectMotif, EyeShape, ForelimbStyle, Gesture, Habit, HeadAppendageStyle,
-    HighlightStyle, LimbTipStyle, MouthStyle, PatternKind, PupilStyle, RestPose, TailStyle,
+    HighlightStyle, HopMoment, LimbTipStyle, MouthStyle, PatternKind, PupilStyle, RestPose,
+    TailStyle,
 };
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha12Rng;
 mod accessories;
 mod beats;
+mod bridge;
 mod classic;
 mod effects;
 mod face;
+mod face_change;
 mod foods;
 mod fox;
 mod held;
@@ -22,10 +25,14 @@ mod play;
 mod playthings;
 mod pose;
 mod props;
+mod squeeze;
 pub use accessories::AccessoryArt;
+pub use beats::village_held;
+pub use bridge::{BRIDGE_ROWS, BridgeReason, ClipBridge, FrameShape, SETTLE_FRAME};
 use classic::*;
 use effects::*;
 use face::*;
+pub use face_change::{FACE_CHANGE_FACE, FaceChange};
 use held::toy_colourway;
 pub use held::{
     HELD_CELL, HELD_CELLS, HELD_SHEET_COLUMNS, HELD_SHEET_HEIGHT, HELD_SHEET_WIDTH, HeldPlacement,
@@ -43,6 +50,9 @@ pub use props::{DRINK_KINDS, SNACK_KINDS, TOY_KINDS, prop_variants};
 
 pub const FRAME_SIZE: u32 = 48;
 pub const FACE_FRAME_SIZE: u32 = 16;
+/// The light outer half of the optional two-tone outline ([`CreatureRenderer::outline_frame`]): a
+/// pale, faintly warm rim, faint enough that on pale wallpaper it is barely there.
+pub const OUTLINE_RIM: Rgba = Rgba::new(236, 234, 222, 96);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PixelPoint {
@@ -176,6 +186,10 @@ pub(crate) struct Figure {
     pub(crate) back: PixelPoint,
     /// The lowest row anything worn may reach: the feet.
     pub(crate) floor: i32,
+    /// The near forepaw as this frame draws it, raised or folded, where anything held in a paw
+    /// goes; `None` when no forepaw is free to hold anything — a body standing on all four, or a
+    /// wing folded to its side — and what it carries goes in its mouth instead.
+    pub(crate) hand: Option<PixelPoint>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -186,7 +200,74 @@ pub struct RenderedBodyFrame {
     /// What the body is holding in this frame and where, drawn apart from it over the body and
     /// face. Not in `canvas` or `alpha_mask`.
     pub held: Option<HeldPlacement>,
+    /// Where this frame holds a thing it carries, in frame pixels facing right: on the near
+    /// forepaw as this frame draws it, or, for a frame with no forepaw free, just under the mouth
+    /// it is carried in. A toy, a found thing held up, a watering can or anything picked is
+    /// centred here. Mirrored with facing as `face_anchor` is.
+    pub hands: PixelPoint,
+    /// The middle of the mouth the face is drawn with, in frame pixels facing right: the face
+    /// anchor and the face layout's own mouth pixel. A mouthful or a sip is carried to it.
+    pub mouth: PixelPoint,
+    /// Whether `hands` is on a paw this frame drew, rather than under the mouth.
+    pub(crate) paw: bool,
 }
+
+/// Where one frame holds things, in frame pixels facing right: the paw a toy, a cup or a picked
+/// thing is put in, and the mouth a snack is carried to. The same two points as a
+/// [`RenderedBodyFrame`]'s `hands` and `mouth`. See [`CreatureRenderer::hold_points`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HoldPoints {
+    pub hands: PixelPoint,
+    pub mouth: PixelPoint,
+}
+
+impl HoldPoints {
+    /// A frame's two points: on the paw `hand` if one is free, and otherwise in the mouth.
+    pub(crate) fn of(hand: Option<PixelPoint>, mouth: PixelPoint) -> Self {
+        Self {
+            // Carried in the mouth, a thing hangs from the jaw, a little forward and below, so
+            // its top meets the mouth rather than its middle covering the face.
+            hands: hand.unwrap_or(PixelPoint {
+                x: mouth.x + 2,
+                y: mouth.y + 3,
+            }),
+            mouth,
+        }
+    }
+}
+
+/// Where the middle of something held up in a frame's paw goes — a find being shown, a watering
+/// can, whatever was picked — given the frame's `hands` and face anchor, for a thing reaching about
+/// `half` pixels either side of its middle, in frame pixels facing right. On the paw, unless that
+/// would put it over the eyes: then moved the least it takes to clear them, forward, down or back,
+/// up only if none of those can, and kept inside the frame. Mirrored with facing as `hands` is.
+pub fn held_up_at(hands: PixelPoint, face: PixelPoint, half: i32) -> PixelPoint {
+    let inside = |at: PixelPoint| PixelPoint {
+        x: at.x.clamp(half + 1, FRAME_SIZE as i32 - 2 - half),
+        y: at.y.clamp(half + 1, FRAME_SIZE as i32 - 2 - half),
+    };
+    // The eyes of every face layout, wide and low ones included, lie in this box.
+    let clear = |at: PixelPoint| {
+        (at.x - face.x).abs() > 6 + half || at.y + half < face.y - 4 || at.y - half > face.y + 3
+    };
+    let moved = |(dx, dy): (i32, i32)| {
+        inside(PixelPoint {
+            x: hands.x + dx,
+            y: hands.y + dy,
+        })
+    };
+    // Forward, down or back along the body before up over the head, which reads as balancing it
+    // there rather than holding it.
+    (0..FRAME_SIZE as i32)
+        .flat_map(|step| [(step, 0), (0, step), (-step, 0)].map(moved))
+        .chain((1..FRAME_SIZE as i32).map(|step| moved((0, -step))))
+        .find(|&at| clear(at))
+        .unwrap_or_else(|| inside(hands))
+}
+
+/// How far a find or a village prop held up reaches either side of its middle, in art pixels:
+/// the drawing inside its 16-pixel cell, not the cell.
+pub const HELD_UP_REACH: i32 = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PlaybackMode {
@@ -240,6 +321,12 @@ impl BodyClip {
             gesture => gesture,
         }
     }
+
+    /// Whether the clip's frames have the face drawn into them, so that nothing draws a face
+    /// over them: only a squeeze, whose face is pinched narrower with its body.
+    pub const fn face_in_frame(self) -> bool {
+        matches!(self.body(), Self::Action(ActionKind::SqueezeWindow))
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -252,24 +339,43 @@ pub struct AnimationSpec {
 impl AnimationSpec {
     pub fn for_action(action: ActionKind) -> Self {
         let (frames, fps, playback) = match action {
-            ActionKind::Traverse | ActionKind::SqueezeWindow | ActionKind::Follow => {
-                (6, 10, PlaybackMode::Loop)
-            }
+            ActionKind::Traverse | ActionKind::Follow => (6, 10, PlaybackMode::Loop),
             ActionKind::Sprint => (6, 12, PlaybackMode::Loop),
+            // Shuffling through a gap: one foot and then the other, three steps a second.
+            ActionKind::SqueezeWindow => (2, 6, PlaybackMode::Loop),
             ActionKind::Eat | ActionKind::Drink => (4, 6, PlaybackMode::Loop),
-            ActionKind::Sleep => (2, 2, PlaybackMode::Loop),
+            // One slow breath in four frames, two seconds in and out.
+            ActionKind::Sleep => (4, 2, PlaybackMode::Loop),
             // Resting is the longest clip a companion plays, because it is the one it plays
             // most: six frames at three a second is a two-second loop, room enough to settle,
             // shift its weight, look off at something and settle back without any of those four
             // reading as hurried. Six is also what was left — the two spare slots in the atlas's
             // last row — so the longer rest costs a creature no texture at all.
             ActionKind::Idle => (6, 3, PlaybackMode::Loop),
-            ActionKind::Perch | ActionKind::RideWindow => (4, 4, PlaybackMode::Loop),
-            ActionKind::Homebound => (2, 2, PlaybackMode::Loop),
-            ActionKind::ClimbWindow => (4, 6, PlaybackMode::Loop),
+            // Sat down breathing, a breath every two seconds, and every other breath a flick of
+            // the tail: eight frames, of which the first breath and the second share all but the
+            // flick, so the atlas keeps one cell for each frame alike.
+            ActionKind::Perch | ActionKind::Homebound => (8, 2, PlaybackMode::Loop),
+            ActionKind::RideWindow => (4, 4, PlaybackMode::Loop),
+            // A stroke with each hand — reach, pull, settle — at the rate the world raises the
+            // body by (see `formiga_core::CLIMB_FRAMES_PER_SECOND`), so it rises on the pulls.
+            ActionKind::ClimbWindow => (
+                2 * formiga_core::CLIMB_STROKE_FRAMES,
+                formiga_core::CLIMB_FRAMES_PER_SECOND,
+                PlaybackMode::Loop,
+            ),
             ActionKind::Dangle => (4, 3, PlaybackMode::Loop),
             ActionKind::InspectScreen => (4, 4, PlaybackMode::Loop),
             ActionKind::PresentDiscovery => (4, 2, PlaybackMode::Hold),
+            // Carried: hanging still from the hand, swaying a pixel and back each second. The
+            // pairs of frames are alike, so it takes two cells of the atlas.
+            ActionKind::Dragged => (4, 4, PlaybackMode::Loop),
+            // Down, and played once: squashed on the touch, drawn back up, a little past, and
+            // standing, held there for whatever comes next.
+            ActionKind::Landing => (4, 8, PlaybackMode::Hold),
+            // Balled up, and the same ball turned a little: a tumble three times a second for as
+            // long as it is in the air.
+            ActionKind::Tossed => (2, 6, PlaybackMode::Loop),
             _ => (4, 8, PlaybackMode::Loop),
         };
         Self {
@@ -326,8 +432,8 @@ impl AnimationSpec {
             Gesture::Shake => (4, 10),
             // Sniff, sniff.
             Gesture::Sniff => (4, 5),
-            // Breathing, as asleep in a curl.
-            Gesture::Sprawl | Gesture::Loaf => (2, 2),
+            // Breathing, as asleep in a curl: one slow breath in four frames.
+            Gesture::Sprawl | Gesture::Loaf => (4, 2),
             // Strides, counted from the ground covered like any walk's.
             Gesture::Skip | Gesture::Trudge => (6, 10),
             // A slow tip of the can, and back.
@@ -346,14 +452,22 @@ impl AnimationSpec {
             Gesture::Chew => (2, 4),
             // Head back, mouth open, and down it goes.
             Gesture::Gulp => (4, 6),
+            // Chest over, push up, stand: the haul is the first two frames and the step in the
+            // third, at the rate the world times them by.
+            Gesture::Mantle => (3, formiga_core::MANTLE_FRAMES_PER_SECOND),
+            // Rising, and coming down: a hop picks the frame by how far across it is.
+            Gesture::Leap => (2, 4),
         };
         Self {
             frames,
             fps,
-            // A stretch and a yawn are done once, from the moment they start, and held at their
-            // last frame until they are let go; every other gesture loops for as long as the
-            // moment asks for it.
-            playback: if matches!(gesture, Gesture::Stretch | Gesture::Yawn | Gesture::Swoon) {
+            // A stretch, a yawn, a swoon and a mantle are done once, from the moment they start,
+            // and held at their last frame until they are let go; every other gesture loops for
+            // as long as the moment asks for it.
+            playback: if matches!(
+                gesture,
+                Gesture::Stretch | Gesture::Yawn | Gesture::Swoon | Gesture::Mantle
+            ) {
                 PlaybackMode::Hold
             } else {
                 PlaybackMode::Loop
@@ -361,11 +475,26 @@ impl AnimationSpec {
         }
     }
 
+    /// The frame a clip holds still on with reduced motion, the moment that says best what it is
+    /// doing: the first for nearly every clip, play among them, whose first frame has the toy at
+    /// the paw already. Eating holds the snack up at the mouth with a bite out of it rather than
+    /// away from the face before the first bite, drinking the cup tipped to the mouth rather than
+    /// held down, and a climb a pull, one paw above the other, rather than the first reach with
+    /// both up together, and a mantle the push up, which says what it is doing better than any
+    /// other moment of it. Under reduced motion every frame of a clip is drawn as this one, so the
+    /// atlas bakes the clip as one cell of it.
+    pub fn still_frame(clip: impl Into<BodyClip>) -> u8 {
+        match clip.into() {
+            BodyClip::Action(ActionKind::Eat | ActionKind::ClimbWindow) => 1,
+            BodyClip::Action(ActionKind::Drink) => 2,
+            BodyClip::Gesture(Gesture::Mantle) => 1,
+            _ => 0,
+        }
+    }
+
     pub const fn body_action(action: ActionKind) -> ActionKind {
         match action {
-            ActionKind::Tossed => ActionKind::Dragged,
             ActionKind::PetReaction => ActionKind::Greet,
-            ActionKind::SqueezeWindow => ActionKind::Traverse,
             other => other,
         }
     }
@@ -687,6 +816,15 @@ impl MotionSignature {
     pub fn frame(self, clip: impl Into<BodyClip>, elapsed: f32) -> u8 {
         let clip = clip.into();
         let spec = AnimationSpec::for_clip(clip);
+        // A climb and the mantle it tops out with keep the world's beat rather than their own: the
+        // body is raised on the pull frames and hauled over on the mantle's, counted from the
+        // start at the clip's own rate, which a mini's quicker pace would run ahead of.
+        if matches!(
+            clip,
+            BodyClip::Action(ActionKind::ClimbWindow) | BodyClip::Gesture(Gesture::Mantle)
+        ) {
+            return spec.frame_at(elapsed);
+        }
         let group = motion_group(clip);
         if spec.playback == PlaybackMode::Hold {
             // Played once at its own rate, a mini's a little quicker.
@@ -740,6 +878,11 @@ impl BodyPresentation {
             }
             return body;
         }
+        // A hop is one action from the crouch to the touchdown; how far through it is decides the
+        // pose.
+        if let Some(body) = Self::hopping(creature, motion) {
+            return body;
+        }
         // A small moment of its own comes next: a yawn, a start, a turn at the garden.
         if let Some(beat) = state.beat
             && let Some((clip, into)) = beats::beat_pose(beat)
@@ -760,6 +903,18 @@ impl BodyPresentation {
                     BodyClip::Action(ActionKind::Sleep),
                     state.action_elapsed * WRIGGLE_RATE,
                 );
+            }
+            // Startled by a window: drawn down into a crouch for a moment, the anticipation,
+            // before the scramble. The crouch is the gesture's own frame, so it costs no frame.
+            if state.action == ActionKind::ReactToWindow
+                && !state.presence.reduced
+                && state.action_elapsed < STARTLE_GATHER_SECS
+            {
+                return Self {
+                    clip: BodyClip::Gesture(Gesture::Crouch),
+                    frame: STARTLE_CROUCH_FRAME,
+                    facing_right: state.facing_right,
+                };
             }
             // Getting down to sleep rather than dropping into it: a crouch for a moment first.
             if state.action == ActionKind::Sleep
@@ -819,6 +974,51 @@ impl BodyPresentation {
         }
     }
 
+    /// A hop as the world last saw it (see [`formiga_core::HopMoment`]): crouched to spring, then
+    /// up in the air — rising on the leap's first frame and coming down on its second — and once
+    /// down, the landing played through from the touch to standing, as long as it stands there.
+    fn hopping(creature: &Creature, motion: MotionSignature) -> Option<Self> {
+        let state = &creature.state;
+        let shown = |clip: BodyClip, frame: u8| Self {
+            clip,
+            frame,
+            facing_right: state.facing_right,
+        };
+        let hopping = state.action == ActionKind::Landing;
+        match state.presence.hop? {
+            HopMoment::Gather(into) if hopping => Some(shown(
+                BodyClip::Gesture(Gesture::Crouch),
+                motion.frame(Gesture::Crouch, into),
+            )),
+            HopMoment::Flight(across) if hopping => Some(shown(
+                BodyClip::Gesture(Gesture::Leap),
+                u8::from(across >= 0.5),
+            )),
+            HopMoment::Down(since) => {
+                let landing = AnimationSpec::for_action(ActionKind::Landing);
+                let standing = !state.presence.stepping
+                    && !state.indoors
+                    && matches!(
+                        state.action,
+                        ActionKind::Idle
+                            | ActionKind::Perch
+                            | ActionKind::Homebound
+                            | ActionKind::InspectScreen
+                            | ActionKind::Landing
+                    );
+                (standing && since * f32::from(landing.fps) < f32::from(landing.frames)).then(
+                    || {
+                        shown(
+                            BodyClip::Action(ActionKind::Landing),
+                            landing.frame_at(since),
+                        )
+                    },
+                )
+            }
+            _ => None,
+        }
+    }
+
     /// The action's own clip, drawn to agree with what the creature's feet are actually doing.
     ///
     /// An action says what a creature is about, not always whether it is moving: a walk to a
@@ -848,6 +1048,17 @@ impl BodyPresentation {
                 BodyClip::Action(action),
                 motion.frame(BodyClip::Action(action), state.action_elapsed),
             );
+        }
+        // Slipping through a gap it stays pinched, stopped or not, and shuffles a foot each
+        // stride of ground it covers.
+        if action == ActionKind::SqueezeWindow {
+            let clip = BodyClip::Action(action);
+            let frame = if presence.stepping {
+                motion.stride_frame(presence.stride) % AnimationSpec::for_clip(clip).frames
+            } else {
+                motion.frame(clip, state.action_elapsed)
+            };
+            return body(clip, frame);
         }
         let walking = matches!(
             AnimationSpec::body_action(action),
@@ -889,8 +1100,10 @@ impl BodyPresentation {
         }
         let resting = walking || matches!(action, ActionKind::Idle | ActionKind::Homebound);
         // Just up from a nap, or just set down: a stretch or a shake before anything else.
+        // A hop it meant to take ends in its landing, with nothing to shake off.
         if resting
             && !presence.reduced
+            && !matches!(presence.hop, Some(HopMoment::Down(_)))
             && let Some((was, ago)) = presence.after
             && let Some((gesture, lasts)) = motion.after_moment(was)
             && ago < lasts
@@ -1017,6 +1230,12 @@ impl MotionSignature {
     }
 }
 
+/// How long a companion startled by a window is drawn down into a crouch before it scrambles.
+const STARTLE_GATHER_SECS: f32 = 0.15;
+
+/// The frame of `Gesture::Crouch` a startled companion gathers itself in: the lower of the two.
+const STARTLE_CROUCH_FRAME: u8 = 1;
+
 /// How long a companion crouches as it gets down to sleep.
 const LIE_DOWN_SECS: f32 = 0.45;
 
@@ -1056,44 +1275,6 @@ fn turned(elapsed: f32, period: f32) -> bool {
     (elapsed.max(0.0) / period) as u32 % 2 == 1
 }
 
-/// Where a carried thing rides, relative to the creature's own face anchor, in art pixels.
-///
-/// A held object belongs in front of the creature at chest height, on the side it is facing, so
-/// that a prop changing hands reads as one creature passing something to another rather than two
-/// objects swapping places in mid-air. The anchor mirrors with facing for exactly that reason,
-/// and stays inside the frame so a prop is clipped and occluded with its holder.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct PropAnchor {
-    pub dx: f32,
-    pub dy: f32,
-}
-
-impl PropAnchor {
-    /// Forward of the face and the same distance below it, where a companion's forelimbs meet in
-    /// front of its chest — the same place an eaten snack or a played-with toy is drawn inside
-    /// the frame. The prop quad is the only one drawn over the layered face, so it has to clear
-    /// the eyes rather than merely miss the frame edge: lifting it instead of dropping it hangs
-    /// the thing in the air above the crown and pushes its quad out through the top of the frame
-    /// on the taller body plans.
-    const FORWARD: f32 = 8.0;
-    const DROP: f32 = 8.0;
-
-    pub fn for_creature(creature: &Creature) -> Self {
-        Self::facing(creature.state.facing_right)
-    }
-
-    pub fn facing(facing_right: bool) -> Self {
-        Self {
-            dx: if facing_right {
-                Self::FORWARD
-            } else {
-                -Self::FORWARD
-            },
-            dy: Self::DROP,
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FramePlacement {
     /// Top of the 48x48 body frame relative to the simulation contact point, in art pixels.
@@ -1113,6 +1294,20 @@ impl FramePlacement {
         }
     }
 
+    /// Where the frame is drawn for a contact point at `(contact_x, contact_y)`, on a surface with
+    /// `unit` of its pixels to an art pixel: centred across on the contact point, as wide as it is
+    /// tall (a squeeze through a narrow gap is pinched in its own frames, not drawn narrower). The
+    /// overlay places every companion this way, and so does the climb sheet.
+    pub fn frame_rect(self, contact_x: f32, contact_y: f32, unit: f32) -> FrameRect {
+        let height = FRAME_SIZE as f32 * unit;
+        FrameRect {
+            centre_x: contact_x,
+            top: contact_y + self.origin_y as f32 * unit,
+            width: height,
+            height,
+        }
+    }
+
     pub fn for_action(action: ActionKind, resting_baseline: u32) -> Self {
         Self {
             origin_y: if action == ActionKind::Dangle {
@@ -1124,6 +1319,16 @@ impl FramePlacement {
             },
         }
     }
+}
+
+/// Where a body frame is drawn, from [`FramePlacement::frame_rect`]: the middle of it across, its
+/// top, and its drawn size, in the pixels of whatever it is drawn on.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FrameRect {
+    pub centre_x: f32,
+    pub top: f32,
+    pub width: f32,
+    pub height: f32,
 }
 
 pub struct CreatureRenderer;
@@ -1251,7 +1456,25 @@ impl CreatureRenderer {
         frame: u8,
         reduce_motion: bool,
     ) -> RenderedBodyFrame {
-        Self::dress_body_frame(genome, dress, clip.into(), frame, reduce_motion, 1).0
+        Self::dress_body_frame(genome, dress, clip.into(), frame, reduce_motion, 1, true).0
+    }
+
+    /// Where a frame of `clip` places what it holds from, in frame pixels facing right: the paw
+    /// a toy, a cup or a picked thing is put in, and the mouth a snack is carried to. These are
+    /// the frame's own `hands` and `mouth`, which its belongings are placed by, read for the hold
+    /// sheet, which marks them over every frame that holds something so a belonging that misses
+    /// its paw shows.
+    pub fn hold_points(
+        genome: &AppearanceGenome,
+        clip: impl Into<BodyClip>,
+        frame: u8,
+        reduce_motion: bool,
+    ) -> HoldPoints {
+        let rendered = Self::render_body_frame(genome, clip, frame, reduce_motion);
+        HoldPoints {
+            hands: rendered.hands,
+            mouth: rendered.mouth,
+        }
     }
 
     /// [`Self::render_dressed_body_frame`], and the same frame drawn `detail` pixels to each of
@@ -1268,14 +1491,23 @@ impl CreatureRenderer {
         detail: u32,
     ) -> (RenderedBodyFrame, Canvas) {
         let detail = detail.clamp(1, crate::forms::FINEST_DETAIL);
-        let (rendered, fine) =
-            Self::dress_body_frame(genome, dress, clip.into(), frame, reduce_motion, detail);
+        let (rendered, fine) = Self::dress_body_frame(
+            genome,
+            dress,
+            clip.into(),
+            frame,
+            reduce_motion,
+            detail,
+            true,
+        );
         let fine = fine.unwrap_or_else(|| crate::forms::blocks(&rendered.canvas, detail));
         (rendered, fine)
     }
 
-    /// A dressed body frame, and a sculpted form's painted `detail` pixels to each of its own
-    /// when that is more than one.
+    /// A dressed body frame, with where it holds things, and a sculpted form's painted `detail`
+    /// pixels to each of its own when that is more than one. With `trail`, a toy in the air
+    /// leaves its dashes back to where it was on the frame before, which is drawn (without one)
+    /// to find out.
     fn dress_body_frame(
         genome: &AppearanceGenome,
         dress: Option<AccessoryArt>,
@@ -1283,9 +1515,23 @@ impl CreatureRenderer {
         frame: u8,
         reduce_motion: bool,
         detail: u32,
+        trail: bool,
     ) -> (RenderedBodyFrame, Option<Canvas>) {
-        let frame = if reduce_motion { 0 } else { frame };
+        let frame = if reduce_motion {
+            AnimationSpec::still_frame(clip)
+        } else {
+            frame
+        };
         let clip = clip.body();
+        let previous = (trail && !reduce_motion && clip == BodyClip::Action(ActionKind::SoloPlay))
+            .then(|| {
+                let frames = AnimationSpec::for_clip(clip).frames;
+                let before = (frame + frames - 1) % frames;
+                Self::dress_body_frame(genome, None, clip, before, false, 1, false).0
+            })
+            .and_then(|before| before.held)
+            .map(HeldPlacement::middle);
+        let wearer = genome;
         let face_genome;
         // The body as painted, before anything is drawn on it, and the same body painted finely.
         let mut fine = None;
@@ -1321,26 +1567,53 @@ impl CreatureRenderer {
         };
         let mut face_anchor = figure.face;
         if let Some(dress) = dress {
-            accessories::draw_accessory(&mut canvas, dress, figure);
+            accessories::draw_accessory(&mut canvas, dress, figure, genome.logical_size);
         }
-        let held = activity_held(genome, face_anchor, pose, clip, frame, reduce_motion);
+        // Turned whole, with whatever it wears, and a sculpted form's fine painting with it.
+        if let Some(turn) = tumble(clip, frame).and_then(|angle| Turn::about_middle(&canvas, angle))
+        {
+            turn.canvas(&mut canvas, 1);
+            if let Some((bare, body)) = &mut fine {
+                turn.canvas(bare, 1);
+                turn.canvas(body, detail);
+            }
+            face_anchor = turn.point(face_anchor);
+        }
+        // Where this frame holds things: the near paw the body just drew, and the mouth the face
+        // will be drawn with.
+        let mouth_at = if genome.echo_fox {
+            fox::MOUTH_AT
+        } else {
+            mouth_offset(genome)
+        };
+        let mut hold = HoldPoints::of(
+            figure.hand,
+            PixelPoint {
+                x: face_anchor.x + mouth_at.x,
+                y: face_anchor.y + mouth_at.y,
+            },
+        );
+        let props = prop_hold(genome, pose, clip, hold, figure);
+        let mut held = activity_held(genome, props, clip, frame, reduce_motion);
         match clip {
             BodyClip::Action(action) => {
                 draw_activity_marks(
                     &mut canvas,
                     genome,
                     palette,
-                    face_anchor,
-                    pose,
+                    props,
                     action,
                     frame,
                     reduce_motion,
+                    held,
+                    previous,
                 );
                 draw_effects(
                     &mut canvas,
                     genome,
                     palette,
                     face_anchor,
+                    props,
                     action,
                     frame,
                     reduce_motion,
@@ -1356,6 +1629,34 @@ impl CreatureRenderer {
                 reduce_motion,
             ),
         }
+        // Slipping through a gap, the face is drawn into the frame and pinched narrower with the
+        // body: the overlay draws no face of its own over it (see `BodyClip::face_in_frame`).
+        if clip.face_in_frame() {
+            let face = Self::render_face_frame(wearer, squeeze::face());
+            let left = face_anchor.x - FACE_FRAME_SIZE as i32 / 2;
+            let top = face_anchor.y - FACE_FRAME_SIZE as i32 / 2;
+            blit_transparent(&mut canvas, &face, left, top);
+            let pinch = squeeze::Pinch::of(&canvas, &face, PixelPoint { x: left, y: top });
+            canvas = pinch.apply(&canvas, 1);
+            if let Some((bare, body)) = &mut fine {
+                // A sculpted form's face, as finely as its body is painted.
+                blit_transparent(bare, &face, left, top);
+                let fine_face = Self::render_face_frame_in_detail(wearer, squeeze::face(), detail);
+                let d = detail as i32;
+                blit_transparent(body, &fine_face, left * d, top * d);
+                *bare = pinch.apply(bare, 1);
+                *body = pinch.apply(body, detail);
+            }
+            face_anchor = pinch.point(face_anchor);
+            held = held.map(|held| HeldPlacement {
+                at: pinch.point(held.at),
+                ..held
+            });
+            hold = HoldPoints {
+                hands: pinch.point(hold.hands),
+                mouth: pinch.point(hold.mouth),
+            };
+        }
         let (dx, dy) = keep_atlas_margin(&mut canvas);
         face_anchor.x += dx;
         face_anchor.y += dy;
@@ -1365,11 +1666,18 @@ impl CreatureRenderer {
             crate::forms::dressed_in_detail(&canvas, &bare, &body, detail)
         });
         let alpha_mask = AlphaMask::from_canvas(&canvas);
+        let moved = |at: PixelPoint| PixelPoint {
+            x: at.x + dx,
+            y: at.y + dy,
+        };
         let rendered = RenderedBodyFrame {
             canvas,
             face_anchor,
             alpha_mask,
             held: held.map(|held| held.translated(dx, dy)),
+            hands: moved(hold.hands),
+            mouth: moved(hold.mouth),
+            paw: props.paw,
         };
         (rendered, fine)
     }
@@ -1394,7 +1702,7 @@ impl CreatureRenderer {
                 clip,
                 frame,
             );
-            modular::figure(design, pose, scale(genome))
+            modular::figure(design, pose, scale(genome), clip, frame)
         } else {
             match genome.family {
                 BodyFamily::Blob => draw_blob(&mut canvas, genome, palette, pose, clip, frame),
@@ -1457,10 +1765,14 @@ impl CreatureRenderer {
         canvas
     }
 
-    /// Draw a soft edge in the transparent pixels immediately around a creature, so it stays
-    /// readable on bright or busy wallpaper. This reads only the frame's own alpha — never the
-    /// desktop behind it — and writes only inside the existing frame, so the silhouette used for
-    /// clicking and dragging is unchanged. Edges stay one pixel and hard, never blurred.
+    /// Draw a two-tone edge in the transparent pixels around a creature, so it stays readable on
+    /// bright, busy or dark wallpaper: a soft dark ring hugging the silhouette, and outside it a
+    /// faint light rim ([`OUTLINE_RIM`]). On pale wallpaper the rim is lighter than nothing much
+    /// and the dark ring does the work; on dark wallpaper, where the ring vanishes, the rim is what
+    /// shows. No rim is drawn below the frame's lowest drawn row, so it never lightens the shadow
+    /// under the feet. This reads only the frame's own alpha — never the desktop behind it — and
+    /// writes only inside the existing frame, so the silhouette used for clicking and dragging is
+    /// unchanged. Edges stay one pixel and hard, never blurred.
     pub fn outline_frame(canvas: &mut Canvas) {
         Self::outline_frame_in_detail(canvas, 1);
     }
@@ -1516,6 +1828,43 @@ impl CreatureRenderer {
                 (at / width) as i32,
                 Rgba::new(18, 26, 22, alpha),
             );
+        }
+        // The light rim: one more edge's width out, all the way round the dark ring. Like the
+        // ring, a pixel beside it along a row or a column is a full rim pixel and one touching it
+        // only across a corner a softer one, so the rim rounds its corners as the ring does.
+        let Some(lowest) = (0..height)
+            .rev()
+            .find(|&y| solid[y * width..(y + 1) * width].iter().any(|&s| s))
+        else {
+            return;
+        };
+        let ring: Vec<bool> = (0..width * height)
+            .map(|at| !solid[at] && around[at])
+            .collect();
+        let mut ring_along_row = vec![false; width * height];
+        for y in 0..height {
+            let row = near(&|x| ring[y * width + x], width);
+            ring_along_row[y * width..(y + 1) * width].copy_from_slice(&row);
+        }
+        for x in 0..width {
+            let column = near(&|y| ring[y * width + x], height);
+            let square = near(&|y| ring_along_row[y * width + x], height);
+            for y in 0..height {
+                let at = y * width + x;
+                if solid[at] || around[at] || !square[y] || y > lowest {
+                    continue;
+                }
+                let alpha = if ring_along_row[at] || column[y] {
+                    OUTLINE_RIM.a
+                } else {
+                    OUTLINE_RIM.a / 2
+                };
+                canvas.set(
+                    x as i32,
+                    y as i32,
+                    Rgba::new(OUTLINE_RIM.r, OUTLINE_RIM.g, OUTLINE_RIM.b, alpha),
+                );
+            }
         }
     }
 
@@ -1587,16 +1936,18 @@ impl CreatureRenderer {
         if !facing_right {
             source_face_state.gaze.x = -source_face_state.gaze.x;
         }
-        let mut face = Self::render_face_frame(genome, source_face_state);
-        if !facing_right {
-            face.mirror_horizontal();
+        if !clip.face_in_frame() {
+            let mut face = Self::render_face_frame(genome, source_face_state);
+            if !facing_right {
+                face.mirror_horizontal();
+            }
+            blit_transparent(
+                &mut body.canvas,
+                &face,
+                body.face_anchor.x - FACE_FRAME_SIZE as i32 / 2,
+                body.face_anchor.y - FACE_FRAME_SIZE as i32 / 2,
+            );
         }
-        blit_transparent(
-            &mut body.canvas,
-            &face,
-            body.face_anchor.x - FACE_FRAME_SIZE as i32 / 2,
-            body.face_anchor.y - FACE_FRAME_SIZE as i32 / 2,
-        );
         // What it holds goes over the face, as the overlay draws it.
         let held = match holding {
             Holding::AsClip => body.held.filter(|_| shows_held_by_default(clip)),
@@ -1693,6 +2044,161 @@ impl CreatureRenderer {
             gaze,
         }
     }
+}
+
+/// How far a thrown body is turned in a frame of its tumble, in radians, nose up: the second of
+/// the toss's two frames is the first turned back a little, so the pair read as a ball rolling
+/// over in the air. Every other frame is drawn as it stands.
+pub(crate) fn tumble(clip: BodyClip, frame: u8) -> Option<f32> {
+    (clip == BodyClip::Action(ActionKind::Tossed) && frame % 2 == 1).then_some(TUMBLE)
+}
+
+/// About a twentieth of a turn: enough to read as rolling over, not so much that the face,
+/// which is drawn upright over the body, looks stuck on.
+const TUMBLE: f32 = 0.32;
+
+/// A turn of everything drawn in a frame `angle` radians nose up (anticlockwise as seen, for a
+/// body facing right) about the middle of what it draws.
+///
+/// Pixel art is turned the way RotSprite turns it: the frame is first scaled up eight times by
+/// Scale2x, which rounds off diagonals without inventing a colour, and each turned pixel takes
+/// the colour found under its middle there. Turned straight from the frame, a one-pixel
+/// outline would break into steps and gaps; this keeps it whole and keeps every colour one the
+/// creature already had. A sculpted form's fine painting is smooth already and is sampled as it
+/// is.
+#[derive(Clone, Copy, Debug)]
+struct Turn {
+    /// The middle of the drawing, in frame pixels.
+    pivot: (f32, f32),
+    sin: f32,
+    cos: f32,
+}
+
+impl Turn {
+    /// About the middle of what `canvas` draws, or `None` when it draws nothing.
+    fn about_middle(canvas: &Canvas, angle: f32) -> Option<Self> {
+        let (min_x, min_y, max_x, max_y) = canvas.alpha_bounds()?;
+        let (sin, cos) = angle.sin_cos();
+        Some(Self {
+            pivot: (
+                (min_x + max_x + 1) as f32 / 2.0,
+                (min_y + max_y + 1) as f32 / 2.0,
+            ),
+            sin,
+            cos,
+        })
+    }
+
+    /// Where a point in frame pixels goes.
+    fn point(self, at: PixelPoint) -> PixelPoint {
+        let (dx, dy) = (at.x as f32 - self.pivot.0, at.y as f32 - self.pivot.1);
+        PixelPoint {
+            x: (self.pivot.0 + dx * self.cos + dy * self.sin).round() as i32,
+            y: (self.pivot.1 - dx * self.sin + dy * self.cos).round() as i32,
+        }
+    }
+
+    /// Turns `canvas`, drawn `detail` pixels to each frame pixel.
+    fn canvas(self, canvas: &mut Canvas, detail: u32) {
+        let levels = if detail == 1 { 3 } else { 0 };
+        let mut big = canvas.clone();
+        for _ in 0..levels {
+            big = scale2x(&big);
+        }
+        let up = (1 << levels) as f32;
+        let step = 1 << levels;
+        let detail = detail as f32;
+        let pivot = (self.pivot.0 * detail, self.pivot.1 * detail);
+        // Whether a pixel of the drawing as it was lies on its edge, beside something clear.
+        let source = canvas.clone();
+        let rim = |x: i32, y: i32| {
+            source.get(x, y).a > 0
+                && [(1, 0), (-1, 0), (0, 1), (0, -1)]
+                    .into_iter()
+                    .any(|(ox, oy)| source.get(x + ox, y + oy).a == 0)
+        };
+        // What is under a point of the turned canvas, before the turn, and whether it is the
+        // colour of the drawing's edge there: of an edge pixel it was scaled up from, or took a
+        // rounded corner from.
+        let under = |x: f32, y: f32| {
+            let (dx, dy) = (x - pivot.0, y - pivot.1);
+            let from_x = ((pivot.0 + dx * self.cos - dy * self.sin) * up).floor() as i32;
+            let from_y = ((pivot.1 + dx * self.sin + dy * self.cos) * up).floor() as i32;
+            let pixel = big.get(from_x, from_y);
+            let (x, y) = (from_x.div_euclid(step), from_y.div_euclid(step));
+            let edge = pixel.a > 0
+                && [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)]
+                    .into_iter()
+                    .any(|(ox, oy)| source.get(x + ox, y + oy) == pixel && rim(x + ox, y + oy));
+            (pixel, edge)
+        };
+        let (width, height) = (canvas.width() as i32, canvas.height() as i32);
+        let mut turned = Canvas::new(canvas.width(), canvas.height());
+        let mut edges = vec![false; (width * height) as usize];
+        for y in 0..height {
+            for x in 0..width {
+                let (pixel, edge) = under(x as f32 + 0.5, y as f32 + 0.5);
+                if pixel.a > 0 {
+                    turned.set(x, y, pixel);
+                    edges[(y * width + x) as usize] = edge;
+                }
+            }
+        }
+        // An outline turned at a slant can be stepped over, leaving the coat inside it on the
+        // edge of the turned drawing. Such a pixel takes the outline's colour from wherever in
+        // it the outline did pass, so the edge stays drawn all the way round.
+        if levels > 0 {
+            let mut outlined = turned.clone();
+            for y in 0..height {
+                for x in 0..width {
+                    let on_edge = turned.get(x, y).a > 0
+                        && [(1, 0), (-1, 0), (0, 1), (0, -1)]
+                            .into_iter()
+                            .any(|(ox, oy)| turned.get(x + ox, y + oy).a == 0);
+                    if !on_edge || edges[(y * width + x) as usize] {
+                        continue;
+                    }
+                    let inside = [-0.375, 0.0, 0.375];
+                    if let Some((pixel, _)) = inside
+                        .iter()
+                        .flat_map(|oy| inside.iter().map(move |ox| (*ox, *oy)))
+                        .map(|(ox, oy)| under(x as f32 + 0.5 + ox, y as f32 + 0.5 + oy))
+                        .find(|(_, edge)| *edge)
+                    {
+                        outlined.set(x, y, pixel);
+                    }
+                }
+            }
+            turned = outlined;
+        }
+        *canvas = turned;
+    }
+}
+
+/// `canvas` at twice the size by Scale2x: each pixel becomes four, and a corner takes the colour
+/// of the two neighbours it lies between when those agree and the other two do not, so a
+/// diagonal stays a line rather than becoming a staircase of squares.
+fn scale2x(canvas: &Canvas) -> Canvas {
+    let mut big = Canvas::new(canvas.width() * 2, canvas.height() * 2);
+    for y in 0..canvas.height() as i32 {
+        for x in 0..canvas.width() as i32 {
+            let p = canvas.get(x, y);
+            let (up, left, right, down) = (
+                canvas.get(x, y - 1),
+                canvas.get(x - 1, y),
+                canvas.get(x + 1, y),
+                canvas.get(x, y + 1),
+            );
+            let corner = |a: Rgba, b: Rgba, c: Rgba, d: Rgba| {
+                if a == b && a != c && b != d { a } else { p }
+            };
+            big.set(x * 2, y * 2, corner(left, up, down, right));
+            big.set(x * 2 + 1, y * 2, corner(up, right, left, down));
+            big.set(x * 2, y * 2 + 1, corner(down, left, right, up));
+            big.set(x * 2 + 1, y * 2 + 1, corner(right, down, up, left));
+        }
+    }
+    big
 }
 
 fn keep_atlas_margin(canvas: &mut Canvas) -> (i32, i32) {

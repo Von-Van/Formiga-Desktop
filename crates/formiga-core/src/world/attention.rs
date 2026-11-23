@@ -234,6 +234,11 @@ impl AttentionRuntime {
 }
 
 impl AttentionRuntime {
+    /// Whether a scene has a part for this companion, owning it or not.
+    pub(super) fn has_plan(&self, id: CreatureId) -> bool {
+        self.plans.contains_key(&id)
+    }
+
     pub fn owns(&self, id: CreatureId) -> bool {
         self.plans.get(&id).is_some_and(|p| {
             !matches!(
@@ -1243,14 +1248,22 @@ pub(super) fn point_exposed(
     supporting: Option<WindowKey>,
     desktop: &DesktopSnapshot,
 ) -> bool {
+    point_exposed_among(point, supporting, &desktop.windows)
+}
+
+/// [`point_exposed`] against a list of windows rather than a whole snapshot.
+pub(super) fn point_exposed_among(
+    point: Point,
+    supporting: Option<WindowKey>,
+    windows: &[DesktopWindow],
+) -> bool {
     let support_z = supporting.and_then(|key| {
-        desktop
-            .windows
+        windows
             .iter()
             .find(|w| w.key == key && w.visible && !w.minimized)
             .map(|w| w.z_order)
     });
-    !desktop.windows.iter().take(MAX_TOPOLOGY_WINDOWS).any(|w| {
+    !windows.iter().take(MAX_TOPOLOGY_WINDOWS).any(|w| {
         w.visible
             && !w.minimized
             && Some(w.key) != supporting

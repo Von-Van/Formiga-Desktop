@@ -8,7 +8,8 @@
 //! away, a shuffle across to the cushion — shows as it always does.
 
 use super::*;
-use formiga_core::{Beat, BeatKind};
+use crate::{COLONY_OBJECT_SIZE, PropSprite};
+use formiga_core::{Beat, BeatKind, VillageProp};
 
 /// The pose a beat strikes at this point, if it strikes one, and how far into that pose it is.
 /// Each chore has a pose of its own, so a companion watering, picking, tidying or holding up what
@@ -151,4 +152,26 @@ pub(super) fn beat_gaze(creature: &Creature, beat: Beat) -> Option<GazeDirection
             face::axis_direction(target.y - (creature.state.position.y - 28.0), 10.0),
         )
     })
+}
+
+/// What a companion holding `prop` through a village beat has in its paw in `frame` of `clip`:
+/// the cell drawn centred on the paw, and, while a pour has the can tipped over, where the water's
+/// cell is centred, as an offset in art pixels from the can's middle with the frame facing right.
+/// The can tips on the first frame the pour leans into and comes level when the pour does, and
+/// the water runs from its spout for just those frames; nothing else held pours.
+pub fn village_held(
+    prop: VillageProp,
+    clip: BodyClip,
+    frame: u8,
+) -> (PropSprite, Option<(i32, i32)>) {
+    let pouring = prop == VillageProp::WateringCan
+        && clip == BodyClip::Gesture(Gesture::Pour)
+        && pour_tip(frame) > 0;
+    if !pouring {
+        return (PropSprite::of(prop), None);
+    }
+    let can = PropSprite::WateringCanTipped;
+    let half = COLONY_OBJECT_SIZE as i32 / 2;
+    let water = can.spout().map(|(x, y)| (x - half, y - half));
+    (can, water)
 }

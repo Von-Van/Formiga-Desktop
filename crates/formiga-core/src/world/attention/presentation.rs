@@ -36,12 +36,23 @@ pub(super) fn present(
 /// What is actually moving the creature decides this, rather than its velocity: an approach that
 /// has just handed over to a journey leaves the last stride on the books for a while, and a
 /// creature standing perfectly still at the edge of a gap is not travelling anywhere.
+///
+/// The one pose struck over travel is a climb's mantle, which is the journey's own and is the
+/// travel: it shows while the journey hauls the creature up and steps it in, and with reduced
+/// motion as well, where it holds still on the push up.
 pub(super) fn body_free(
     creature: &Creature,
     plan: &Reaction,
     reduced_motion: bool,
     held: bool,
 ) -> bool {
+    if creature
+        .state
+        .attention
+        .is_some_and(|pose| pose.gesture == Some(Gesture::Mantle))
+    {
+        return true;
+    }
     let planted = matches!(
         creature.state.action,
         ActionKind::Idle
