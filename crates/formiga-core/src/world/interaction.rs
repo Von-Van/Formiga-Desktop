@@ -227,6 +227,15 @@ impl World {
         // from then on. Only a cancelled catch goes back to where it was last safe; putting it
         // there at the catch left it a throw's length from the cursor for the whole carry.
         let caught_in_flight = interrupted_toss.is_some();
+        // Picked up partway through topping out a climb, it lets go of the mantle there and then.
+        if interrupted_journey
+            && creature
+                .state
+                .attention
+                .is_some_and(|pose| pose.gesture == Some(Gesture::Mantle))
+        {
+            creature.state.attention = None;
+        }
         if interrupted_journey || caught_in_flight {
             if !caught_in_flight {
                 creature.state.position = original_position;

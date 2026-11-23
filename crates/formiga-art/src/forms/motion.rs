@@ -77,7 +77,7 @@ impl Intent {
                 G::Groom => Self::Idle,
                 G::Shake => Self::React,
                 G::Sniff => Self::Inspect,
-                G::Skip | G::Trudge => Self::Move,
+                G::Skip | G::Trudge | G::Mantle | G::Leap => Self::Move,
                 G::Pour | G::Pluck | G::Tend => Self::Inspect,
                 G::Bask => Self::React,
                 G::Nibble | G::Chomp | G::Chew | G::Gulp => Self::Inspect,
@@ -148,6 +148,42 @@ pub(crate) fn pose(plan: Plan, clip: BodyClip, frame: u8, reduce_motion: bool) -
     let half = (t * TAU * 2.0).sin();
     let locomotion = plan.locomotion();
     let mut pose = Pose::default();
+    // Thrown, it comes down to being held like any other plan does, but is drawn balled up in
+    // the air instead of hanging from the scruff: legs folded under, head tucked, tail and fins
+    // drawn in. The renderer turns the second frame a little, so it tumbles.
+    if clip.body() == BodyClip::Action(ActionKind::Tossed) {
+        pose.crouch = 1.0;
+        pose.nod = 2.0;
+        pose.sway = -1.0;
+        pose.paddle = -0.5;
+        return pose;
+    }
+    // In the air on a hop: the whole figure up off its ground with every foot drawn up, stretched
+    // out nose first, the tail trailing and the ears back, then levelling out to come down.
+    if clip == BodyClip::Gesture(Gesture::Leap) {
+        let rising = frame % 2 == 0;
+        pose.lift = if rising { 3.0 } else { 2.0 };
+        pose.raise = [1.0; 4];
+        pose.step = if rising {
+            [1.5, -1.5, 1.5, -1.5]
+        } else {
+            [0.5, -0.5, 0.5, -0.5]
+        };
+        pose.sway = if rising { -1.0 } else { 1.0 };
+        pose.perk = -1.0;
+        pose.paddle = 1.0;
+        pose.spread = 0.6;
+        pose.tip = if rising { 0.08 } else { -0.04 };
+        return pose;
+    }
+    // Carried: hanging from the scruff, still, the legs and tail hanging straight down.
+    if clip.body() == BodyClip::Action(ActionKind::Dragged) {
+        pose.held = true;
+        pose.sway = -1.0;
+        pose.spread = 0.3;
+        pose.tip = 0.08;
+        return pose;
+    }
     match intent {
         Intent::Idle => {
             // A slow breath, the tail drifting, and the ears pricked once a loop.

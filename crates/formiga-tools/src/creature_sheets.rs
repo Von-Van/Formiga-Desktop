@@ -231,11 +231,54 @@ pub fn animation_preview(path: PathBuf, seed_number: u64) -> Result<()> {
     seed.copy_from_slice(&Sha256::digest(seed_number.to_le_bytes()));
     let world = World::new(seed, OffsetDateTime::UNIX_EPOCH, &fixture_desktop());
     let creature = &world.save.creatures[0];
+    let shadows = formiga_art::ContactShadow::sheet();
+    let baseline = CreatureRenderer::resting_baseline(&creature.appearance, true);
     for (row, action) in ActionKind::ALL.into_iter().enumerate() {
         let spec = formiga_art::AnimationSpec::for_action(action);
         for frame in 0..spec.frames {
-            let rendered =
-                CreatureRenderer::render_frame(&creature.appearance, action, frame, true);
+            let picture = CreatureRenderer::render_frame(&creature.appearance, action, frame, true);
+            // Each frame on the shadow the overlay lays under it where it stands. Carried, thrown,
+            // hanging and climbing, its shadow is on whatever is below it instead, which is not
+            // in a frame.
+            let mut rendered = formiga_art::Canvas::new(FRAME_SIZE, FRAME_SIZE);
+            if !matches!(
+                action,
+                ActionKind::Dragged
+                    | ActionKind::Tossed
+                    | ActionKind::Dangle
+                    | ActionKind::ClimbWindow
+            ) {
+                let body =
+                    CreatureRenderer::render_body_frame(&creature.appearance, action, frame, true)
+                        .canvas;
+                let contact = -formiga_art::FramePlacement::for_action(action, baseline).origin_y;
+                let bottom = body
+                    .alpha_bounds()
+                    .map_or(contact, |(_, _, _, bottom)| bottom as i32 + 1);
+                if let Some(shadow) = formiga_art::ContactShadow::feet(&body).and_then(|feet| {
+                    formiga_art::ContactShadow::under(feet, (contact - bottom).max(0) as f32)
+                }) {
+                    let cell = shadow.cell(formiga_art::ShadowGround::Desktop);
+                    let top = contact - formiga_art::ShadowGround::Desktop.above_contact() as i32;
+                    for y in 0..cell.height {
+                        for x in 0..cell.width {
+                            rendered.set(
+                                shadow.left() as i32 + x as i32,
+                                top + y as i32,
+                                shadows.get((cell.x + x) as i32, (cell.y + y) as i32),
+                            );
+                        }
+                    }
+                }
+            }
+            for y in 0..FRAME_SIZE as i32 {
+                for x in 0..FRAME_SIZE as i32 {
+                    let pixel = picture.get(x, y);
+                    if pixel.a > 0 {
+                        rendered.set(x, y, pixel);
+                    }
+                }
+            }
             blit_scaled(
                 &mut pixels,
                 width,

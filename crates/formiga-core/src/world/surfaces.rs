@@ -377,6 +377,44 @@ pub(super) fn support_below(
         .min_by(|a, b| a.0.y.total_cmp(&b.0.y))
 }
 
+/// Where the ground is straight down from `point` on `monitor`: the height of the first exposed
+/// window ledge or habitat floor at or just above it, in desktop points, or `None` when nothing
+/// under it would catch a creature.
+///
+/// Only the art asks this, to lay a companion's shadow on whatever it would come down on while
+/// it is in the air — thrown, hopping between ledges or hanging from one. It looks down the same
+/// column [`support_below`] does, at the same surfaces a landing would choose from, and changes
+/// nothing.
+pub fn ground_below(
+    point: Point,
+    monitor: &MonitorInfo,
+    windows: &[DesktopWindow],
+    settings: &Settings,
+) -> Option<f32> {
+    let regions = accessible_regions(&settings.habitat, monitor);
+    let windows = if settings.window_ledges {
+        &windows[..windows.len().min(MAX_TOPOLOGY_WINDOWS)]
+    } else {
+        &[]
+    };
+    supports_on(windows, &regions, monitor.id)
+        .filter(|span| span.y >= point.y - 1.0 && span.covers(point.x))
+        .filter(|span| match span.window {
+            // A ledge buried under another window is not ground anything could come down on.
+            Some(key) => super::attention::point_exposed_among(
+                Point {
+                    x: point.x,
+                    y: span.y - 1.0,
+                },
+                Some(key),
+                windows,
+            ),
+            None => true,
+        })
+        .map(|span| span.y)
+        .min_by(f32::total_cmp)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

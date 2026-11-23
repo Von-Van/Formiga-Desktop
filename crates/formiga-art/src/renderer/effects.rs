@@ -17,11 +17,7 @@ pub(super) fn draw_effects(
         i32::from(frame % 2)
     };
     match action {
-        ActionKind::Sleep => {
-            let x = (face.x + 7).min(43);
-            let y = (face.y - 8 - pulse).max(3);
-            draw_z(canvas, x, y, palette.accent);
-        }
+        ActionKind::Sleep => draw_sleep_z(canvas, face, palette.accent, frame, reduce_motion),
         ActionKind::InvestigateCursor => {
             let x = (face.x + 7).min(44);
             let y = (face.y - 6 - pulse).max(3);
@@ -73,8 +69,9 @@ pub(super) fn draw_effects(
             canvas.line(face.x - 7, y + 2, face.x - 9, y, 1, palette.accent);
             canvas.line(face.x + 7, y + 2, face.x + 9, y, 1, palette.accent);
         }
+        // A glint of effort on each pull (see `Pose::climb`).
         ActionKind::ClimbWindow => {
-            if !reduce_motion && frame.is_multiple_of(2) {
+            if !reduce_motion && frame % 3 == 1 {
                 canvas.set((face.x + 8).min(45), (face.y - 5).max(2), palette.highlight);
             }
         }
@@ -121,9 +118,7 @@ pub(super) fn draw_gesture_effects(
         Gesture::Sit | Gesture::Scoot => {}
         // Asleep however it lies, the same little z as a curled sleeper's.
         Gesture::Sprawl | Gesture::Loaf => {
-            let x = (face.x + 7).min(43);
-            let y = (face.y - 8 - pulse).max(3);
-            draw_z(canvas, x, y, palette.accent);
+            draw_sleep_z(canvas, face, palette.accent, frame, reduce_motion);
         }
         // Flecks thrown off either side, on the side it has just shaken toward.
         Gesture::Shake => {
@@ -198,6 +193,12 @@ pub(super) fn draw_gesture_effects(
             let y = (face.y - 6 + pulse).clamp(3, 41);
             canvas.set(x, y, palette.highlight);
             canvas.fill_rect(x - 1, y + 1, 3, 2, palette.highlight);
+        }
+        // A glint of effort on the push, as on each pull of the climb before it.
+        Gesture::Mantle => {
+            if !reduce_motion && frame == 1 {
+                canvas.set((face.x + 8).min(45), (face.y - 5).max(2), palette.highlight);
+            }
         }
         Gesture::Heave => {
             if frame % 4 >= 2 {
@@ -277,6 +278,7 @@ pub(super) fn draw_gesture_effects(
         // viewer it is interested; the pose has to say that by itself.
         Gesture::Cover
         | Gesture::Crouch
+        | Gesture::Leap
         | Gesture::Balance
         | Gesture::Reach
         | Gesture::Watch
@@ -307,6 +309,32 @@ pub(super) fn draw_motif(canvas: &mut Canvas, motif: EffectMotif, x: i32, y: i32
             canvas.set(x, y - 1, color);
         }
     }
+}
+
+/// How far a sleeper's z has drifted up from where it starts beside the head, and how strongly it
+/// is drawn, on each frame of one breath: it rises a pixel a frame and fades as it goes, and the
+/// next breath starts a new one.
+const SLEEP_Z: [(i32, u8); 4] = [(0, 255), (1, 205), (2, 145), (3, 85)];
+
+/// The little z over a sleeper's head, however it lies: rising three pixels and fading across a
+/// breath, and with motion reduced held still and solid where it starts. It never rises into the
+/// frame's top row, where the margin the atlas keeps would move the whole picture down.
+pub(super) fn draw_sleep_z(
+    canvas: &mut Canvas,
+    face: PixelPoint,
+    colour: Rgba,
+    frame: u8,
+    reduce: bool,
+) {
+    let (rise, alpha) = if reduce {
+        SLEEP_Z[0]
+    } else {
+        SLEEP_Z[usize::from(frame % 4)]
+    };
+    let x = (face.x + 7).min(43);
+    let y = ((face.y - 8).max(3) - rise).max(1);
+    let a = (u16::from(colour.a) * u16::from(alpha) / 255) as u8;
+    draw_z(canvas, x, y, Rgba { a, ..colour });
 }
 
 /// A sleeper's z, four pixels square so it reads as a Z: a bar across the top, a stroke from its
