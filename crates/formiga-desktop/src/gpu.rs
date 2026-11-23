@@ -197,6 +197,9 @@ pub struct OverlayUi<'a> {
     pub wonders: &'a [WonderView],
     /// The train, while the colony is getting on or off it.
     pub train: Option<TrainView>,
+    /// How far, in desktop points, to carry each rider along from where its window was last
+    /// read, while that window is being dragged (`app::rides`). Placement only.
+    pub carried: &'a [(CreatureId, Point)],
 }
 
 /// What the village is up to this frame beyond where everyone stands: the houses somebody is
@@ -324,6 +327,8 @@ pub struct OverlayRenderer {
     rope: Option<RopeGpu>,
     /// Every contact shadow's width, made the first time a companion is drawn and kept.
     shadow_sheet: Option<HeldSheetGpu>,
+    /// This frame's `OverlayUi::carried`: riders carried along on a dragged window.
+    carried: Vec<(CreatureId, Point)>,
     /// Each kind of wonder out on this display, at most one of each.
     wonders: Vec<WonderGpu>,
     /// The train's frames, while a trip is on this display.
@@ -606,6 +611,7 @@ impl OverlayRenderer {
             trinkets: None,
             rope: None,
             shadow_sheet: None,
+            carried: Vec::new(),
             wonders: Vec::new(),
             train: None,
             tree_vertex_cache_key: None,
@@ -761,10 +767,24 @@ impl OverlayRenderer {
         self.sprites.get(&id)
     }
 
+    /// Where a creature stands this frame, in desktop points: where the world put it, carried
+    /// along by its window's last measured motion while the window is being dragged.
+    pub(super) fn placed(&self, creature: &Creature) -> Point {
+        let mut position = creature.state.position;
+        if let Some((_, offset)) = self.carried.iter().find(|(id, _)| *id == creature.id) {
+            position.x += offset.x;
+            position.y += offset.y;
+        }
+        position
+    }
+
     pub(super) fn drawn_contact(&self, creature: &Creature, display_scale: u8) -> (f32, f32) {
-        let drawn = creature
-            .state
-            .drawn_position(f32::from(display_scale) / self.monitor.scale_factor.max(1.0));
+        let placed = self.placed(creature);
+        let points_per_pixel = f32::from(display_scale) / self.monitor.scale_factor.max(1.0);
+        let drawn = Point {
+            x: placed.x,
+            y: placed.y - creature.state.depth * points_per_pixel,
+        };
         (
             self.snap((drawn.x - self.monitor.bounds.x) * self.monitor.scale_factor),
             self.snap((drawn.y - self.monitor.bounds.y) * self.monitor.scale_factor),
@@ -781,6 +801,8 @@ impl OverlayRenderer {
         ui: OverlayUi<'_>,
     ) -> Result<()> {
         self.apply_render_divisor(save.settings.display_scale);
+        self.carried.clear();
+        self.carried.extend_from_slice(ui.carried);
         self.update_occlusion_cache(save, windows);
         let monitor_fully_occluded = rects_cover(self.monitor.bounds, &self.occlusion_rects);
         let occlusion = self.occlusion_uniform(&self.occlusion_rects);
@@ -1476,6 +1498,7 @@ impl OverlayRenderer {
         let shadow = grounds
             .spot(
                 creature,
+                self.placed(creature),
                 sprite.silhouette[slot as usize].1,
                 (local_x, contact_y),
                 frame_top,

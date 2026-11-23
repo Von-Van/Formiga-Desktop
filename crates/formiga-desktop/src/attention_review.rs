@@ -2,7 +2,8 @@
 use crate::review_sheet::over;
 use formiga_art::{
     AnimationSpec, BodyClip, BodyPresentation, Canvas, CreatureRenderer, ExpressionKind,
-    FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement, GazeDirection, PixelPoint, Rgba,
+    FACE_FRAME_SIZE, FRAME_SIZE, FaceRenderState, FramePlacement, GazeDirection, OUTLINE_RIM,
+    PixelPoint, Rgba,
 };
 use formiga_core::*;
 use time::{Duration, macros::datetime};
@@ -1444,8 +1445,9 @@ fn a_carried_prop_is_held_in_front_of_every_body_plan_in_both_facings() {
 /// R05.4: the optional outline, on wallpaper busy enough to need it.
 ///
 /// Plain and outlined side by side at each zoom, over a checker that alternates far lighter and
-/// far darker than the coat. The edge has to stay one pixel and stay soft, and the gaps that
-/// carry the shape — between limbs, beside ears — have to stay open rather than close into it.
+/// far darker than the coat. The dark edge has to stay one pixel and stay soft, its pale rim one
+/// pixel further out and no further (and never under the feet), and the gaps that carry the
+/// shape — between limbs, beside ears — have to stay open rather than close into it.
 #[test]
 fn the_optional_outline_stays_a_soft_single_pixel_edge_at_every_scale() {
     const CELL_W: i32 = 208;
@@ -1480,13 +1482,32 @@ fn the_optional_outline_stays_a_soft_single_pixel_edge_at_every_scale() {
         let edged_bounds = edged
             .alpha_bounds()
             .expect("an outlined companion is visible");
-        for (before, after, edge) in [
-            (plain_bounds.0, edged_bounds.0, "left"),
-            (plain_bounds.1, edged_bounds.1, "top"),
-            (edged_bounds.2, plain_bounds.2, "right"),
-            (edged_bounds.3, plain_bounds.3, "bottom"),
+        // The dark edge alone: the outline less its pale rim.
+        let mut ring = edged.clone();
+        for py in 0..FRAME_SIZE as i32 {
+            for px in 0..FRAME_SIZE as i32 {
+                let pixel = ring.get(px, py);
+                if (pixel.r, pixel.g, pixel.b) == (OUTLINE_RIM.r, OUTLINE_RIM.g, OUTLINE_RIM.b) {
+                    ring.set(px, py, Rgba::new(0, 0, 0, 0));
+                }
+            }
+        }
+        let ring_bounds = ring
+            .alpha_bounds()
+            .expect("an outlined companion is visible");
+        for (before, ring, after, edge, reach) in [
+            (plain_bounds.0, ring_bounds.0, edged_bounds.0, "left", 2),
+            (plain_bounds.1, ring_bounds.1, edged_bounds.1, "top", 2),
+            (plain_bounds.2, ring_bounds.2, edged_bounds.2, "right", 2),
+            (plain_bounds.3, ring_bounds.3, edged_bounds.3, "bottom", 1),
         ] {
-            if before.abs_diff(after) > 1 {
+            if before.abs_diff(ring) > 1 {
+                faults.push(format!(
+                    "{label}: the dark edge reaches {} px past the {edge} edge",
+                    before.abs_diff(ring)
+                ));
+            }
+            if before.abs_diff(after) > reach {
                 faults.push(format!(
                     "{label}: the outline reaches {} px past the {edge} edge",
                     before.abs_diff(after)

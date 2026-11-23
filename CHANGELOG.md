@@ -166,6 +166,21 @@ All notable changes are documented here.
   turning round while it rests or walks passes through the settle for one tick on the turn.
   Reduced motion holds each pose still as before and never bridges. Nothing is saved; a
   companion's textures grow by one row of cells, from 1.70 MB to 1.80 MB.
+- A companion standing on a window you drag now glides along with it instead of being left behind
+  and jumping after it a body's length or more two or three times a second. Between the moments the
+  app reads where windows are, it carries the rider on at the speed the window was last measured
+  moving, for as long as the pointer keeps dragging, and the next read sets it exactly back on its
+  ledge. While a rider's window is moving the overlay is drawn twenty times a second, and the window
+  list is read on time four times a second rather than every 400 ms when the colony ticks slowly.
+  Only where the rider is drawn changes: what it does, the colony file and where it can be grabbed
+  are untouched, and nothing more is read than the window rectangles and the pointer.
+- The optional creature outline is now two-tone, so it shows on dark wallpaper too: the soft dark
+  edge is ringed by a faint pale rim one pixel further out, which is nearly invisible on light
+  wallpaper and is what you see on dark. The rim stops at the feet, so the shadow underneath stays
+  dark. The setting reads "Outline creatures for busy or dark wallpaper". It is baked into the
+  sprite pixels the outline already used, so it costs no texture and no frame time.
+  `formiga-tools ui-sheet` shows three coats plain and outlined on light, dark, near-black and busy
+  wallpaper.
 
 ### Fixed
 

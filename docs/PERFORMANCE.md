@@ -1152,3 +1152,38 @@ Every width of both shadows, the desktop's and the village ground's, is one 48×
 companion's own atlases are unchanged: the reference companion's are 1,704,960 bytes before and
 after, and its frames 213, because a frame's feet are measured from the frame already rendered
 for the atlas and kept as two bytes per frame beside its silhouette rows.
+
+## Riders on a dragged window, and the two-tone outline
+
+### Frames
+
+A rider on a window being dragged used to be drawn at its resting clip's 4 Hz, and the window list
+under it was read on every second 200 ms tick, every 400 ms. Replaying the app's own tick, read and
+frame schedule headlessly (`app::rides` tests) with a window dragged at 300, 600 and 1200 points a
+second, the rider was drawn about four times a second and jumped 120, 240 and 480 points between
+frames, up to 60, 120 and 240 points behind its window. Now a tick is brought forward to each
+quarter-second read, the colony is drawn at 20 Hz while a rider's window is moving, and the rider is
+carried along between reads: once the window's motion has been measured it moves 15, 30 and 60
+points a frame, exactly as far as the window does, and is drawn within a point of it. The first
+quarter second of a drag, before any read has seen the window move, still jumps as before, and a
+window eased to a stop over 0.3 s carries its rider 17, 34 and 68 points past where it stops until
+the next read sets it back; a sudden stop carries it no further, because the carry stops with the
+pointer.
+
+Those frames are the cost: about sixteen more a second than the rider's resting clip asks for, at
+about 2 ms of process CPU each, so roughly 3% of one core for as long as a window with somebody on it
+is being dragged and a quarter second after. The read alignment adds at most four wakeups a second,
+only while somebody is on a window that could be moving. Per frame, the carry is a list of at most
+six offsets and a short search of it per drawn companion. Live process CPU was not measured.
+
+### The simulation
+
+`World::tick` is unchanged: `World::ride_drift` is read by the desktop when it draws and schedules,
+from the velocity `world/rides.rs` already keeps, so `tick-bench` was not run.
+
+### Textures
+
+The outline's pale rim is baked into the pixels the outlined frames already have: the reference
+companion's atlases are 1,704,960 bytes before and after, outlined or not, with the same 160 body
+cells. Baking an outlined atlas takes about 12 ms where it took 9 (release build, the budget test's
+companion), once per bake.

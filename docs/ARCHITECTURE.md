@@ -1039,6 +1039,30 @@ companion on its shadow on light, dark and busy wallpaper, on a window's top and
 grass, stepping, asleep, landing, hopping and carried, and `animation-preview` draws every frame on
 the shadow it stands on.
 
+### Riders on a dragged window
+
+The window list is read four times a second while a window could be moving under somebody
+(`cadence::FREQUENT_WINDOW_READ`), and the world stands a rider wherever its window was at the last
+read. A window being dragged at a few hundred points a second moves a body's length or more between
+reads, so the overlay carries each rider along between them (`app/rides.rs`): by the velocity
+`World::ride_drift` reports — the motion `world/rides.rs` measured at the rider's own contact over
+the last two reads, offered only while the latest read still found the window moving and the rider
+is on its ledge rather than mid-hop, thrown or carried — times the time since the read that the
+button has been held and the pointer has been moving. A window being dragged moves only while its
+pointer does, so a rider stops where its window stops rather than running on past it; the carry is
+never more than one read's interval, and the next read sets the rider exactly back on its window.
+The offsets reach the renderer as `OverlayUi::carried`, and `OverlayRenderer::placed` adds them to
+where the body, face, held things, bubbles and shadow are drawn. Nothing else moves: the world, the
+save and the grab windows keep the read position, and nothing is read but the window rectangles and
+the pointer the app already reads.
+
+Two cadence rules make room for it. A colony ticking every 200 ms would take its quarter-second
+read only on every second tick, so `cadence::tick_interval_for_reads` brings a tick forward to when
+a read is due, at most four wakeups a second, only while somebody is on a window that could be
+moving. And while anyone stands on a window the reads find moving, the colony counts as moving
+(`world_has_spatial_motion`) and is drawn at 20 Hz, where a rider at rest on its ledge is drawn at
+its clip's 4 Hz and the carry would have no frames to be seen in.
+
 ## The creature menu
 
 A secondary click on a creature's existing interaction proxy opens one small strip above its head.
@@ -2628,7 +2652,9 @@ remain minis.
   the last: a resident setting off from rest is drawn from its first step, where before it could
   walk half a second unseen on its resting schedule and seem to freeze and then jump.
 - Full-screen or empty monitor overlays stop presenting until they become visible or dirty again.
-- Window geometry: 4 Hz while active, 1 Hz at rest.
+- Window geometry: 4 Hz while active, 1 Hz at rest. A tick is brought forward to a 4 Hz read that
+  falls due before it, and while a rider's window is moving the overlay draws at 20 Hz and carries
+  the rider between reads (see "Riders on a dragged window").
 - Behavior selection: action boundaries, capped at 2 Hz. The most expensive question an action
   asks — whether there is a window ledge within reach — is answered there, at the boundary that
   reads it, rather than for every creature on every tick of an action already under way.
@@ -2922,7 +2948,15 @@ variant — the variant number itself is the stable identifier — recording the
 date, the finder, and the finder's name at that time, so a record still reads after that companion
 leaves without retaining a copy of the creature. **Appearance preferences** are the theme choice,
 a text scale from 100 to 150 percent, and the optional sprite outline; they affect only the
-settings window and the baked sprite atlas, never behavior. A **routine schedule** is an opt-in
+settings window and the baked sprite atlas, never behavior. The outline is two-tone
+(`CreatureRenderer::outline_frame`): a soft dark ring hugging the silhouette, the full pixels at
+about 60% and the corners softer, and one edge's width outside it a faint pale rim
+(`OUTLINE_RIM`, under 40%), rounded the same way. On pale wallpaper the rim is nearly the colour of
+the wallpaper and the dark ring does the work; on dark wallpaper, where the ring disappears, the rim
+is what shows. No rim is drawn below the frame's lowest drawn row, so it never lightens the contact
+shadow under the feet. Both come from the frame's own alpha, are baked into the atlas pixels the
+frame already has, and change no cell, texture size or hit mask; `formiga-tools ui-sheet` shows
+three coats plain and outlined on light, dark, near-black and busy wallpaper. A **routine schedule** is an opt-in
 list of at most fourteen `ScheduledTransition` rows, each a weekday bitmask, a local minute, and
 which of the two saved presets to move to. Migration from v13 leaves every one of them empty:
 nothing is derived from a legacy discovery count, and no earlier identity, bond, recipe, setting,

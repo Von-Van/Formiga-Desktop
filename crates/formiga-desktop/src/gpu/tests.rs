@@ -1787,6 +1787,7 @@ fn drawn_shadow(
     let quad = grounds
         .spot(
             creature,
+            creature.state.position,
             atlas.silhouette[slot].1,
             (local_x, contact_y),
             frame_top,
