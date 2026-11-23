@@ -458,7 +458,7 @@ impl OverlayRenderer {
         let (local_x, contact_y) = self.drawn_contact(creature, display_scale);
         let placement = FramePlacement::for_creature(creature, sprite.resting_baseline);
         let frame_top = contact_y + placement.origin_y as f32 * scale;
-        let BodyPresentation { clip, frame, .. } = BodyPresentation::for_creature(creature);
+        let BodyPresentation { clip, frame, .. } = self.presented(creature);
         // Mirroring a frame never changes which rows it fills, so one silhouette serves both ways.
         let (top, bottom) = sprite
             .silhouette

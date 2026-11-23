@@ -56,12 +56,17 @@ use generation::*;
 use habits::*;
 use interaction::*;
 use journeys::*;
+pub use journeys::{
+    CLIMB_FRAMES_PER_SECOND, CLIMB_STROKE_FRAMES, MANTLE_FRAMES_PER_SECOND, MANTLE_HAUL_FRAMES,
+    climb_grip_reach,
+};
 use movement::*;
 use objects::*;
 pub(crate) use objects::{scheduled_colony_object_at, scheduled_village_unlock_at};
 pub(crate) use rituals::scheduled_ritual_at;
 use rituals::*;
 use surfaces::SurfaceMemory;
+pub use surfaces::ground_below;
 pub use undo::{ColonyEdit, UndoError};
 pub use village_paths::PATH_DEPTH as VILLAGE_PATH_DEPTH;
 pub use wonders::{WonderPose, wonder_length, wonder_motion, wonder_poses};
@@ -95,6 +100,8 @@ pub struct World {
     observation_elapsed: f32,
     projected_events: usize,
     sleep_elapsed: BTreeMap<CreatureId, f32>,
+    /// Which way each creature ended the last tick facing, and for how long, so a turn is held.
+    facing_holds: BTreeMap<CreatureId, FacingHold>,
     action_choices: BTreeMap<CreatureId, ActionChoice>,
     bond_plans: BTreeMap<CreatureId, BondPlan>,
     calm_proximity_seconds: BTreeMap<(CreatureId, CreatureId), u16>,
@@ -437,6 +444,7 @@ impl World {
             observation_elapsed: 0.0,
             projected_events: 0,
             sleep_elapsed: BTreeMap::new(),
+            facing_holds: BTreeMap::new(),
             action_choices: BTreeMap::new(),
             bond_plans: BTreeMap::new(),
             calm_proximity_seconds: BTreeMap::new(),
@@ -494,6 +502,7 @@ impl World {
         // Last, once everyone has got wherever this tick takes them. Paused, everyone holds the
         // pose they were in: no blink, glance or settling comes round while the colony is still.
         let presence_dt = if self.save.settings.paused { 0.0 } else { dt };
+        self.carry_facing(presence_dt);
         self.carry_presence(presence_dt, desktop);
         self.carry_meals(now, dt);
         self.carry_play(now, dt);
@@ -600,7 +609,13 @@ impl World {
                         );
                         if !route.is_empty() {
                             let first = route.remove(0);
-                            let mut journey = build_route_hop_journey(creature, first, desktop);
+                            let mut journey = build_route_hop_journey(
+                                creature,
+                                first,
+                                desktop,
+                                &self.save.settings.habitat,
+                                self.save.settings.display_scale,
+                            );
                             if let WindowJourney::Climb(climb) = &mut journey {
                                 climb.elapsed = -0.7;
                             }
@@ -664,6 +679,9 @@ impl World {
             self.project_events(timeline_now);
             return;
         }
+        // Before anything moves anyone: the journeys that carry their creatures on this tick
+        // strike their poses again as they do.
+        self.let_go_of_journey_poses();
         if home_active {
             self.advance_village_moment(dt);
             self.advance_wonders(dt, desktop, true);

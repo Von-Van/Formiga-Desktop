@@ -112,6 +112,9 @@ fn eat_crumbs_fall_to_the_ground_over_two_frames() {
         floor: 42,
         ground: 45,
         forward: 1,
+        face: PixelPoint { x: 30, y: 22 },
+        crown: PixelPoint { x: 30, y: 14 },
+        paw: false,
     };
     let crumbs = |frame: u8| {
         let mut canvas = Canvas::new(FRAME_SIZE, FRAME_SIZE);

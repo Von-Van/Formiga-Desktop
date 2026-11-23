@@ -37,7 +37,7 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Cursor invitation 24-point, 1.5-second, and 25-points/second boundaries plus pause/hidden clearing | CI | CI |
 | Four-hop window-graph cap, deterministic tier routing, and preference scoring bounds | CI | CI |
 | Exact 10–28-point narrow-gap classification, support validation, and immediate geometry cancellation | CI | CI |
-| Squeeze traversal-atlas reuse, 0.72× body/face scaling, and stable routine codes 0–23 | CI | CI |
+| A squeeze shows its own two-frame clip on every kind of body, moving or stopped in the gap: pinched to at most 0.82 of the narrowest stride with the face drawn in and nothing drawn over it, the feet shuffling, held under reduced motion, the grab mask exactly the drawn frame; stable routine codes 0–23 | CI | CI |
 | Deterministic 3–7-day object scheduling, one-after-downtime behavior, eight-object cap, and stable IDs | CI | CI |
 | Eight-kind object-atlas determinism/alpha coverage, habitat recovery, cached static quads, and `+0.25` utility cap | CI | CI |
 | Deterministic 4–9-day decoration scheduling, one-after-downtime behavior, six-unique-kind cap, and canonicalization | CI | CI |
@@ -116,7 +116,7 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Continuous upward traverse/climb/mantle, downward hops, and route interruption | CI | CI |
 | Raised dangling GPU/proxy handhold placement contract | CI | CI |
 | A hundred and sixty deterministic keepsakes, each its own object with a glint, readable inside its own cell and clear of the eyes; the original sixteen keep their numbers, names and circumstances | CI | CI |
-| Exactly 147 body frames (92 action, 55 gesture) with a slot each; frames and faces that come out alike share a cell, and every slot is drawn from a cell holding exactly its frame, with and without reduced motion; the same atlas byte for byte on every bake; 1,797,120 bytes a companion at most and a full colony under 15 MiB; the layered atlas at or below 4,500,000 bytes | CI | CI |
+| Exactly 240 body frames (110 action, 130 gesture) with a slot each; frames and faces that come out alike share a cell, and every slot is drawn from a cell holding exactly its frame, with and without reduced motion; the same atlas byte for byte on every bake; 2,626,560 bytes a companion at most and a full colony under 16 MiB; the layered atlas at or below 4,500,000 bytes | CI | CI |
 | One limb per side: a raised paw or wing leaves no resting nub or folded wing behind, and winged bodies reach with their wings | CI | CI |
 | Every action and gesture keeps one connected body and the reserved face on every body plan at extreme sizes | CI | CI |
 | Eighteen gestures are distinct, moving, in-frame poses on every body, the yawn among them; only an attention gesture replaces the action clip; covering the face closes the eyes | CI | CI |
@@ -154,6 +154,8 @@ Automated checks are the baseline, not a substitute for native desktop testing.
 | Postcards: every scene deterministic, opaque, and different from the others for a colony of one and of six; everyone in the picture, in order, inside the frame; a caption changes only the lines under the picture and is written without control characters, folded and cut to sixty characters; a cancelled export writes nothing, a sent one has no text chunks, names, or caption bytes, and a filename naming only the scene; the Home page picks a scene and a caption and uploads nothing | CI | CI |
 | Resting: a six-frame loop with at least four postures on every body plan, the settle alone under reduced motion, both sides and both manners reached by generated companions, and no faster than the clip it replaced | CI | CI |
 | Ground line: every standing clip stands on one row, for the classic families and 64 modular seeds, with and without reduced motion | CI | CI |
+| A hop crouches where it stands, then is in the air for the whole flight, rising and then coming down, then lands; the landing is held, ending on the frame a rest starts from; a leap has two frames of its own on every body; being carried does not bob, and a pick-up mid-hop is no longer a hop | CI | CI |
+| A toss has two tucked frames of its own on every kind of body — an original family, each modular plan, the Echo Fox and a sculpted form — unlike any frame of being carried and unlike each other, the second the first turned with no new colour; held still under reduced motion; eyes shut | CI | CI |
 | Bubbles on transitions: a music note over every companion that joins a game and over none of its watchers; a Z over a companion as it drops off, by any route into a nap, and over nobody still standing | CI | CI |
 | Updates folder: installers for the running version or an earlier one, and part-finished downloads untouched for a day, are cleared at start; later installers, other files, and names that are not Formiga's own are kept | CI | CI |
 | Stroll cadence: a stroll at home, a walk home, and movement out on the desktop all tick and draw at 20 Hz, and a resting colony is redrawn three times a second | CI | CI |
@@ -245,7 +247,8 @@ How to read them:
 - `body-plans-and-scales.png`, `anchors-by-body-plan.png`, `prop-handoff.png`,
   `outline-on-busy-wallpaper.png`, and `narrow-gaps-and-short-ledges.png` — every body plan at Small,
   Medium, and Large, adult and mini; feet and grips against a drawn contact line; a carried prop in
-  both facings; the optional outline over a busy checker; and squeezes and short ledges.
+  both facings; the optional outline over a busy checker; and squeezes, in their pinched frames,
+  and short ledges.
 
 The sheets were reviewed for this release. `attention-stages.png` and
 `spectator-reactions.png` show the watcher expressions as genuinely distinct: eye openness,
