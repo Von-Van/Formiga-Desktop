@@ -81,6 +81,10 @@ fn two_creature_world(seed: [u8; 32], created: OffsetDateTime) -> World {
     world.tick(now, 0.05, &desktop);
     let_colony_wander(&mut world, now);
     world.pending_home_greetings.clear();
+    // The mini that has just turned up is put where the fixture wants it, not walking in.
+    world
+        .window_journeys
+        .retain(|_, journey| !journey.entering());
     assert_eq!(world.save.creatures.len(), 2);
     for (index, creature) in world.save.creatures.iter_mut().enumerate() {
         creature.state.position = Point {

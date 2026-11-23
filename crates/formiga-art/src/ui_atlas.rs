@@ -107,6 +107,8 @@ pub const MENU_STRIP_HEIGHT: u32 = MENU_BODY_HEIGHT + MENU_NOTCH_HEIGHT;
 pub const LABEL_TAB_HEIGHT: u32 = 9;
 /// Breathing room between the notch tip and the label tab under it.
 pub const LABEL_TAB_GAP: u32 = 1;
+/// Art pixels between neighbouring tabs when every item's label shows at once.
+pub const LABEL_ROW_GAP: u32 = 2;
 
 /// Fewest items a menu may hold.
 pub const MENU_MIN_ITEMS: usize = 2;
@@ -344,6 +346,29 @@ impl MenuLayout {
         )
     }
 
+    /// Every item's label tab at once, in one row where the single tab hangs: in the strip's
+    /// order, [`LABEL_ROW_GAP`] apart, and the row centred under the strip. Four labels run wider
+    /// than their strip, so the row hangs past both its ends; whoever places it keeps it on the
+    /// display. Slots past the last item are `None`.
+    pub fn label_row(&self) -> [Option<MenuRect>; MENU_MAX_ITEMS] {
+        let mut row = [None; MENU_MAX_ITEMS];
+        let width = |index: usize| UiAtlasRenderer::menu_label(self.items[index]).width;
+        let total = (0..self.count).map(width).sum::<u32>()
+            + self.count.saturating_sub(1) as u32 * LABEL_ROW_GAP;
+        let mut x = (self.size.0 as i32 - total as i32).div_euclid(2);
+        for (index, slot) in row.iter_mut().enumerate().take(self.count) {
+            let width = width(index);
+            *slot = Some(MenuRect {
+                x,
+                y: (self.size.1 + LABEL_TAB_GAP) as i32,
+                width,
+                height: LABEL_TAB_HEIGHT,
+            });
+            x += (width + LABEL_ROW_GAP) as i32;
+        }
+        row
+    }
+
     /// Where the "not now" tab hangs under a cell (see [`MENU_UNAVAILABLE_TEXT`]): where its
     /// label would, in its place. Draw [`UiAtlasRenderer::menu_unavailable_label`] into it.
     pub fn unavailable_tab(&self, index: usize) -> Option<MenuRect> {
@@ -571,6 +596,182 @@ fn label_tab_width(text: &str) -> u32 {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Contact shadow
+// ---------------------------------------------------------------------------------------------
+
+/// The widest contact shadow, in art pixels: a body frame across.
+pub const SHADOW_MAX_WIDTH: u32 = crate::FRAME_SIZE;
+/// The contact shadows' own sheet: every width a shadow can be, one under the other, the
+/// desktop's two-row shadows first and then the village ground's three-row ones. It is a
+/// texture of its own rather than cells of [`UiAtlasRenderer::render`], because a shadow is
+/// drawn under every companion all the time and the UI atlas is only held while a bubble or a
+/// menu is up.
+pub const SHADOW_SHEET_WIDTH: u32 = SHADOW_MAX_WIDTH;
+pub const SHADOW_SHEET_HEIGHT: u32 = SHADOW_MAX_WIDTH * (2 + 3);
+/// How high above the ground, in art pixels, a companion's shadow has shrunk to nothing.
+pub const SHADOW_FADE_HEIGHT: f32 = 48.0;
+/// How far its feet can come up off the ground, in art pixels, before its shadow starts to
+/// shrink: a stride's bob is not a hop.
+const SHADOW_STILL_LIFT: f32 = 1.0;
+/// Every shadow on the desktop: dark, at about a third, so it darkens a light wallpaper and
+/// still reads on a dark one without ever hiding what is under it.
+const SHADOW_INK: Rgba = Rgba::new(20, 24, 26, 90);
+/// The shading the village ground stands its houses, trees and belongings on, in the ink and
+/// strength every dwelling's own ground shadow is drawn in.
+const GROUND_SHADE: Rgba = Rgba::new(20, 24, 26, 95);
+
+/// What a shadow is laid on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ShadowGround {
+    /// A window's ledge or the habitat floor, seen edge on: two rows.
+    Desktop,
+    /// The village's grass, seen a little from above as its houses' own shadows are: three rows,
+    /// the outer two drawn in.
+    Village,
+}
+
+impl ShadowGround {
+    /// How many rows tall the shadow is.
+    pub const fn rows(self) -> u32 {
+        match self {
+            Self::Desktop => 2,
+            Self::Village => 3,
+        }
+    }
+
+    /// How many of those rows lie above the line its feet stand on. On the desktop, the top
+    /// one, behind the feet's own bottom row, so the shadow peeks out round them rather than
+    /// hanging under them. On the village's grass, all three: the front of the grass is the
+    /// ground line, so a shadow there lies back across the grass behind the feet, as the houses'
+    /// own do, and never hangs off its front edge.
+    pub const fn above_contact(self) -> u32 {
+        match self {
+            Self::Desktop => 1,
+            Self::Village => 3,
+        }
+    }
+
+    fn first_row(self) -> u32 {
+        match self {
+            Self::Desktop => 0,
+            Self::Village => SHADOW_MAX_WIDTH * Self::Desktop.rows(),
+        }
+    }
+}
+
+/// A companion's shadow on whatever it stands on, across the frame it is drawn from: where its
+/// middle falls, in art pixels from the frame's left edge, and how wide it is. Measured from the
+/// frame's own silhouette alone, never from what is on the screen.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ContactShadow {
+    pub centre: f32,
+    pub width: u32,
+}
+
+impl ContactShadow {
+    /// The feet of a frame: the first and just-past-the-last columns its bottom two drawn rows
+    /// reach, or `None` for a frame that draws nothing.
+    pub fn feet(frame: &Canvas) -> Option<(u8, u8)> {
+        let (_, _, _, bottom) = frame.alpha_bounds()?;
+        let rows = bottom.saturating_sub(1)..=bottom;
+        let mut reach: Option<(u32, u32)> = None;
+        for y in rows {
+            for x in 0..frame.width() {
+                if frame.get(x as i32, y as i32).a > 0 {
+                    reach = Some(match reach {
+                        Some((left, right)) => (left.min(x), right.max(x + 1)),
+                        None => (x, x + 1),
+                    });
+                }
+            }
+        }
+        reach.map(|(left, right)| (left as u8, right as u8))
+    }
+
+    /// The shadow under feet reaching across `feet`, with the feet `lift` art pixels off the
+    /// ground: as wide as they are while they are on it, shrinking evenly from both ends the
+    /// higher they go, and gone by [`SHADOW_FADE_HEIGHT`].
+    pub fn under((left, right): (u8, u8), lift: f32) -> Option<Self> {
+        let full = u32::from(right.saturating_sub(left)).min(SHADOW_MAX_WIDTH);
+        let share = if lift <= SHADOW_STILL_LIFT {
+            1.0
+        } else {
+            (1.0 - (lift - SHADOW_STILL_LIFT) / SHADOW_FADE_HEIGHT).max(0.0)
+        };
+        // Two pixels at a time, one off each end, so it stays centred on whole pixels.
+        let trimmed = ((full as f32 * (1.0 - share)) / 2.0).round() as u32 * 2;
+        let width = full.saturating_sub(trimmed);
+        (width >= 2).then(|| Self {
+            centre: (f32::from(left) + f32::from(right)) / 2.0,
+            width,
+        })
+    }
+
+    /// The same shadow under the frame drawn the other way round.
+    pub fn mirrored(self) -> Self {
+        Self {
+            centre: crate::FRAME_SIZE as f32 - self.centre,
+            ..self
+        }
+    }
+
+    /// Its left edge, in art pixels from the frame's left edge.
+    pub fn left(self) -> f32 {
+        self.centre - self.width as f32 / 2.0
+    }
+
+    /// Where a shadow this wide lies on [`ContactShadow::sheet`].
+    pub fn cell(self, ground: ShadowGround) -> SpriteRect {
+        let width = self.width.clamp(1, SHADOW_MAX_WIDTH);
+        SpriteRect {
+            x: 0,
+            y: ground.first_row() + (width - 1) * ground.rows(),
+            width,
+            height: ground.rows(),
+        }
+    }
+
+    /// Every shadow, at every width, on the desktop and on the village ground.
+    pub fn sheet() -> Canvas {
+        let mut canvas = Canvas::new(SHADOW_SHEET_WIDTH, SHADOW_SHEET_HEIGHT);
+        for ground in [ShadowGround::Desktop, ShadowGround::Village] {
+            for width in 1..=SHADOW_MAX_WIDTH {
+                let cell = Self { centre: 0.0, width }.cell(ground);
+                draw_shadow(&mut canvas, cell, ground);
+            }
+        }
+        canvas
+    }
+}
+
+/// One shadow filling `cell`: a flat dark band with its ends half as dark, so it reads as soft
+/// and round at two pixels tall. On the village ground the rows above and below the middle one
+/// are drawn in, as an ellipse seen from a little above.
+fn draw_shadow(canvas: &mut Canvas, cell: SpriteRect, ground: ShadowGround) {
+    let ink = match ground {
+        ShadowGround::Desktop => SHADOW_INK,
+        ShadowGround::Village => GROUND_SHADE,
+    };
+    let soft = Rgba::new(ink.r, ink.g, ink.b, ink.a / 2);
+    let width = cell.width as i32;
+    for row in 0..cell.height as i32 {
+        let inset = match ground {
+            ShadowGround::Village if row != 1 => (width as f32 * 0.13).round().max(1.0) as i32,
+            _ => 0,
+        };
+        let (from, to) = (inset, width - inset);
+        for x in from..to {
+            let end = x == from || x == to - 1;
+            canvas.set(
+                cell.x as i32 + x,
+                cell.y as i32 + row,
+                if end { soft } else { ink },
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Drawing
 // ---------------------------------------------------------------------------------------------
 
@@ -631,7 +832,8 @@ fn draw_bubble_tail(canvas: &mut Canvas, x: i32, y: i32) {
     canvas.set(x + 8, y + 14, OUTLINE);
 }
 
-/// A 9x9 icon, drawn with its top-left at `x, y`.
+/// A 9x9 icon, drawn with its top-left at `x, y`. A few are eleven wide and start a column to
+/// the left, so they stay centred on the bubble's mirror axis.
 fn draw_bubble_icon(canvas: &mut Canvas, x: i32, y: i32, icon: BubbleIcon) {
     match icon {
         BubbleIcon::Heart => stamp(
@@ -877,95 +1079,104 @@ fn draw_bubble_icon(canvas: &mut Canvas, x: i32, y: i32, icon: BubbleIcon) {
             ],
             &[('#', SEA), ('+', SEA_DEEP), ('o', OUTLINE)],
         ),
-        // A little storm cloud with a spark of lightning under it.
+        // A storm cloud with a bolt under it. Like the four after it, it is one shape with a
+        // 1 px outline and one mark of its own, eleven wide: one column further out each side
+        // than the 9x9 box, still two clear of the frame. Loose strokes and dithered cracks
+        // blur into a smudge at 2x; a closed outline does not.
         BubbleIcon::Grumble => stamp(
             canvas,
-            x,
+            x - 1,
             y,
             &[
-                "...##....",
-                "..####.#.",
-                ".#######.",
-                "#########",
-                ".+++++++.",
-                "....a....",
-                "...a.....",
-                "....a....",
-                "...a.....",
+                "...ooo.....",
+                "..oSSSoooo.",
+                ".oSSSSSSSSo",
+                "oSSSSSSSSSo",
+                "oDDDDDDDDDo",
+                ".oooAAoooo.",
+                "....AA.....",
+                "...AA......",
+                "...A.......",
             ],
-            &[('#', STORM), ('+', STORM_DEEP), ('a', AMBER)],
+            &[
+                ('o', OUTLINE),
+                ('S', STORM),
+                ('D', STORM_DEEP),
+                ('A', AMBER),
+            ],
         ),
-        // A heart gone green, with a crack down it.
+        // A green heart broken clean in two.
         BubbleIcon::Jealous => stamp(
             canvas,
-            x,
+            x - 1,
             y,
             &[
-                ".........",
-                ".##...##.",
-                "####.####",
-                "###.####+",
-                "####.##++",
-                ".##.###+.",
-                "..##.#+..",
-                "...#.+...",
-                "....#....",
+                ".ooo...ooo.",
+                "oGGGo.oGGGo",
+                "oGGGGoGGGDo",
+                "oGGGGoGGGDo",
+                ".oGGoGGGDo.",
+                "..oGGoGDo..",
+                "...oGoDo...",
+                "....ooo....",
+                ".....o.....",
             ],
-            &[('#', ENVY), ('+', ENVY_DEEP)],
+            &[('o', OUTLINE), ('G', ENVY), ('D', ENVY_DEEP)],
         ),
-        // Seeing stars: three little ones going round.
+        // Seeing stars: one big five-pointed one, outlined, where Sparkle's are bare and
+        // four-pointed.
         BubbleIcon::Swoon => stamp(
             canvas,
-            x,
+            x - 1,
             y,
             &[
-                "....#....",
-                "...###...",
-                "....#....",
-                ".#.....+.",
-                "###...+++",
-                ".#.....+.",
-                ".........",
-                ".........",
-                ".........",
+                ".....o.....",
+                "....oGo....",
+                ".ooooGoooo.",
+                "oGGGGGGGGGo",
+                ".oGGGGGGGo.",
+                "..oGGGGGo..",
+                "..oGGoGGo..",
+                ".oGGo.oGGo.",
+                ".ooo...ooo.",
             ],
-            &[('#', GOLD), ('+', PLUM)],
+            &[('o', OUTLINE), ('G', GOLD)],
         ),
-        // Three strokes over a pink cheek: a blush.
+        // A shy little face, eyes squeezed shut over pink cheeks.
         BubbleIcon::Blush => stamp(
             canvas,
-            x,
+            x - 1,
             y,
             &[
-                ".........",
-                "..#..#..#",
-                ".#..#..#.",
-                "#..#..#..",
-                ".........",
-                ".+++++++.",
-                "+++++++++",
-                ".+++++++.",
-                ".........",
+                "..ooooooo..",
+                ".o.......o.",
+                "o..o...o..o",
+                "o.o.o.o.o.o",
+                "o.........o",
+                "oBB.....BBo",
+                "oBB.....BBo",
+                ".o.......o.",
+                "..ooooooo..",
             ],
-            &[('#', ROSE_DEEP), ('+', BLUSH)],
+            &[('o', OUTLINE), ('B', BLUSH)],
         ),
-        // One wide-open eye.
+        // One wide-open eye with a big round iris.
         BubbleIcon::Watching => stamp(
             canvas,
-            x,
+            x - 1,
             y,
             &[
-                ".........",
-                ".........",
-                "..#####..",
-                ".#.....#.",
-                "#..ooo..#",
-                "#..oOo..#",
-                "#..ooo..#",
-                ".#.....#.",
-                "..#####..",
+                "...........",
+                "...ooooo...",
+                ".oo.sss.oo.",
+                "o..sssss..o",
+                "o..ssOss..o",
+                "o..sssss..o",
+                ".oo.sss.oo.",
+                "...ooooo...",
+                "...........",
             ],
-            &[('#', OUTLINE), ('o', SLATE_DEEP), ('O', OUTLINE)],
+            &[('o', OUTLINE), ('s', SLATE_DEEP), ('O', OUTLINE)],
         ),
     }
 }
@@ -1422,6 +1633,56 @@ fn glyph(letter: char) -> [&'static str; GLYPH_HEIGHT as usize] {
 mod tests {
     use super::*;
 
+    #[test]
+    fn a_shadow_shrinks_evenly_from_both_ends_and_is_gone_by_its_fade_height() {
+        let feet = (14, 33);
+        let flat = ContactShadow::under(feet, 0.0).expect("a shadow on the ground");
+        assert_eq!(flat.width, 19);
+        assert_eq!(flat.centre, 23.5);
+        // A stride's bob is not a hop.
+        assert_eq!(ContactShadow::under(feet, 1.0), Some(flat));
+        let mut last = flat.width;
+        for lift in 2..SHADOW_FADE_HEIGHT as u32 {
+            let Some(shadow) = ContactShadow::under(feet, lift as f32) else {
+                continue;
+            };
+            assert_eq!(
+                shadow.centre, flat.centre,
+                "it stays centred under the feet"
+            );
+            assert_eq!(shadow.width % 2, flat.width % 2, "on whole pixels");
+            assert!(shadow.width <= last);
+            last = shadow.width;
+        }
+        assert_eq!(ContactShadow::under(feet, SHADOW_FADE_HEIGHT + 1.0), None);
+        let mirrored = flat.mirrored();
+        assert_eq!(mirrored.left(), crate::FRAME_SIZE as f32 - 33.0);
+    }
+
+    #[test]
+    fn every_shadow_width_has_its_own_cell_filled_to_its_ends() {
+        let sheet = ContactShadow::sheet();
+        for ground in [ShadowGround::Desktop, ShadowGround::Village] {
+            for width in 1..=SHADOW_MAX_WIDTH {
+                let cell = ContactShadow { centre: 0.0, width }.cell(ground);
+                assert!(cell.y + cell.height <= SHADOW_SHEET_HEIGHT);
+                assert_eq!(cell.height, ground.rows());
+                let row = if ground == ShadowGround::Village {
+                    1
+                } else {
+                    0
+                };
+                let y = (cell.y + row) as i32;
+                assert!(sheet.get(0, y).a > 0 && sheet.get(width as i32 - 1, y).a > 0);
+                assert_eq!(sheet.get(width as i32, y).a, 0, "{ground:?} {width}");
+                // Never darker than the ground's own shading.
+                for x in 0..width as i32 {
+                    assert!(sheet.get(x, y).a <= GROUND_SHADE.a);
+                }
+            }
+        }
+    }
+
     fn all_sprites() -> Vec<SpriteRect> {
         let mut rects = Vec::new();
         for icon in BubbleIcon::ALL {
@@ -1748,6 +2009,52 @@ mod tests {
             );
             assert!(tab.x >= 0 && tab.x + tab.width as i32 <= width as i32);
         }
+    }
+
+    /// Every label at once: one row where the single tab hangs, in the strip's order, never
+    /// touching, centred under the strip.
+    #[test]
+    fn the_label_row_lays_every_tab_side_by_side_centred_under_the_strip() {
+        for items in [
+            &[
+                MenuIcon::Snack,
+                MenuIcon::Toy,
+                MenuIcon::Home,
+                MenuIcon::Profile,
+            ][..],
+            &[
+                MenuIcon::Snack,
+                MenuIcon::Toy,
+                MenuIcon::CopyCode,
+                MenuIcon::Profile,
+            ],
+            &[MenuIcon::Inside, MenuIcon::Profile],
+        ] {
+            let layout = MenuLayout::new(items);
+            let row = layout.label_row();
+            let tabs: Vec<MenuRect> = row.iter().flatten().copied().collect();
+            assert_eq!(tabs.len(), items.len());
+            assert!(row[items.len()..].iter().all(Option::is_none));
+            for (index, tab) in tabs.iter().enumerate() {
+                assert_eq!(
+                    tab.y,
+                    layout.label_tab(index).unwrap().y,
+                    "level with a tab"
+                );
+                assert_eq!(tab.width, layout.label_tab(index).unwrap().width);
+                if let Some(next) = tabs.get(index + 1) {
+                    assert_eq!(next.x, tab.x + tab.width as i32 + LABEL_ROW_GAP as i32);
+                }
+            }
+            let left = tabs[0].x;
+            let right = tabs.last().map(|tab| tab.x + tab.width as i32).unwrap();
+            let overhang = (left, layout.size().0 as i32 - right);
+            assert!(
+                (overhang.0 - overhang.1).abs() <= 1,
+                "centred under the strip: {overhang:?}"
+            );
+        }
+        assert!(MenuLayout::new(&[]).label_row().iter().all(Option::is_none));
     }
 
     #[test]

@@ -1,6 +1,30 @@
 //! Motion is sampled only for the colony's actual riders, using native scan timestamps.
 use super::*;
 
+impl World {
+    /// How fast the window this creature stands on was last measured moving under it, in points a
+    /// second, while it is being carried along by that window: on its ledge, not mid-hop, thrown
+    /// or in a hand, and the latest window scan still found the window on the move. `None` once a
+    /// scan finds it still.
+    ///
+    /// The window list is read only a few times a second, and a rider is placed on its window as
+    /// of the last read, so the overlay carries it on by this between reads ("dead reckoning")
+    /// and lets the next read correct it. Nothing here changes the simulation or the save.
+    pub fn ride_drift(&self, id: CreatureId) -> Option<Point> {
+        let creature = self.save.creatures.iter().find(|c| c.id == id)?;
+        let window = creature.state.surface.window_key?;
+        if self.window_journeys.contains_key(&id)
+            || matches!(
+                creature.state.action,
+                ActionKind::Tossed | ActionKind::Dragged
+            )
+        {
+            return None;
+        }
+        self.ride_memory.drift(id, window)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum RideKind {
     Balance,
@@ -155,6 +179,15 @@ impl RideMemory {
             .iter()
             .flatten()
             .any(|r| r.id == id && r.still_for < 0.6 && r.intensity > 0.0)
+    }
+    /// The velocity, in points a second, the window under this rider was moving at between the
+    /// last two scans — only while that last scan still found it moving.
+    pub fn drift(&self, id: CreatureId, window: WindowKey) -> Option<Point> {
+        self.riders
+            .iter()
+            .flatten()
+            .find(|r| r.id == id && r.window == window && r.still_for == 0.0 && r.intensity > 0.0)
+            .map(|r| r.velocity)
     }
     pub fn dizzy(&self, id: CreatureId) -> bool {
         self.riders

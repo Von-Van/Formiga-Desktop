@@ -118,7 +118,7 @@ pub(crate) fn menu_scale(display_scale: u8, scale_factor: f32, grid: f32) -> f32
 }
 
 /// The open menu, drawn: its frame, one quad per cell, and the label tab under whichever cell is
-/// hovered. Below the creature the frame sprite is drawn upside down, which puts the notch on top
+/// hovered, or every cell's in one row while a newly opened menu shows them all. Below the creature the frame sprite is drawn upside down, which puts the notch on top
 /// pointing up; the frame is symmetric about its body, so only the notch actually moves, and the
 /// cells and the tab are placed the right way up on top of it.
 pub(super) fn menu_quads(menu: MenuView<'_>, drawable: PhysicalSize<u32>) -> Vec<Vertex> {
@@ -151,6 +151,28 @@ pub(super) fn menu_quads(menu: MenuView<'_>, drawable: PhysicalSize<u32>) -> Vec
             1.0,
             drawable,
         ));
+    }
+    // A newly opened menu's row of every label, hovered item's included, unless "not now" has
+    // taken its place.
+    if let (None, Some(labels)) = (menu.unavailable, menu.labels) {
+        for (index, tab) in labels.tabs() {
+            let Some(icon) = menu.layout.item(index) else {
+                continue;
+            };
+            vertices.extend_from_slice(&ui_atlas_quad(
+                UiAtlasRenderer::menu_label(icon),
+                tab.x,
+                tab.y,
+                art,
+                false,
+                1.0,
+                drawable,
+            ));
+        }
+        if let Some(side) = menu.side {
+            vertices.extend(side_strip_quads(side, drawable));
+        }
+        return vertices;
     }
     // "Not now" under an item that could not be done, in place of its label; otherwise the
     // label of whichever item is hovered.
@@ -398,7 +420,7 @@ impl OverlayRenderer {
                 continue;
             };
             let (centre_x, head_top, foot_bottom) =
-                self.creature_extent(creature, sprite, display_scale);
+                self.bubble_extent(creature, sprite, display_scale);
             let extent = (head_top, foot_bottom);
             // The room a whole bubble takes, kept from its first growing step to its last.
             let whole = talk_origin(centre_x, extent, scale, self.layout, full);
@@ -458,7 +480,7 @@ impl OverlayRenderer {
         let (local_x, contact_y) = self.drawn_contact(creature, display_scale);
         let placement = FramePlacement::for_creature(creature, sprite.resting_baseline);
         let frame_top = contact_y + placement.origin_y as f32 * scale;
-        let BodyPresentation { clip, frame, .. } = BodyPresentation::for_creature(creature);
+        let BodyPresentation { clip, frame, .. } = self.presented(creature);
         // Mirroring a frame never changes which rows it fills, so one silhouette serves both ways.
         let (top, bottom) = sprite
             .silhouette
@@ -470,6 +492,29 @@ impl OverlayRenderer {
             frame_top + f32::from(top) * scale,
             frame_top + f32::from(bottom) * scale,
         )
+    }
+
+    /// [`Self::creature_extent`] as a bubble hangs off it: the crown is the highest any frame of
+    /// the clip being shown reaches, not this frame's own. A bubble over a bobbing, bouncing or
+    /// hopping clip then holds still while the body moves under it, and its tail never comes down
+    /// onto the head at the top of a bob. It moves only when the clip itself changes.
+    pub(super) fn bubble_extent(
+        &self,
+        creature: &Creature,
+        sprite: &SpriteGpu,
+        display_scale: u8,
+    ) -> (f32, f32, f32) {
+        let (centre_x, head_top, foot_bottom) =
+            self.creature_extent(creature, sprite, display_scale);
+        let BodyPresentation { clip, .. } = BodyPresentation::for_creature(creature);
+        let Some(crown) = clip_crown(&sprite.silhouette, clip) else {
+            return (centre_x, head_top, foot_bottom);
+        };
+        let scale = f32::from(display_scale);
+        let (_, contact_y) = self.drawn_contact(creature, display_scale);
+        let placement = FramePlacement::for_creature(creature, sprite.resting_baseline);
+        let frame_top = contact_y + placement.origin_y as f32 * scale;
+        (centre_x, frame_top + f32::from(crown) * scale, foot_bottom)
     }
 
     /// Where a menu for this creature would go, for `creature_menu` to place a strip against.
@@ -606,4 +651,14 @@ impl OverlayRenderer {
         }
         vertices
     }
+}
+
+/// The highest row any frame of `clip` draws on, in art pixels from the frame's top edge, read
+/// from the baked `silhouette` of every frame: the crown a bubble hangs off while the clip plays.
+/// `None` when the silhouette has none of the clip's frames.
+pub(super) fn clip_crown(silhouette: &[(u8, u8)], clip: BodyClip) -> Option<u8> {
+    (0..AnimationSpec::for_clip(clip).frames)
+        .filter_map(|frame| silhouette.get(atlas_slot(clip, frame) as usize))
+        .map(|(top, _)| *top)
+        .min()
 }

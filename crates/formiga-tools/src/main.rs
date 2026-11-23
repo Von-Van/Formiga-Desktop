@@ -1,7 +1,10 @@
 mod accessory_sheet;
 mod app_icon;
+mod arrival_sheet;
+mod bridge_sheet;
 mod cast;
 mod catch_sheet;
+mod climb_sheet;
 mod colony_card;
 mod creature_sheets;
 mod cuteness_sheet;
@@ -47,8 +50,8 @@ use pixels::{
     blit_scaled_square_alpha, draw_rect_alpha, fill_gradient, fill_rect, write_png,
 };
 use pose_sheets::{
-    activity_sheet, ambient_sheet, doings_sheet, gesture_face, gesture_sheet, meal_sheet,
-    motion_sheet, play_sheet, repertoire_sheet, rest_sheet, talk_sheet,
+    activity_sheet, ambient_sheet, doings_sheet, gesture_face, gesture_sheet, hold_sheet,
+    meal_sheet, motion_sheet, play_sheet, repertoire_sheet, rest_sheet, talk_sheet,
 };
 use shelter_sheet::shelter_sheet;
 use simulate::simulate;
@@ -114,6 +117,9 @@ fn main() -> Result<()> {
             &args,
             "docs/assets/meal-sheet.png",
         )),
+        Some("bridge-sheet") => {
+            bridge_sheet::run(output_argument_with_default(&args, "bridge-sheet.png"))
+        }
         Some("repertoire-sheet") => repertoire_sheet(output_argument_with_default(
             &args,
             "docs/assets/repertoire-sheet.png",
@@ -155,14 +161,29 @@ fn main() -> Result<()> {
             &args,
             "docs/assets/vignette-sheet.png",
         )),
-        Some("activity-sheet") => activity_sheet(output_argument_with_default(
-            &args,
-            "docs/assets/activity-sheet.png",
-        )),
+        // With reduced motion it is a review sheet, not the documentation image.
+        Some("activity-sheet") => {
+            let reduced = args.iter().any(|arg| arg == "--reduced");
+            activity_sheet(
+                output_argument_with_default(
+                    &args,
+                    if reduced {
+                        "activity-sheet-reduced.png"
+                    } else {
+                        "docs/assets/activity-sheet.png"
+                    },
+                ),
+                reduced,
+            )
+        }
         Some("ambient-sheet") => ambient_sheet(output_argument_with_default(
             &args,
             "docs/assets/ambient-sheet.png",
         )),
+        Some("hold-sheet") => hold_sheet(output_argument_with_default(&args, "hold-sheet.png")),
+        Some("climb-sheet") => {
+            climb_sheet::climb_sheet(output_argument_with_default(&args, "climb-sheet.png"))
+        }
         Some("ui-sheet") => ui_sheet::run(output_argument_with_default(
             &args,
             "docs/assets/ui-sheet.png",
@@ -186,6 +207,9 @@ fn main() -> Result<()> {
             output_argument_with_default(&args, "packaging/shared"),
             source_argument(&args),
         ),
+        Some("arrival-sheet") => {
+            arrival_sheet::run(output_argument_with_default(&args, "arrival-sheet.png"))
+        }
         Some("train-sheet") => train_sheet::run(output_argument_with_default(
             &args,
             "docs/assets/train-sheet.png",
@@ -241,7 +265,7 @@ fn main() -> Result<()> {
         ),
         _ => {
             eprintln!(
-                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools generation-sheet [--output PATH]\n  formiga-tools classic-sheet [--output PATH]\n  formiga-tools face-sheet [--output PATH]\n  formiga-tools temperament-sheet [--cast NAME@COLONY.json|four-pawed[:N]]... [--output PATH]\n  formiga-tools cuteness-sheet [--count N] [--seed NUMBER] [--edition details|archetypes|original] [--ratings FILE] [--output PATH]\n  formiga-tools home-yard-sheet [--output PATH]\n  formiga-tools village-depth-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools motion-sheet [--output PATH]\n  formiga-tools rest-sheet [--output PATH]\n  formiga-tools repertoire-sheet [--output PATH]\n  formiga-tools doings-sheet [--output PATH]\n  formiga-tools meal-sheet [--output PATH]\n  formiga-tools play-sheet [--output PATH]\n  formiga-tools talk-sheet [--output PATH]\n  formiga-tools fox-sheet [--output PATH]\n  formiga-tools habit-sheet [--output PATH]\n  formiga-tools vignette-sheet [--output PATH]\n  formiga-tools forms-sheet [--output PATH]\n  formiga-tools activity-sheet [--output PATH]\n  formiga-tools ambient-sheet [--output PATH]\n  formiga-tools prop-sheet [--output PATH]\n  formiga-tools wonder-sheet [--output PATH]\n  formiga-tools train-sheet [--output PATH]\n  formiga-tools ui-sheet [--output PATH]\n  formiga-tools social-preview [--cast NAME@COLONY.json|four-pawed[:N]]... [--output PATH]\n  formiga-tools itch-cover [--output PATH]\n  formiga-tools hero-image [--output PATH]\n  formiga-tools demo-animation [--cast NAME@COLONY.json|four-pawed[:N]]... [--output PATH]\n  formiga-tools app-icon [--source PNG] [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools decoration-sheet [--output PATH]\n  formiga-tools village-palette-sheet [--output PATH]\n  formiga-tools creature-card [--output PATH]\n  formiga-tools sticker [--seed NUMBER | --cast NAME@COLONY.json|four-pawed[:N]] [--clip NAME] [--scale 4|8] [--output PATH]\n  formiga-tools colony-card [--output PATH]\n  formiga-tools postcard [--scene nap|picnic|play|dusk] [--caption TEXT] [--cast ...]... [--output PATH]\n  formiga-tools postcard-sheet [--cast NAME@COLONY.json|four-pawed[:N]]... [--output PATH]\n  formiga-tools simulate [DAYS]\n  formiga-tools tick-bench [--ticks N] [--warmup N] [FILTER]\n  formiga-tools soak [--colonies N] [--days N] [--seed N] [--threads N] [--damage N] [--only N] [--out DIR]\n  formiga-tools dev fixtures | fixture NAME --out DIR [--now-unix SECONDS] | check-fixtures | capture NAME --out PNG [--now-unix SECONDS] | catalog | art-check --out DIR [--kind KIND] | fits NAME | save FILE"
+                "usage:\n  formiga-tools contact-sheet [--output PATH]\n  formiga-tools generation-sheet [--output PATH]\n  formiga-tools classic-sheet [--output PATH]\n  formiga-tools face-sheet [--output PATH]\n  formiga-tools temperament-sheet [--cast NAME@COLONY.json|four-pawed[:N]]... [--output PATH]\n  formiga-tools cuteness-sheet [--count N] [--seed NUMBER] [--edition details|archetypes|original] [--ratings FILE] [--output PATH]\n  formiga-tools home-yard-sheet [--output PATH]\n  formiga-tools village-depth-sheet [--output PATH]\n  formiga-tools animation-preview [--seed NUMBER] [--output PATH]\n  formiga-tools expression-sheet [--output PATH]\n  formiga-tools gesture-sheet [--output PATH]\n  formiga-tools motion-sheet [--output PATH]\n  formiga-tools rest-sheet [--output PATH]\n  formiga-tools bridge-sheet [--output PATH]\n  formiga-tools repertoire-sheet [--output PATH]\n  formiga-tools doings-sheet [--output PATH]\n  formiga-tools meal-sheet [--output PATH]\n  formiga-tools play-sheet [--output PATH]\n  formiga-tools talk-sheet [--output PATH]\n  formiga-tools fox-sheet [--output PATH]\n  formiga-tools habit-sheet [--output PATH]\n  formiga-tools vignette-sheet [--output PATH]\n  formiga-tools forms-sheet [--output PATH]\n  formiga-tools activity-sheet [--reduced] [--output PATH]\n  formiga-tools ambient-sheet [--output PATH]\n  formiga-tools hold-sheet [--output PATH]\n  formiga-tools climb-sheet [--output PATH]\n  formiga-tools prop-sheet [--output PATH]\n  formiga-tools wonder-sheet [--output PATH]\n  formiga-tools arrival-sheet [--output PATH]\n  formiga-tools train-sheet [--output PATH]\n  formiga-tools ui-sheet [--output PATH]\n  formiga-tools social-preview [--cast NAME@COLONY.json|four-pawed[:N]]... [--output PATH]\n  formiga-tools itch-cover [--output PATH]\n  formiga-tools hero-image [--output PATH]\n  formiga-tools demo-animation [--cast NAME@COLONY.json|four-pawed[:N]]... [--output PATH]\n  formiga-tools app-icon [--source PNG] [--output DIRECTORY]\n  formiga-tools shelter-sheet [--output PATH]\n  formiga-tools decoration-sheet [--output PATH]\n  formiga-tools village-palette-sheet [--output PATH]\n  formiga-tools creature-card [--output PATH]\n  formiga-tools sticker [--seed NUMBER | --cast NAME@COLONY.json|four-pawed[:N]] [--clip NAME] [--scale 4|8] [--output PATH]\n  formiga-tools colony-card [--output PATH]\n  formiga-tools postcard [--scene nap|picnic|play|dusk] [--caption TEXT] [--cast ...]... [--output PATH]\n  formiga-tools postcard-sheet [--cast NAME@COLONY.json|four-pawed[:N]]... [--output PATH]\n  formiga-tools simulate [DAYS]\n  formiga-tools tick-bench [--ticks N] [--warmup N] [FILTER]\n  formiga-tools soak [--colonies N] [--days N] [--seed N] [--threads N] [--damage N] [--only N] [--out DIR]\n  formiga-tools dev fixtures | fixture NAME --out DIR [--now-unix SECONDS] | check-fixtures | capture NAME --out PNG [--now-unix SECONDS] | catalog | art-check --out DIR [--kind KIND] | fits NAME | save FILE"
             );
             Ok(())
         }

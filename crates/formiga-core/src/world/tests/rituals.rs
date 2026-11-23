@@ -92,6 +92,11 @@ fn overdue_downtime_runs_at_most_one_ritual_and_schedules_from_now() {
     let mut world = two_creature_world([95; 32], created);
     world.save.home.last_disappeared_utc = Some(now);
     world.save.ritual.next_at_utc = created + Duration::hours(12);
+    // Nobody new turns up in the same tick, walking in while the colony would gather.
+    world.save.arrival_state.arrived = [true; 3];
+    for creature in &mut world.save.creatures {
+        creature.mini_arrivals.arrived = [true; 2];
+    }
     for creature in &mut world.save.creatures {
         creature.state.action_duration = 0.0;
     }
@@ -143,6 +148,11 @@ fn hatch_day_comes_on_the_day_even_with_no_ritual_due() {
     let mut world = two_creature_world([96; 32], created);
     world.save.home.last_disappeared_utc = Some(now);
     world.save.ritual.next_at_utc = now + Duration::hours(30);
+    // Nobody new turns up in the same tick, walking in while the colony would gather.
+    world.save.arrival_state.arrived = [true; 3];
+    for creature in &mut world.save.creatures {
+        creature.mini_arrivals.arrived = [true; 2];
+    }
     for creature in &mut world.save.creatures {
         creature.state.action_duration = 0.0;
     }

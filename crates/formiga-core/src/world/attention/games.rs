@@ -705,12 +705,14 @@ impl World {
             second
         };
         let holder = prop.holder;
-        let pulling = if puller == first { -1.0 } else { 1.0 };
-        // Whoever is not digging in gets hauled a step. It has to be a step the walk will
-        // actually take, or the pair would strain against each other without ever moving.
+        let puller_x = if puller == first { a.x } else { b.x };
+        // Whoever is not digging in gets hauled a step, toward whoever is: the pair can stand
+        // either way round. It has to be a step the walk will actually take, or the pair would
+        // strain against each other without ever moving.
         let haul = (6.0 * unit).max(motion::MIN_STRIDE + 1.0);
         for (id, position) in [(first, a), (second, b)] {
-            let shift = if id == puller { 0.0 } else { pulling * haul };
+            let toward = if puller_x >= position.x { 1.0 } else { -1.0 };
+            let shift = if id == puller { 0.0 } else { toward * haul };
             let goal = (shift != 0.0)
                 .then(|| self.play_goal_for(id, position.x + shift, desktop))
                 .flatten();

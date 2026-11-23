@@ -113,6 +113,11 @@ impl VillagePaths {
             .then_some((first.x, last.x))
     }
 
+    /// The door of the house in this slot, counting the colony house as nought, if it is shown.
+    pub(super) fn door(&self, slot: usize) -> Option<Door> {
+        self.doors.iter().copied().find(|door| door.slot == slot)
+    }
+
     /// The doorsteps set back far enough to stroll up to.
     pub(super) fn doorsteps(&self) -> impl Iterator<Item = Door> + '_ {
         self.doors

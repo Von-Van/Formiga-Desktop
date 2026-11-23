@@ -80,9 +80,13 @@ pub(super) fn fill_colony(world: &mut World, desktop: &DesktopSnapshot, now: Off
             .add_designed_adult([seed; 32], None, now, desktop)
             .unwrap();
     }
+    // Everyone here at once: nobody waiting their turn, and nobody still walking in.
     for creature in &mut world.save.creatures {
         creature.state.arrival_delay_secs = 0.0;
     }
+    world
+        .window_journeys
+        .retain(|_, journey| !journey.entering());
 }
 
 fn start(world: &mut World, desktop: &mut DesktopSnapshot, now: OffsetDateTime) {
@@ -147,6 +151,9 @@ const BODY_OWNING: [ActionKind; 16] = [
 /// walking, hopping, hanging, tossed, or carried by a journey, only over a planted
 /// presentation, and a reach always toward what the creature is looking at. Scenes read their
 /// poses through this, so "the colony struck a pose" means the same thing in every test.
+///
+/// A climb's mantle is the one pose over travel, and no scene's: it is checked for being over
+/// its climb and on its way up, standing rather than hanging, and is not written down.
 #[derive(Default, Debug)]
 pub(super) struct Poses {
     /// Each creature's poses in the order it struck them, with unbroken repeats collapsed.
@@ -181,6 +188,19 @@ impl Poses {
                 "{gesture:?} over {:?} by creature {} at {:?}",
                 c.state.action, c.id, c.state.position
             );
+            if gesture == Gesture::Mantle {
+                assert_eq!(c.state.action, ActionKind::ClimbWindow, "{label}");
+                assert!(
+                    matches!(
+                        world.window_journeys.get(&c.id),
+                        Some(WindowJourney::Climb(_))
+                    ),
+                    "a mantle outlived its climb: {label}"
+                );
+                assert_eq!(pose.hanging, 0.0, "hanging: {label}");
+                self.last.remove(&c.id);
+                continue;
+            }
             assert!(
                 !world.save.settings.reduce_motion,
                 "reduced motion: {label}"

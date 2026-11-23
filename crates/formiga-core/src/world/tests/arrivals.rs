@@ -180,3 +180,243 @@ fn one_calendar_month_adds_a_full_size_adult() {
     assert!(newest.role.is_adult());
     assert_eq!(newest.display_scale_percent, 100);
 }
+
+/// A colony out on the desktop with nobody due to turn up by themselves, so the only arrival is
+/// the one a test makes.
+fn roaming_colony(seed: u8, desktop: &DesktopSnapshot) -> (World, OffsetDateTime) {
+    let created = datetime!(2026-01-01 9:00 UTC);
+    let mut world = World::new([seed; 32], created, desktop);
+    world.tick(created, 0.05, desktop);
+    let now = created + time::Duration::minutes(20);
+    let_colony_wander(&mut world, now);
+    world.save.arrival_state.arrived = [true; 3];
+    for creature in &mut world.save.creatures {
+        creature.mini_arrivals.arrived = [true; 2];
+    }
+    world.tick(now, 0.05, desktop);
+    world.drain_events().for_each(drop);
+    assert!(!world.save.home.is_active());
+    (world, now)
+}
+
+/// Half a creature's drawn width on the test display, which is how far beyond the edge it has
+/// to stand to be out of sight.
+fn half_width(world: &World, desktop: &DesktopSnapshot) -> f32 {
+    body_half_width(&desktop.monitors[0], world.save.settings.display_scale)
+}
+
+/// A companion adopted while the colony is out on the desktop does not appear where it is to
+/// stand: it walks in along the floor from beyond the nearer edge of the display, wholly out of
+/// sight to begin with, at its own walking pace, and stops a few seconds in, inside the ground it
+/// may use, ready to get on with its day.
+#[test]
+fn a_new_companion_walks_in_from_the_nearer_edge_instead_of_appearing() {
+    let desktop = desktop();
+    let (mut world, now) = roaming_colony(41, &desktop);
+    let id = world
+        .add_designed_adult([42; 32], None, now, &desktop)
+        .unwrap();
+    let half = half_width(&world, &desktop);
+    let newcomer = world.save.creatures.iter().find(|c| c.id == id).unwrap();
+    // Due to stand at a third of the way along, so it comes in from the left.
+    assert!(
+        newcomer.state.position.x + half <= desktop.monitors[0].bounds.x + 0.01,
+        "it starts in sight, at {}",
+        newcomer.state.position.x
+    );
+    assert!(newcomer.state.facing_right, "it faces the way it walks in");
+    assert!(
+        world
+            .window_journeys
+            .get(&id)
+            .is_some_and(WindowJourney::entering)
+    );
+    let pace = 24.0 + newcomer.personality.activity * 34.0;
+    let mut x = newcomer.state.position.x;
+    let mut walked_for = 0.0;
+    for step in 1..=200 {
+        world.tick(
+            now + time::Duration::milliseconds(step * 50),
+            0.05,
+            &desktop,
+        );
+        world.drain_events().for_each(drop);
+        let newcomer = world.save.creatures.iter().find(|c| c.id == id).unwrap();
+        let moved = newcomer.state.position.x - x;
+        x = newcomer.state.position.x;
+        if !world.window_journeys.contains_key(&id) {
+            break;
+        }
+        walked_for += 0.05;
+        assert_eq!(newcomer.state.action, ActionKind::Traverse, "at {step}");
+        assert!(
+            moved > 0.0 && moved <= pace * 0.05 + 0.01,
+            "it moved {moved} in a tick at {step}"
+        );
+    }
+    assert!(
+        !world.window_journeys.contains_key(&id),
+        "it never finished walking in"
+    );
+    assert!(
+        walked_for <= ENTRANCE_SECS + 0.1,
+        "the walk in took {walked_for}s"
+    );
+    let newcomer = world.save.creatures.iter().find(|c| c.id == id).unwrap();
+    let bounds = desktop.monitors[0].usable_bounds;
+    assert!(
+        newcomer.state.position.x - half >= bounds.x - 0.01
+            && newcomer.state.position.x + half <= bounds.right() + 0.01,
+        "it stopped with its body off the display, at {}",
+        newcomer.state.position.x
+    );
+    assert_eq!(newcomer.state.surface.kind, SurfaceKind::ScreenFloor);
+}
+
+const ENTRANCE_SECS: f32 = crate::tuning::ENTRANCES.edge_walk_secs;
+
+/// A newcomer due to turn up nearer the right-hand edge walks in from the right.
+#[test]
+fn a_new_companion_comes_in_by_whichever_edge_is_nearer() {
+    let desktop = desktop();
+    let (mut world, now) = roaming_colony(43, &desktop);
+    let id = world
+        .add_designed_adult([44; 32], None, now, &desktop)
+        .unwrap();
+    // Put it back where it would have appeared, nearer the right, and let it arrive again.
+    world.window_journeys.clear();
+    let index = world
+        .save
+        .creatures
+        .iter()
+        .position(|c| c.id == id)
+        .unwrap();
+    world.save.creatures[index].state.position.x = 1200.0;
+    world.begin_entrance(id, &desktop);
+    let half = half_width(&world, &desktop);
+    let newcomer = &world.save.creatures[index];
+    assert!(newcomer.state.position.x - half >= desktop.monitors[0].bounds.right() - 0.01);
+    assert!(!newcomer.state.facing_right);
+}
+
+/// Paused, hidden, or with motion reduced, a newcomer is simply there, where it was always going
+/// to appear.
+#[test]
+fn a_new_companion_is_simply_there_when_motion_is_reduced_or_the_colony_is_still() {
+    let desktop = desktop();
+    for still in ["reduced", "paused", "hidden"] {
+        let (mut world, now) = roaming_colony(45, &desktop);
+        match still {
+            "reduced" => world.save.settings.reduce_motion = true,
+            "paused" => world.save.settings.paused = true,
+            _ => world.save.settings.visible = false,
+        }
+        let id = world
+            .add_designed_adult([46; 32], None, now, &desktop)
+            .unwrap();
+        let newcomer = world.save.creatures.iter().find(|c| c.id == id).unwrap();
+        assert!(!world.window_journeys.contains_key(&id), "{still}");
+        assert!(
+            desktop.monitors[0]
+                .usable_bounds
+                .contains(newcomer.state.position),
+            "{still}: it is not where it appears"
+        );
+    }
+}
+
+/// With the village out on the desktop, a newcomer comes out of its own house door — standing
+/// as far back as the house does — and walks on out a couple of steps, coming down to the front
+/// of the grass as it goes. During a visit home, the village's own walk takes it from its door.
+#[test]
+fn with_the_village_out_a_new_companion_comes_out_of_its_door() {
+    let desktop = desktop();
+    for home in [false, true] {
+        let (mut world, now) = roaming_colony(47, &desktop);
+        world.save.home.stays_out = true;
+        if home {
+            world.save.home.active_since_utc = Some(now);
+        }
+        let id = world
+            .add_designed_adult([48; 32], None, now, &desktop)
+            .unwrap();
+        let index = world
+            .save
+            .creatures
+            .iter()
+            .position(|c| c.id == id)
+            .unwrap();
+        let slot = house_slot_for(
+            &world.save.creatures[index],
+            &world.save.creatures,
+            &world.save.home.cottage_order,
+        );
+        let door = world.village_paths(&desktop).door(slot).expect("its house");
+        let newcomer = &world.save.creatures[index];
+        assert_eq!(newcomer.state.position.x, door.x, "home: {home}");
+        assert_eq!(newcomer.state.depth, door.depth, "home: {home}");
+        assert!(!newcomer.state.indoors);
+        let walking = world
+            .window_journeys
+            .get(&id)
+            .is_some_and(WindowJourney::entering);
+        assert_eq!(walking, !home, "home: {home}");
+        if home {
+            continue;
+        }
+        for step in 1..=200 {
+            world.tick(
+                now + time::Duration::milliseconds(step * 50),
+                0.05,
+                &desktop,
+            );
+            world.drain_events().for_each(drop);
+            if !world.window_journeys.contains_key(&id) {
+                break;
+            }
+        }
+        let newcomer = world.save.creatures.iter().find(|c| c.id == id).unwrap();
+        assert!(!world.window_journeys.contains_key(&id));
+        assert_ne!(newcomer.state.position.x, door.x, "it never left its door");
+        assert_eq!(newcomer.state.depth, 0.0, "it is still up its path");
+    }
+}
+
+/// Arrivals that queue up behind one another each walk in when their turn comes, not all at
+/// once when they are due.
+#[test]
+fn queued_arrivals_each_walk_in_when_their_turn_comes() {
+    let desktop = desktop();
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let mut world = World::new([12; 32], created, &desktop);
+    world.tick(created, 0.05, &desktop);
+    let now = created + time::Duration::days(181);
+    let_colony_wander(&mut world, now);
+    world.tick(now, 0.05, &desktop);
+    assert_eq!(world.save.creatures.len(), 4);
+    let (first, second) = (world.save.creatures[1].id, world.save.creatures[2].id);
+    assert!(
+        world
+            .window_journeys
+            .get(&first)
+            .is_some_and(WindowJourney::entering)
+    );
+    assert!(
+        !world.window_journeys.contains_key(&second),
+        "waiting its turn"
+    );
+    world.tick(now, 15.0, &desktop);
+    assert_eq!(world.save.creatures[2].state.arrival_delay_secs, 0.0);
+    assert!(
+        world
+            .window_journeys
+            .get(&second)
+            .is_some_and(WindowJourney::entering)
+    );
+    let half = half_width(&world, &desktop);
+    let x = world.save.creatures[2].state.position.x;
+    assert!(
+        x + half <= 0.01 || x - half >= desktop.monitors[0].bounds.right() - 0.01,
+        "its turn came and it appeared at {x}"
+    );
+}

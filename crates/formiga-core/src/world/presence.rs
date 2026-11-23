@@ -56,9 +56,43 @@ impl World {
                 .map_or(1.0, |monitor| monitor.scale_factor.max(0.1))
                 / display_scale;
             creature.state.presence.reduced = reduced;
+            // Whatever is carrying it through a hop: its own journey, a wonder it is on its way
+            // to, or a plan about the village taking it up onto its roof.
+            let hop = self
+                .window_journeys
+                .get(&creature.id)
+                .and_then(WindowJourney::hop_moment)
+                .or_else(|| {
+                    self.village_life
+                        .get(&creature.id)
+                        .and_then(village_life::VillageActivity::hop_moment)
+                })
+                .or_else(|| self.wonders.hop_moment(creature.id));
             carry(creature, dt, desktop, pixels_per_point);
+            follow_hop(creature, hop, dt);
         }
     }
+}
+
+/// Keeps up where a creature is in a hop, given where whatever is carrying it says it is this
+/// tick (`None` once nothing is). The tick a hop stops carrying it while it was in the air, it
+/// has touched down, and it counts the time since for as long as it keeps its feet — until
+/// something picks it up, throws it, or it sets off on another hop.
+fn follow_hop(creature: &mut Creature, struck: Option<HopMoment>, dt: f32) {
+    let handled = matches!(
+        creature.state.action,
+        ActionKind::Dragged | ActionKind::Tossed | ActionKind::Dangle | ActionKind::ClimbWindow
+    );
+    let presence = &mut creature.state.presence;
+    presence.hop = match (struck, presence.hop) {
+        (Some(moment), _) => Some(moment),
+        _ if handled => None,
+        (None, Some(HopMoment::Flight(_))) => Some(HopMoment::Down(0.0)),
+        (None, Some(HopMoment::Down(since))) if since < AFTER_SECS => {
+            Some(HopMoment::Down(since + dt.max(0.0)))
+        }
+        _ => None,
+    };
 }
 
 /// Where a creature is standing now, as [`Presence`] measures it: its contact point, and the

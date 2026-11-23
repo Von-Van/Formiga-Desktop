@@ -1667,7 +1667,9 @@ impl World {
     /// Its action clock advances here, once it is on the ground, before the pet is measured
     /// against it.
     fn sits_out_home_tick(&mut self, index: usize, scene: &HomeScene) -> bool {
-        let HomeScene { now, dt, .. } = *scene;
+        let HomeScene {
+            now, dt, desktop, ..
+        } = *scene;
         let creature = &mut self.save.creatures[index];
         if self
             .interaction
@@ -1690,12 +1692,12 @@ impl World {
             creature.state.arrival_delay_secs = (creature.state.arrival_delay_secs - dt).max(0.0);
             if creature.state.arrival_delay_secs == 0.0 {
                 creature.born_at_utc = now;
+                let id = creature.id;
                 Self::emit(
                     &mut self.events,
-                    WorldEvent::CreatureSpawned {
-                        creature_id: creature.id,
-                    },
+                    WorldEvent::CreatureSpawned { creature_id: id },
                 );
+                self.begin_entrance(id, desktop);
             }
             return true;
         }
@@ -1960,7 +1962,8 @@ impl World {
                         window_key: None,
                         relative_x: 0.5,
                     },
-                    elapsed: 0.0,
+                    // A crouch to spring from first.
+                    elapsed: -HOP_GATHER_SECS,
                     duration: (creature.state.position.distance(floor) / 180.0).max(0.1),
                     lift: 0.0,
                     ballistic: false,

@@ -189,7 +189,7 @@ pub struct AppearancePreferences {
     pub theme: ThemeChoice,
     /// Percent of the base text size: 100 to 150, in steps of ten.
     pub text_scale: u8,
-    /// A subtle cached outline behind sprites, for bright or busy wallpaper.
+    /// A subtle cached two-tone outline behind sprites, for bright, busy or dark wallpaper.
     pub sprite_outline: bool,
 }
 
@@ -920,8 +920,12 @@ mod tests {
             "hidden",
             |settings| settings.visible = false,
             |_, now| {
+                // A climb's mantle is the climb's own pose, not anybody watching anything.
                 now.creatures.iter().all(|creature| {
-                    creature.state.attention.is_none()
+                    creature
+                        .state
+                        .attention
+                        .is_none_or(|pose| pose.gesture == Some(crate::Gesture::Mantle))
                         && !matches!(
                             creature.state.action,
                             ActionKind::InvestigateCursor | ActionKind::AvoidCursor

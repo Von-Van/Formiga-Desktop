@@ -129,6 +129,21 @@ pub const ROAMING: Roaming = Roaming {
     floor_dweller_rest_secs: 90.0..200.0,
 };
 
+/// How a companion that has just turned up comes into the colony (`world/arrivals.rs`).
+pub struct Entrances {
+    /// The longest walk in from the edge of the display, in seconds at its own pace: one due to
+    /// turn up further from the edge than this walks in this far and stops, so an arrival reads
+    /// the same on a laptop as on a wide display.
+    pub edge_walk_secs: f32,
+    /// How far one stepping out of its house door walks on out, in creature widths.
+    pub door_walk_frames: f32,
+}
+
+pub const ENTRANCES: Entrances = Entrances {
+    edge_walk_secs: 4.0,
+    door_walk_frames: 2.0,
+};
+
 /// What residents get up to at home between everything else (`world/village_life.rs`).
 pub struct VillageLife {
     /// The longest any one walk in a plan may take before the resident gives up on it and does

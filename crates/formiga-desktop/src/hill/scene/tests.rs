@@ -300,3 +300,109 @@ fn the_village_keeps_everyones_house_while_they_get_on_and_off() {
         }
     }
 }
+
+/// Getting on, each companion steps up at its door in the first frame of a climb, drawn over the
+/// coach for a tick, and from then on looks out of a window of the same coach until the train has
+/// gone. Nobody is at a window before they are aboard, nobody is both aboard and on the platform,
+/// and no two share a window.
+#[test]
+fn each_companion_steps_up_at_its_door_and_then_looks_out_of_a_window() {
+    let (save, monitors) = colony(3, 2.0);
+    let unit = 3.0 / 2.0;
+    let frames = play(TrainScene::departure(&save, &monitors).unwrap(), &save);
+    let seats = frames
+        .iter()
+        .find_map(|(_, train, _)| *train)
+        .unwrap()
+        .seats;
+    let taken: std::collections::BTreeSet<_> = seats.iter().flatten().collect();
+    assert_eq!(
+        taken.len(),
+        save.creatures.len(),
+        "a window each: {seats:?}"
+    );
+    for creature in &save.creatures {
+        let seat = seats
+            .iter()
+            .position(|seat| *seat == Some(creature.id))
+            .unwrap();
+        let (mut stepped, mut aboard) = (None, None);
+        for (t, train, staged) in &frames {
+            let shown = platform(staged).into_iter().find(|c| c.id == creature.id);
+            let Some(train) = train else {
+                continue;
+            };
+            assert_eq!(train.seats, seats, "the seats change at {t}s");
+            if train.boarding[seat] {
+                let at_door = shown.as_ref().expect("stepping up on the platform");
+                assert_eq!(at_door.state.action, ActionKind::ClimbWindow);
+                assert_eq!(at_door.state.action_elapsed, 0.0, "the climb's first frame");
+                assert!(!train.seated[seat], "at the door and at a window at {t}s");
+                let along = (at_door.state.position.x - train.left) / unit;
+                assert_eq!(
+                    (along / 70.0) as usize,
+                    seat / 3,
+                    "it steps up at one coach and sits in the other"
+                );
+                stepped.get_or_insert(*t);
+            }
+            if train.seated[seat] {
+                assert!(shown.is_none(), "aboard and on the platform at {t}s");
+                aboard.get_or_insert(*t);
+            } else {
+                assert!(aboard.is_none(), "it left its window at {t}s");
+            }
+        }
+        let stepped = stepped.expect("it never stepped up");
+        let aboard = aboard.expect("it never looked out of a window");
+        assert!(
+            aboard > stepped && aboard - stepped <= STEP_UP_SECS + STEP,
+            "it stepped up at {stepped}s and was aboard at {aboard}s"
+        );
+    }
+}
+
+/// Coming home, everyone looks out of their window as the train pulls in, and leaves it as they
+/// step off.
+#[test]
+fn coming_home_everyone_looks_out_until_they_step_off() {
+    let (save, monitors) = colony(3, 2.0);
+    let frames = play(TrainScene::arrival(&save, &monitors).unwrap(), &save);
+    let first = frames[0].1.unwrap();
+    assert!(
+        save.creatures
+            .iter()
+            .all(|creature| first.seats.contains(&Some(creature.id))),
+        "a window each: {:?}",
+        first.seats
+    );
+    assert_eq!(
+        first.seated.iter().filter(|seated| **seated).count(),
+        save.creatures.len(),
+        "everyone is at a window as the train comes in"
+    );
+    assert!(!first.boarding.contains(&true));
+    // At a window until it is first seen on the platform, and never again after.
+    let mut stepped_off = std::collections::BTreeSet::new();
+    for (t, train, staged) in &frames {
+        stepped_off.extend(platform(staged).iter().map(|c| c.id));
+        let Some(train) = train else {
+            continue;
+        };
+        for (seat, id) in train.seats.iter().enumerate() {
+            let Some(id) = id else {
+                continue;
+            };
+            assert_ne!(
+                train.seated[seat],
+                stepped_off.contains(id),
+                "{id} at a window after stepping off, or gone before, at {t}s"
+            );
+        }
+    }
+    assert_eq!(
+        stepped_off.len(),
+        save.creatures.len(),
+        "everyone steps off"
+    );
+}

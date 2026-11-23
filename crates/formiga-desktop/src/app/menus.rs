@@ -86,11 +86,26 @@ impl FormigaApp {
         if !self.ensure_menu_proxy(event_loop) {
             return;
         }
-        self.creature_menu = Some(menu);
+        let reveal = self.reveals_menu_labels();
+        self.creature_menu = Some(if reveal {
+            menu.revealing_labels()
+        } else {
+            menu
+        });
         self.menus_opened += 1;
         // Place and show it now rather than on the next tick, so the strip appears under the
         // click that asked for it instead of up to a frame later.
         self.sync_creature_menu(0.0);
+    }
+
+    /// Whether the menu about to open shows every label under its strip for a second: one of
+    /// the first few of this launch, while the colony has not finished or skipped the tour.
+    pub(super) fn reveals_menu_labels(&self) -> bool {
+        let onboarded = self
+            .world
+            .as_ref()
+            .is_none_or(|world| world.save.companion.onboarding_complete);
+        crate::creature_menu::reveals_labels(self.menus_opened, onboarded)
     }
 
     /// The small native window that takes clicks on whichever menu is open, made the first time a
