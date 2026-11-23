@@ -77,7 +77,7 @@ impl Intent {
                 G::Groom => Self::Idle,
                 G::Shake => Self::React,
                 G::Sniff => Self::Inspect,
-                G::Skip | G::Trudge => Self::Move,
+                G::Skip | G::Trudge | G::Mantle => Self::Move,
                 G::Pour | G::Pluck | G::Tend => Self::Inspect,
                 G::Bask => Self::React,
                 G::Nibble | G::Chomp | G::Chew | G::Gulp => Self::Inspect,

@@ -56,6 +56,9 @@ use generation::*;
 use habits::*;
 use interaction::*;
 use journeys::*;
+pub use journeys::{
+    CLIMB_FRAMES_PER_SECOND, CLIMB_STROKE_FRAMES, MANTLE_FRAMES_PER_SECOND, MANTLE_HAUL_FRAMES,
+};
 use movement::*;
 use objects::*;
 pub(crate) use objects::{scheduled_colony_object_at, scheduled_village_unlock_at};
@@ -664,6 +667,9 @@ impl World {
             self.project_events(timeline_now);
             return;
         }
+        // Before anything moves anyone: the journeys that carry their creatures on this tick
+        // strike their poses again as they do.
+        self.let_go_of_journey_poses();
         if home_active {
             self.advance_village_moment(dt);
             self.advance_wonders(dt, desktop, true);

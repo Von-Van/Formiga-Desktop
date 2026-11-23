@@ -4,8 +4,25 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Two review sheets for how a companion meets what it holds and what it climbs.
+  `formiga-tools hold-sheet` draws every frame of eating, drinking, play, holding up a find and the
+  village chores at 4x for every body at its smallest and largest, with crosshairs on the paw and
+  the mouth each frame holds things by, so a belonging in the wrong place shows at a glance. `formiga-tools climb-sheet` shows a
+  whole climb onto a window, a tenth of a second a picture, placed exactly as the desktop places a
+  companion, and each body dangling from a ledge. Nothing a companion does or looks like changes.
+
 ### Changed
 
+- The test ceiling on a full colony's creature textures, counted as if no two frames were alike, is 16 MiB instead of 15 MiB, so the animation pass's new clips fit. A real colony of six still uses about 11.3 MB.
+- A companion climbs up the side of a window a paw at a time. The climb was four nearly identical
+  frames, the paws alternating three pixels while the body slid up at a steady speed out of step
+  with them; it is six frames now, a reach, a pull and a settle with one paw and then the other,
+  the leg on the reaching side bent up against the wall on the pull. The body rises on the pulls
+  and hardly at all on the reaches, frame for frame, and the climb still starts, ends and takes
+  as long as it did. Every companion climbs on the same beat. The two frames fit in cells each
+  creature's texture already had spare, so it costs no memory, and no other clip draws differently.
 - The notebook reads less like a settings window. Apply and Revert are only under Habitat,
   Applications and Preferences, the pages with preferences on them (and under any page while a
   change is waiting to be applied); elsewhere the foot of the page holds only the undo offer and
@@ -60,6 +77,37 @@ All notable changes are documented here.
   the finder holding up what it found, everyone napping or dancing or at a picnic, a late-night
   sleep pile under stars, a visitor as a shape at the edge. The scrapbook's finds are pasted in
   like snapshots. `formiga-tools vignette-sheet` draws every picture for review.
+- What a companion holds is held by the paw or the mouth it actually draws in that frame. Every
+  body frame now says where its near forepaw is and where its face's mouth is, and toys, snacks,
+  cups, a meal, a find held up, a watering can and anything picked are placed from those instead
+  of from one offset against the face. A find is held up in the paws raised to show it, a cat
+  presents its find against its chest and a Long body in its raised forepaw, a body standing on
+  all four carries things in its mouth, snacks and cups come to the mouth itself, and nothing
+  held goes over the eyes. Clips that hold nothing draw exactly as before.
+- A toy, a snack and a cup move with the body that is using them. At keep-up the toy is caught
+  in the paw on the crouch, knocked up as the body springs and at the top of its arc on the
+  stretch, and the paw goes with it: held out to catch, up at the chin, up beside the head and
+  back down, a wing opening for it on a winged body and a Long body lifting one forepaw with the
+  other three down. A body on four legs keeps its toy up back over its shoulders, and no toy ever
+  crosses the face. A snack is held up, carried into the mouth as the head dips to it, and gone
+  while it is chewed, with crumbs at the end; a cup tips back with the head, further on the deepest
+  of the sip. Every other clip draws exactly as before.
+- Watering pours in time with the pour. The can tips over on the frames the companion leans into
+  it and comes level when it does, and the water runs out of the spout only while it is tipped,
+  rather than appearing beside an upright can for most of the watering whatever the pose. The water
+  starts at the spout facing either way.
+- Topping out a climb is a mantle of its own rather than the end of a jump. Every climb used to
+  finish by hauling up in the climbing pose and then stepping in on the stiff legs a hop lands
+  on. Now the companion lays its chest and forearms over the edge with a knee drawn up to it,
+  pushes itself up on both paws planted flat on the ledge with its back leg still trailing, and
+  stands on the ledge with a little settle as it steps in. The haul and the step in change over
+  on the frame the art does, and the push is made the moment the paws plant, so they stay on
+  the ledge. It faces the window it is climbing onto the whole way up, and with reduced motion it
+  holds still on the push. A hop down still lands as a hop. The three frames fit in cells each
+  creature's texture already had spare, so it costs no memory, and no other clip draws
+  differently.
+- A companion hanging from a ledge swings its legs slowly from side to side and glances down at
+  the drop now and then, for longer when the hang has it worried, instead of hanging still.
 - A tossed companion balls up in the air instead of hanging as if still carried: two frames of
   its own, legs folded under, head and tail tucked and its eyes shut, the second turned a little
   so it tumbles until it lands. Every body draws it — the original families, every modular plan

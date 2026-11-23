@@ -348,6 +348,55 @@ dashes behind a toy, the knock on the paw, crumbs — stay baked in its frame. A
 something else needs no new frames; sprinting reuses the existing movement tick with a distinct
 six-frame gait.
 
+Every body frame says where it holds things, read from what it actually drew in that frame:
+`RenderedBodyFrame::hands` and `RenderedBodyFrame::mouth`, in frame pixels facing right and
+mirrored with facing as the face anchor is. The mouth is the face anchor plus the face layout's own
+mouth pixel (`face::mouth_offset`, from the same eye row and mouth drop `draw_face` draws by; the
+Echo Fox's under its nose). The hands are the near forepaw each body renderer drew, which it reports
+in its `Figure::hand`: the tip of the near limb for the original families (`draw_forelimbs`, where
+`offset_pair` placed it), the hand a modular limb reaches to or the paw folded at its side
+(`modular::near_hand`, from the same `limbs` the drawing uses), the fox's carried-out or folded
+front paw, and the end of a sculpted form's near arm. A body with no forepaw free in a frame — a
+soft quadruped or a Long body standing on all four, a winged body with its wings folded, a
+sculpted form on four legs — reports none, and carries things in its mouth: the hands point is
+then just forward of and under the mouth, so a thing hangs from the jaw with its top at the mouth.
+So a Long body presents a find in its raised forepaw; a blob holds things on the folded paw at the
+edge of its mass at chest height; a winged body holds them in an opened wing, or in its beak while
+its wings are folded. `prop_hold` builds the `PropHold` every belonging is placed from out of those
+two points, the face anchor and crown, and the body's floor and ground.
+
+Eating, drinking and play move what is held in time with the body, from per-frame tables beside
+each clip's pose in `renderer/pose.rs`. Keep-up (`KEEP_UP_TOSS`) follows SoloPlay's four frames:
+the toy is caught against the paw on the crouch, knocked up as the body springs, at the top of its
+arc on the stretch and dropping back, each beat measured from that frame's own hands, so a paw
+raised for the stretch carries the arc up with it. The paw moves with it: an original family's near
+paw is held out to catch, a modular body's near paw (or opened wing, or the fox's stub) reaches low,
+out at the chin, up beside the head and back down, and a Long body lifts its near forepaw alone,
+from under its chest to its chin, with the other three down. On the catch the toy is placed
+touching the paw, on the side away from the body, as near to resting against it as the face
+allows; in the air it goes ahead and up. A body on four legs (Long, the original soft quadruped)
+carries its head out ahead of its paws, so its toy is knocked back over its shoulders instead, and
+a body with no paw free keeps it up off its crown. `play_path` keeps the toy off the face as the
+overlay draws it, read from the face itself (`FaceMask`: the Joy and Neutral faces and a pixel
+round them), moving it the least it takes, ahead or up before lower or back, so it stays on one side
+of the face for the whole round; the dashes behind it run from where it was on the frame before.
+Eating (`MOUTHFUL`) holds the snack up in front of the mouth, carries it into the mouth with a bite
+gone as the head dips forward and down to it, and shows nothing in the paws for the two frames it
+is chewed, the crumbs falling on the last. Drinking (`SIP_TILT`) tips the head back with the cup,
+further back for the deepest of the sip, and the cup, held from the mouth, goes back with it; a
+mug or bowl is tipped with its rim at the mouth and lowered between sips. A meal's bites are at the
+mouth and its chewing and gulping in the paw where there is one. The atlas keeps each slot's hands point beside its face anchor
+(`AtlasPixels::hands`), and the overlay centres a held-up find, a watering can or anything picked
+on it through `held_up_at`, which keeps a thing `HELD_UP_REACH` across off the eyes, moving it
+forward, down or back, and up over the head only when nothing else clears them. What the village
+puts in a paw comes from `village_held` (`renderer/beats.rs`), from the frame of the pose and
+nothing else: on the frames a pour leans into the can (`pour_tip` in `renderer/pose.rs`, the same
+table the pose and the paws tip by) the can is drawn from its tipped cell and the water from the
+spout `PropSprite::spout` gives that cell, the water cell's stream starting at its own middle so
+its quad centres on the spout either way round; level frames draw the can upright and dry. That is
+still one quad for the can and a second only while it pours, and the village-life, doings and
+hold sheets draw them through the same call.
+
 A companion eating has a `Meal` (`formiga-core/src/meals.rs`), runtime only like `Presence`:
 `world/meals.rs` gives one to anyone whose action has just become Eat, carries it while they eat,
 and clears it when they stop, at the end of every tick, with dice of its own from the colony seed,
@@ -442,11 +491,52 @@ the picture moved down onto the body (`TalkPlacement::icon_at`). The interface a
 four pixels square, since three square can only join its bars with one middle pixel and reads as
 an I. `formiga-tools talk-sheet` shows every style and a few conversations.
 
-Climbing, dangling, inspection, and discovery presentation add four authored frames each. Upward
-window transfers are staged as ordinary traversal to the nearest inner edge, a 44–62 point/second
-vertical climb, and a 0.7-second continuous climbing mantle; downward transfers keep the existing
-hop. The mantle begins slightly below the ledge and eases upward and inward without switching to a
-landing pose. A shared `FramePlacement` contract seats normal art by its feet and dangling art by
+Dangling, inspection, and discovery presentation add four authored frames each, and climbing six.
+A dangling body swings its legs slowly together across its four frames, out to one side and up a
+little, back through the middle and out to the other, the tail following a beat behind and the paws
+staying where they hold the ledge; as the legs come back through the middle it glances down at the
+drop (`glancing_down` in `renderer/face.rs`), and for a frame longer when its attention is startled
+or worried. Climbing's six are
+a stroke with one paw and then the other, each a reach (hanging low, one paw high beside the head
+and the other down at the cheek), a pull (the body up two pixels with its head tucked, the leg on
+the reaching side bent up against the wall, the tail down, a glint of effort) and a settle onto the
+new grip. A four-pawed body's forepaws take the strokes in turn, the near one in front of the face
+and the far one behind the head, its hind legs bracing in turn; a winged one's wings open half
+way on the pull. Upward window transfers are staged as ordinary traversal to the nearest inner
+edge, a vertical climb averaging 44–62 points a second, and a 0.7-second mantle; downward
+transfers keep the existing hop, which lands as a hop does. The climb rises a paw at a time rather than
+sliding up at a steady speed: `climb_progress` in `world/journeys.rs` gives each frame of a stroke
+a share of the rise (0.08 on the reach, 1 on the pull, 0.3 on the settle, never none, so a climbing
+journey never holds still and reads as a pause), normalised over the climb so it starts, ends and
+takes as long as the steady climb did. The world knows only the clip's rate and stroke length
+(`CLIMB_FRAMES_PER_SECOND`, `CLIMB_STROKE_FRAMES`, which `AnimationSpec` reads for the climb), not
+its frames. The two keep step because they count from the same instant: a journey that changes a
+creature's action sets `action_elapsed` from `WindowJourney::action_elapsed` (how far past the
+wall the climb already is, a fraction of a tick) rather than zero, and `MotionSignature::frame`
+plays the climb on that clock without a companion's own tempo and phase.
+
+The climb tops out in a mantle of its own, `Gesture::Mantle`, three frames played once at
+`MANTLE_FRAMES_PER_SECOND` (5): the chest over the edge with the forearms laid on it and the front
+knee drawn up to it (`Pose::knee`); the push, raised on both paws planted flat on the ledge, the
+back leg still trailing below it (`Pose::trail`), with a glint of effort; and standing on the ledge
+with a little settle. It begins 10 points below the ledge. The haul is the first
+`MANTLE_HAUL_FRAMES` frames, straight up where the paws are: a little with the chest over the edge,
+then the push, most of it made the moment the paws plant and the rest easing up onto the ledge
+(`haul_rise`), so the planted paws stay on the ledge rather than the body sliding up past them for
+the length of a frame. The step in is the third frame, carried in by the push and coming to a stop.
+Nothing of it is a landing: the action stays `ClimbWindow`, which keeps the climb's face, cadence
+and every check that treats a climber as carried, and the journey's step carries the pose
+(`JourneyStep::pose`). `strike_journey_pose` shows it on every tick the journey hauls or steps the
+creature, over a scene's own pose if it has one and otherwise as a pose of its own looking ahead
+along the ledge, and sets `action_elapsed` from the moment the climb topped out, so the frames and
+the haul change over together. `World::let_go_of_journey_poses` lets go of every such pose at the
+start of each tick, before anything moves anyone, so a mantle never outlasts the step that struck
+it — finished, cut short by a window moving, picked up, or taken over by a scene. A climb up the
+window's side and its haul keep facing the way the creature came, the window it is climbing onto,
+rather than turning to face right on every step that goes nowhere across. With reduced motion the
+mantle holds still on its push (`AnimationSpec::still_frame`), which bakes in place of the first
+frame every other clip holds. A wonder's player climbing on its way over mantles the same way.
+A shared `FramePlacement` contract seats normal art by its feet and dangling art by
 its slightly raised handhold, so the GPU quad and alpha-aware interaction proxy resolve the same
 bounds.
 
@@ -459,8 +549,8 @@ collection; the only durable record is the scrapbook's one first-find row per va
 The renderer caches one gaze-free 48×48 body atlas and one 16×16 layered face texture per creature.
 The face texture holds fifteen expressions — the yawn's, eyes screwed shut and the mouth wide, and
 since 0.62.0 grumpy, smug and pleading for the poses a temperament strikes — each in nine gaze
-directions and three eyelid states. The body atlas holds 215 frames: 94 for actions and 121 for
-thirty-five gesture poses. A toss has two frames of its own, the last action clip in the atlas:
+directions and three eyelid states. The body atlas holds 220 frames: 96 for actions and 124 for
+thirty-six gesture poses. A toss has two frames of its own, appended after every earlier action clip:
 balled up in the air, legs folded under, head and tail tucked and the eyes shut, and the same ball
 turned a little nose up (`renderer::tumble`), which loops at six frames a second until the landing.
 The turn is drawn the way RotSprite turns pixel art — scaled up eight times by Scale2x and each
@@ -482,14 +572,15 @@ its chores, its pet and the four ways it eats a meal added five rows of cells, 1
 meal stopped repeating frames — and much less under reduced motion, where each clip holds one
 frame. With no two frames alike they would be 2,442,240 bytes, which is what the budgets hold: below a 4,500,000-byte
 test limit per creature, raised deliberately from 1.5 MB so the pose vocabulary has room to grow
-without the budget moving each time, and a full colony of six under 15 MiB, raised from 10 MiB in
-0.62.0 for the new poses and faces.
+without the budget moving each time, and a full colony of six under 16 MiB, raised from 10 MiB in
+0.62.0 for the new poses and faces and from 15 MiB in 0.68.0 for the animation pass's new clips.
 
 Gestures — cheer, gasp, cover, worry, crouch, heave, balance, reach, bop, and watch; the stretch and
 yawn a habit or a yawn going round shows; the huff, swoon, beg, strut, peek and stomp a
 temperament strikes; the wash, shake and sniff, sprawl and loaf, and skip and trudge a
-companion does on its own account; and the pour, pluck and tend of its chores and the bask of
-being petted (see [between the big moments](#between-the-big-moments)) — are a runtime-only `gesture` on `AttentionPose`, so saves never carry one. While one is set, `BodyClip::for_creature`
+companion does on its own account; the pour, pluck and tend of its chores and the bask of
+being petted (see [between the big moments](#between-the-big-moments)); and the mantle a climb tops
+out with — are a runtime-only `gesture` on `AttentionPose`, so saves never carry one. While one is set, `BodyClip::for_creature`
 shows its baked clip in place of the action's; the action still owns movement, placement, facing,
 and frame timing, and the GPU quad, the interaction mask, and the review sheets resolve the same
 clip. One place decides whether a body is free to show a pose — `body_free` in `world/attention.rs`,
@@ -497,12 +588,15 @@ applied to every role after it has proposed one. A pose survives only over a pla
 action, never under reduced motion, while walking, hopping, hanging by the hands, or when the
 creature's own journey or a toss still moves it this tick; what actually moves the creature decides
 that, rather than its velocity, because an approach that has handed over to a journey leaves the
-last stride on the books. Both renderers draw one limb per side: a gesture carries the resting paw, nub, or wing out
+last stride on the books. The one exception is the mantle, which is the journey's own pose and is
+the travel: `body_free` lets it stand, with reduced motion too. Both renderers draw one limb per side: a gesture carries the resting paw, nub, or wing out
 to where it points, rather than drawing another limb beside the one already there. A wing opens in
 its own colors and texture. A long body stands on four legs and does with one forepaw what another
 body does with a hand, lifted a little forward and never above the chin, so it always stands on
 three paws; a walk lifts one leg at a time, and only hanging from or climbing a window takes both
-forepaws, which go up the front and the back of the head so the face between them stays clear.
+forepaws, which go up the front and the back of the head so the face between them stays clear,
+and pulling itself up onto the ledge at the top, reaching them forward over the edge and then
+planting them on it.
 Covering the face also closes the eyes, which the layered face still draws over the paws.
 
 `PetReaction` is drawn as a bask, leaning up into the hand with its eyes shut and a heart over it,
@@ -1070,8 +1164,8 @@ home's corner, display, scale, and accessible region. Lots without room remain s
 all objects hide while the house is inactive. Legacy normalized positions are rewritten to the
 village. The renderer builds one 256×112 seed-derived sheet of 16×16 cells, sixteen to a row — the
 twenty belongings, the fifteen hangout spots, every garden at each of its four stages, the fifteen
-ornaments, and the small things a companion holds or chases in the village: a watering can and its
-water, what is picked from each garden, an apple, a leaf, a blossom, and the Z that drifts up out of
+ornaments, and the small things a companion holds or chases in the village: a watering can upright
+and tipped to pour, its water, what is picked from each garden, an apple, a leaf, a blossom, and the Z that drifts up out of
 a house somebody is asleep in. It rebuilds the ground's vertices only when object state, a garden's
 stage, cottages, home state, habitat, display geometry, or scale changes.
 
@@ -1330,7 +1424,7 @@ crouch sinks the body over its feet, a lean carries the head, pricked or drooped
 fold into their base, the tail waves a pixel up or down, and steps move the feet. A paw in use goes the
 way `modular::limbs` sends an upright companion's but only a short stub's length, as the sketch's
 forelegs are; holding on to a ledge to dangle or climb is the one reach that goes all the way, up
-behind the cheek. A resting paw stays folded on the belly. The face
+behind the cheek, and pulling itself up onto one the other, down onto the ledge. A resting paw stays folded on the belly. The face
 is drawn in the face frame like a companion's, so blinks, gazes and expressions come from the
 same face state. Belongings and effects are still each companion's own. `formiga-tools fox-sheet`
 draws every clip and every face.
@@ -2908,10 +3002,28 @@ Contact is anchored rather than eyeballed. `FramePlacement` fixes the top of the
 against the simulation's contact point, so feet meet a ledge in every pose and a dangling creature
 hangs from its hands; the native hit proxy and the review sheets take the same placement, which is
 why a catch, a pull-up, a helper's reach, and a grip all land on the pixel the simulation thinks
-they do. `PropAnchor` does the same for a carried thing: one explicit offset in front of the
-holder's face, mirrored with facing, kept inside the frame so a prop is clipped and occluded with
-whoever is holding it. A prop changing hands is then two anchors meeting, which reads as a
-hand-off rather than as two objects swapping places in mid-air.
+they do. A carried thing is anchored the same way, to the paw or the mouth each frame draws (its
+`hands` and `mouth`, above), kept inside the frame so a prop is clipped and occluded with whoever
+is holding it.
+
+Two review sheets check that contact by eye. `formiga-tools hold-sheet` draws every frame of eating,
+drinking, solo play, holding up a find, and the pour, pluck and tend chores at 4x, for each sheet
+body at statures 85 and 115 and for the three original families as a look from before recipes
+draws them, with what the overlay puts in the paws. Over each frame it marks, in colours no palette
+has (a test holds every frame to that), the paw and the mouth the frame places belongings by (its
+`hands` and `mouth`, which `CreatureRenderer::hold_points` also returns), where the overlay also
+holds up a find or a village prop, so a crosshair off the limb or the mouth is a belonging drawn
+in the wrong place. `formiga-tools climb-sheet` runs a whole climb in the colony's
+own simulation: `World::begin_window_climb` starts one companion up onto a window 120 points above
+the floor the way it climbs one itself (a look, the walk to the window's side, the climb, the
+mantle's haul and step in, each sample labelled with the mantle frame it shows), and every tenth of
+a second up to two seconds into the perch is drawn at 2x against the window, placed by
+`FramePlacement::frame_rect` with `FramePlacement::horizontal_scale`, the rule `gpu.rs` places
+every companion's quad by. Under the climbs, each body dangles from a ledge in every frame with its
+hang at none, half and all of its weight, looking along the ledge so its glance down shows. The
+gesture sheet gives the mantle a row of its own for every body, frame by frame beside the watching
+loop's, and `formiga-tools ambient-sheet` draws its three frames over the ledge where the world has
+it in each.
 
 Routes are revalidated, never re-searched. A plan is re-examined only when the topology hash
 changes, and then every remaining hop's rectangles are checked against the live snapshot, so a
