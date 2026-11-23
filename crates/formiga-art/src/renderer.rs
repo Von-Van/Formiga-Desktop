@@ -1507,7 +1507,7 @@ impl CreatureRenderer {
         };
         let mut face_anchor = figure.face;
         if let Some(dress) = dress {
-            accessories::draw_accessory(&mut canvas, dress, figure);
+            accessories::draw_accessory(&mut canvas, dress, figure, genome.logical_size);
         }
         // Turned whole, with whatever it wears, and a sculpted form's fine painting with it.
         if let Some(turn) = tumble(clip, frame).and_then(|angle| Turn::about_middle(&canvas, angle))

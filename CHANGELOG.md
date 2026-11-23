@@ -213,6 +213,14 @@ All notable changes are documented here.
   drawn in. The two frames fill cells the atlas had spare, so a companion's textures stay 1.70 MB;
   every other clip draws exactly as before. `motion-sheet` shows the shuffle after the everyday
   loops.
+- Five thought-bubble icons read at the smallest scale the companion runs at, where they used to
+  blur into smudges: Grumble is an outlined storm cloud over a bolt, Jealous an outlined green
+  heart broken in two, Swoon one big outlined star, Blush a little face with pink cheeks, and
+  Watching an eye with a big round iris. `formiga-tools ui-sheet` shows them in its 2x rows.
+- A mini of logical size 28 or smaller wears the moon clip, the shell necklace and the snail pack
+  in plainer, bolder shapes, so they no longer turn to blobs at its size: a taller crescent, a
+  ridged shell on a darker cord, and a pale snail shell with its spiral, sat clear of the face.
+  Adults, and every other piece, are drawn exactly as before.
 
 ### Fixed
 

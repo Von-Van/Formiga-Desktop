@@ -1261,6 +1261,12 @@ released after 240 renders with neither a bubble nor a menu up, and released imm
 colony is hidden or the overlay is torn down. It costs one extra bind group and one extra draw call
 inside the existing pass while something is up, and nothing at all otherwise.
 
+A bubble icon is judged at 2x, the smallest scale the companion runs at. Most are 9×9 in the
+middle of the bubble's paper; Grumble, Jealous, Swoon, Blush and Watching are 11 wide, each one
+shape closed by a 1 px outline with one mark inside — a cloud with a bolt under it, a heart broken
+in two, a five-pointed star, a face with pink cheeks, an eye with a big iris — because loose
+strokes and dithered cracks run together into a smudge at that size.
+
 `render` takes `(save, cursor, habitat_editor, windows, milestone, ui: OverlayUi { bubbles,
 reduce_motion, menu: Option<MenuView> })`, and `needs_redraw` takes the same `ui_active` flag. While
 a menu is open the host's tick interval drops to 50 ms; the menu is owner-initiated and closes
@@ -1594,7 +1600,13 @@ the `Figure` that frame's body reports — the top of the head, the neck, the ch
 follows every pose at a mini's size as well as an adult's. Each piece is painted in what it is
 made of, from the same material ramps as the finds, with what is dyed in the colours the colony's
 trinket sheet gives the find it is made from, and then outlined all round in one pass so it holds
-its shape against any coat. `CreatureRenderer::render_worn_piece` cuts a piece out of a
+its shape against any coat. A companion of logical size 28 or smaller (`SPECK_SIZE`: most minis,
+and never an adult, even set back in the village) wears three pieces in plainer, bolder shapes,
+because their fine shading runs into a blob at that size: the moon clip is a taller two-tone
+crescent a row higher, the shell necklace a fan of light and dark ridges on a darker cord, and the
+snail pack a pale shell with only its spiral on it, two pixels further back. The choice follows
+the wearer's size, which is the same in every frame, not the head's, which changes from frame to
+frame. `CreatureRenderer::render_worn_piece` cuts a piece out of a
 companion's standing frame on its own, as it sits on that companion, for a page to picture it
 beside its name. The overlay rebakes a companion's atlas only when what it wears
 changes. `cargo run -p formiga-tools -- accessory-sheet` draws every piece on every body plan.
