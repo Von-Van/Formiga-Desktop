@@ -92,9 +92,15 @@ fn a_toy_is_carried_through_the_paws_clear_of_the_face_and_inside_the_frame() {
             let mut touching = 0;
             for frame in 0..4 {
                 let (prop, anchor) = prop_only(&genome, action, frame);
-                let bounds = prop
-                    .alpha_bounds()
-                    .unwrap_or_else(|| panic!("{family:?} {action:?} {frame} draws nothing"));
+                let Some(bounds) = prop.alpha_bounds() else {
+                    // A mouthful is chewed with nothing in the paws.
+                    assert!(
+                        action == ActionKind::Eat
+                            && MOUTHFUL[usize::from(frame % 4)] == Mouthful::Chewing,
+                        "{family:?} {action:?} {frame} draws nothing"
+                    );
+                    continue;
+                };
                 assert!(
                     bounds.0 > 0
                         && bounds.1 > 0
@@ -163,50 +169,6 @@ fn generated_discoveries_have_sixteen_deterministic_opaque_silhouettes() {
         hashes.insert(Sha256::digest(first.rgba_bytes()).to_vec());
     }
     assert_eq!(hashes.len(), usize::from(formiga_core::TRINKET_VARIANTS));
-}
-
-/// A carried thing rides in front of whoever is holding it. The anchor is one explicit
-/// contract shared by the overlay and the review sheets, so a prop changing hands reads as a
-/// hand-off rather than two objects swapping places in the air.
-#[test]
-fn a_carried_prop_rides_on_the_side_its_holder_is_facing_and_stays_inside_the_frame() {
-    let facing = PropAnchor::facing(true);
-    let away = PropAnchor::facing(false);
-    assert_eq!(facing.dx, -away.dx, "the anchor mirrors with facing");
-    assert_eq!(
-        facing.dy, away.dy,
-        "and rides at the same height either way"
-    );
-    assert!(facing.dx > 0.0, "a held thing is in front, not behind");
-    assert!(
-        facing.dy > 0.0,
-        "and carried at the chest, not floated above the head"
-    );
-    // The prop is drawn from the face anchor, in a face-sized quad. Both offsets have to keep
-    // that quad inside the body frame, or a prop would be clipped differently from its holder.
-    let margin = (FRAME_SIZE - FACE_FRAME_SIZE) as f32 / 2.0;
-    for anchor in [facing, away] {
-        assert!(
-            anchor.dx.abs() <= margin,
-            "{anchor:?} leaves the frame sideways"
-        );
-        assert!(
-            anchor.dy.abs() <= margin,
-            "{anchor:?} leaves the frame vertically"
-        );
-    }
-    // Two creatures facing each other reach toward one another, which is what makes a
-    // hand-off read: the gap between their anchors is smaller than the gap between them.
-    let mut creature = World::preview_adult(
-        [23; 32],
-        time::OffsetDateTime::UNIX_EPOCH,
-        &DesktopSnapshot::default(),
-    );
-    creature.state.facing_right = true;
-    let giver = PropAnchor::for_creature(&creature);
-    creature.state.facing_right = false;
-    let taker = PropAnchor::for_creature(&creature);
-    assert!(giver.dx > taker.dx);
 }
 
 /// Whatever a companion wears shows on it, on every body plan and in every kind of pose — standing,
@@ -333,6 +295,300 @@ fn every_piece_can_be_pictured_on_its_own() {
                 (piece.width(), piece.height()),
                 "{family:?}: {accessory:?}"
             );
+        }
+    }
+}
+
+/// Every kind of body a belonging is held by, at the smallest and largest a companion stands:
+/// the three original families, a recipe of each body plan, the Echo Fox, and a sculpted form of
+/// each plan.
+fn holding_subjects() -> Vec<(String, AppearanceGenome)> {
+    use formiga_core::forms::{Design, Form, Plan, Sculpt, plain_face};
+    let preview = World::preview_adult(
+        [29; 32],
+        time::OffsetDateTime::UNIX_EPOCH,
+        &DesktopSnapshot::default(),
+    )
+    .appearance;
+    let mut kinds: Vec<(String, AppearanceGenome)> = [
+        BodyFamily::Blob,
+        BodyFamily::Hopper,
+        BodyFamily::SoftQuadruped,
+    ]
+    .into_iter()
+    .map(|family| (format!("{family:?}"), genome(family)))
+    .collect();
+    for plan in formiga_core::BodyPlan::ALL {
+        let mut design = formiga_core::CreatureDesign::modular([29; 32], 0, None);
+        design.body = plan;
+        for limbs in 0..=2 {
+            design.classic.limbs = limbs;
+            let mut appearance = preview.clone();
+            appearance.design = Some(design);
+            kinds.push((format!("{plan:?} limbs {limbs}"), appearance));
+        }
+    }
+    kinds.push((
+        "Echo Fox".into(),
+        AppearanceGenome {
+            echo_fox: true,
+            ..genome(BodyFamily::Hopper)
+        },
+    ));
+    for plan in Plan::ALL {
+        let design = Design {
+            form: Form::Sculpted {
+                sculpt: Sculpt::starter(plan),
+            },
+            face: plain_face(),
+        };
+        kinds.push((format!("sculpted {plan:?}"), design.genome(&preview)));
+    }
+    kinds
+        .into_iter()
+        .flat_map(|(name, genome)| {
+            [formiga_core::STATURE_MIN, formiga_core::STATURE_MAX].map(|stature| {
+                let mut sized = genome.clone();
+                sized.logical_size = formiga_core::size_for(stature, 100);
+                (format!("{name} at {stature}"), sized)
+            })
+        })
+        .collect()
+}
+
+/// Every clip whose own frames carry no marks of what is held renders exactly as it did before
+/// belongings were placed from each frame's paw and mouth: holding something moves the thing,
+/// never the body. Eating, play and drinking are left out: each moves its body in time with
+/// what it holds (the head dips to a mouthful and tips back with a cup, a paw keeps a toy up),
+/// and eating and play leave crumbs and a trail in the body's own frame. A change that means to
+/// redraw one of the others records the new digest here.
+#[test]
+fn clips_that_hold_nothing_of_their_own_draw_as_they_did() {
+    let mut digest = Sha256::new();
+    for (_, genome) in holding_subjects() {
+        for clip in BodyClip::baked() {
+            if matches!(
+                clip,
+                BodyClip::Action(ActionKind::Eat | ActionKind::SoloPlay | ActionKind::Drink)
+            ) {
+                continue;
+            }
+            for frame in 0..AnimationSpec::for_clip(clip).frames {
+                let body = CreatureRenderer::render_body_frame(&genome, clip, frame, false);
+                digest.update(body.canvas.rgba_bytes());
+                digest.update([body.face_anchor.x as u8, body.face_anchor.y as u8]);
+            }
+        }
+    }
+    let hex: String = digest
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    assert_eq!(
+        hex, "07c2a35c3cd375e90443e751e0cb718da92e0d2d515ada708612541f8199bddf",
+        "a clip that holds nothing of its own drew differently"
+    );
+}
+
+/// Whatever a frame holds is held by the body drawn in it: at least one of the thing's pixels
+/// meets the paw the frame drew (on it, or beside it along a row or a column) or comes within
+/// two pixels of the mouth the face is drawn with, on every body, at both ends of the size
+/// range, in every frame of every clip that holds something.
+///
+/// Keep-up is the one exception, because its toy is in the air for three beats of four and never
+/// covers the face; it has a test of its own, which holds it to the paw on the beat it is caught
+/// (see `keep_ups_toy_never_crosses_the_face_and_is_caught_in_the_paw`).
+#[test]
+fn every_belonging_is_held_in_a_drawn_paw_or_at_the_mouth() {
+    let mut misses = Vec::new();
+    for (name, genome) in holding_subjects() {
+        for clip in BodyClip::baked() {
+            if clip == BodyClip::Action(ActionKind::SoloPlay) {
+                continue;
+            }
+            for frame in 0..AnimationSpec::for_clip(clip).frames {
+                let body = CreatureRenderer::render_body_frame(&genome, clip, frame, false);
+                let Some(held) = body.held else {
+                    continue;
+                };
+                let mut prop = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+                held.paint(&mut prop, true);
+                let solid = |canvas: &Canvas, x: i32, y: i32| canvas.get(x, y).a > 0;
+                let things: Vec<(i32, i32)> = (0..FRAME_SIZE as i32)
+                    .flat_map(|y| (0..FRAME_SIZE as i32).map(move |x| (x, y)))
+                    .filter(|&(x, y)| solid(&prop, x, y))
+                    .collect();
+                // The paw: the body's own pixels within a pixel of where the frame says it holds
+                // things, which has to be on the drawing itself.
+                let hands = body.hands;
+                let paw: Vec<(i32, i32)> = (hands.y - 1..=hands.y + 1)
+                    .flat_map(|y| (hands.x - 1..=hands.x + 1).map(move |x| (x, y)))
+                    .filter(|&(x, y)| solid(&body.canvas, x, y))
+                    .collect();
+                let touching = |(x, y): (i32, i32)| {
+                    paw.iter()
+                        .any(|&(px, py)| (x - px).abs() + (y - py).abs() <= 1)
+                };
+                let in_paw =
+                    solid(&body.canvas, hands.x, hands.y) && things.iter().any(|&at| touching(at));
+                let mouth = body.mouth;
+                let at_mouth = things
+                    .iter()
+                    .any(|&(x, y)| (x - mouth.x).abs() <= 2 && (y - mouth.y).abs() <= 2);
+                if !in_paw && !at_mouth {
+                    misses.push(format!("{name} {clip:?} frame {frame}"));
+                }
+            }
+        }
+    }
+    assert!(
+        misses.is_empty(),
+        "{} frames hold something away from both paw and mouth:\n{}",
+        misses.len(),
+        misses.join("\n")
+    );
+}
+
+/// The mouth a frame carries mouthfuls to is the mouth its face draws: an inked pixel of the
+/// face is on it or right beside it, on every body and in every clip.
+#[test]
+fn a_frames_mouth_is_where_its_face_draws_one() {
+    let state = FaceRenderState {
+        expression: ExpressionKind::Neutral,
+        eyelids: EyelidPose::Open,
+        gaze: GazeDirection::default(),
+    };
+    for (name, genome) in holding_subjects() {
+        let face = CreatureRenderer::render_face_frame(&genome, state);
+        for clip in BodyClip::baked() {
+            for frame in 0..AnimationSpec::for_clip(clip).frames {
+                let body = CreatureRenderer::render_body_frame(&genome, clip, frame, false);
+                let half = FACE_FRAME_SIZE as i32 / 2;
+                let x = body.mouth.x - body.face_anchor.x + half;
+                let y = body.mouth.y - body.face_anchor.y + half;
+                assert!(
+                    (-1..=1).any(|dy| (-1..=1).any(|dx| face.get(x + dx, y + dy).a > 0)),
+                    "{name} {clip:?} frame {frame}: no mouth drawn at {:?}",
+                    body.mouth
+                );
+            }
+        }
+    }
+}
+
+/// The pixels the face drawn over a frame covers, in the expressions play and a meal wear, as
+/// the overlay places it: centred on the frame's face anchor.
+fn face_pixels(genome: &AppearanceGenome, anchor: PixelPoint) -> Vec<(i32, i32)> {
+    let half = FACE_FRAME_SIZE as i32 / 2;
+    let mut pixels = Vec::new();
+    for expression in [ExpressionKind::Joy, ExpressionKind::Neutral] {
+        let face = CreatureRenderer::render_face_frame(
+            genome,
+            FaceRenderState {
+                expression,
+                eyelids: EyelidPose::Open,
+                gaze: GazeDirection::default(),
+            },
+        );
+        for y in 0..FACE_FRAME_SIZE as i32 {
+            for x in 0..FACE_FRAME_SIZE as i32 {
+                if face.get(x, y).a > 0 {
+                    pixels.push((anchor.x - half + x, anchor.y - half + y));
+                }
+            }
+        }
+    }
+    pixels
+}
+
+/// Keep-up's toy never goes across the face, on any beat, any body or either end of the size
+/// range: it is beside the paw, ahead of the face or over the head instead. On the beat it is
+/// caught, on the crouch, it touches the paw keeping it up, on it or beside it along a row or a
+/// column; a body with no paw free has it on top of its head, touching the head.
+#[test]
+fn keep_ups_toy_never_crosses_the_face_and_is_caught_in_the_paw() {
+    let play = BodyClip::Action(ActionKind::SoloPlay);
+    let mut misses = Vec::new();
+    for (name, genome) in holding_subjects() {
+        for frame in 0..AnimationSpec::for_clip(play).frames {
+            let body = CreatureRenderer::render_body_frame(&genome, play, frame, false);
+            let held = body.held.expect("keep-up always holds its toy");
+            let mut prop = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+            held.paint(&mut prop, true);
+            let solid = |canvas: &Canvas, x: i32, y: i32| canvas.get(x, y).a > 0;
+            let over = face_pixels(&genome, body.face_anchor)
+                .into_iter()
+                .filter(|&(x, y)| solid(&prop, x, y))
+                .count();
+            if over > 0 {
+                misses.push(format!(
+                    "{name} frame {frame}: {over} toy pixels over the face"
+                ));
+            }
+            if frame % 4 != 0 {
+                continue;
+            }
+            let near = |(x, y): (i32, i32)| {
+                [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)]
+                    .into_iter()
+                    .any(|(dx, dy)| solid(&prop, x + dx, y + dy))
+            };
+            let caught = if body.paw {
+                let hands = body.hands;
+                (hands.y - 1..=hands.y + 1)
+                    .flat_map(|y| (hands.x - 1..=hands.x + 1).map(move |x| (x, y)))
+                    .filter(|&(x, y)| solid(&body.canvas, x, y))
+                    .any(near)
+            } else {
+                (0..FRAME_SIZE as i32)
+                    .flat_map(|y| (0..FRAME_SIZE as i32).map(move |x| (x, y)))
+                    .filter(|&(x, y)| solid(&body.canvas, x, y))
+                    .any(near)
+            };
+            if !caught {
+                let hands = body.hands;
+                let gap = (0..FRAME_SIZE as i32)
+                    .flat_map(|y| (0..FRAME_SIZE as i32).map(move |x| (x, y)))
+                    .filter(|&(x, y)| solid(&prop, x, y))
+                    .map(|(x, y)| (x - hands.x).abs() + (y - hands.y).abs())
+                    .min();
+                misses.push(format!(
+                    "{name} frame {frame}: the toy is caught {gap:?} pixels from the paw"
+                ));
+            }
+        }
+    }
+    assert!(misses.is_empty(), "{}", misses.join("\n"));
+}
+
+/// A mouthful goes into the mouth: on the frame it is bitten some of it is within two pixels of
+/// the mouth the face is drawn with, and while it is chewed nothing is held at all, on every body.
+#[test]
+fn a_mouthful_is_bitten_at_the_mouth_and_chewed_with_nothing_held() {
+    let eat = BodyClip::Action(ActionKind::Eat);
+    for (name, genome) in holding_subjects() {
+        for frame in 0..AnimationSpec::for_clip(eat).frames {
+            let body = CreatureRenderer::render_body_frame(&genome, eat, frame, false);
+            match MOUTHFUL[usize::from(frame % 4)] {
+                Mouthful::Chewing => assert_eq!(
+                    body.held, None,
+                    "{name} frame {frame}: something is held while it chews"
+                ),
+                Mouthful::Raised => assert!(body.held.is_some(), "{name} frame {frame}"),
+                Mouthful::Bitten => {
+                    let held = body.held.expect("a mouthful is held as it is bitten");
+                    let mut snack = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+                    held.paint(&mut snack, true);
+                    let mouth = body.mouth;
+                    assert!(
+                        (-2..=2).any(
+                            |dy| (-2..=2).any(|dx| snack.get(mouth.x + dx, mouth.y + dy).a > 0)
+                        ),
+                        "{name} frame {frame}: the mouthful misses the mouth at {mouth:?}"
+                    );
+                }
+            }
         }
     }
 }

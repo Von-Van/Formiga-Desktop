@@ -34,6 +34,103 @@ pub(super) fn update_drives(creature: &mut Creature, dt: f32) {
     }
 }
 
+/// How long a walk takes to come up to its pace from standing, and to come down from it onto its
+/// mark, in seconds. A quarter of a second is a step or so: enough for a start and a stop to read
+/// as feet taking up and giving up the weight, too little to make a walk feel slow to answer.
+pub(super) const WALK_EASE_SECS: f32 = 0.25;
+/// How long a creature keeps facing the way it has turned at the least, in seconds, before it
+/// turns back for something only a little behind it. A follower whose friend drifts across its
+/// middle, or a walker nudged over its own mark, would otherwise face one way and the other on
+/// consecutive ticks.
+const TURN_HOLD_SECS: f32 = 0.25;
+/// Further behind it than this, in points, and a creature turns at once, however lately it last
+/// turned: whatever it is after has really gone the other way.
+const TURN_POINTS: f32 = 6.0;
+/// Closer than this to straight ahead or behind, in points, is neither: a step straight up a
+/// window, or a companion standing exactly where it stands, leaves it facing the way it was.
+const LEVEL_POINTS: f32 = 0.01;
+
+/// The way a creature faced at the end of the last tick, and for how long it had faced that way,
+/// kept by the world while it runs so a turn can be held. Runtime only, like the journeys.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct FacingHold {
+    right: bool,
+    held: f32,
+}
+
+/// Whether a creature facing the way it does, having faced that way for `held` seconds, turns
+/// round for something `dx` points from it along the ground.
+fn turns_for(facing_right: bool, held: f32, dx: f32) -> bool {
+    let behind = if facing_right {
+        dx < -LEVEL_POINTS
+    } else {
+        dx > LEVEL_POINTS
+    };
+    behind && (dx.abs() > TURN_POINTS || held >= TURN_HOLD_SECS)
+}
+
+/// Turn a creature to face something `dx` points from it, if [`turns_for`] says it does. Returns
+/// whether it faces that way now.
+pub(super) fn face_toward(state: &mut CreatureState, held: f32, dx: f32) -> bool {
+    if turns_for(state.facing_right, held, dx) {
+        state.facing_right = dx > 0.0;
+    }
+    dx.abs() <= LEVEL_POINTS || state.facing_right == (dx > 0.0)
+}
+
+/// How long `creature` has faced the way it faces now, in seconds, from the world's `holds`. A
+/// creature the world has not yet seen, just opened or just arrived, has faced that way as long
+/// as anything needs; one turned this tick, by anything, has only just turned.
+pub(super) fn facing_held(holds: &BTreeMap<CreatureId, FacingHold>, creature: &Creature) -> f32 {
+    holds.get(&creature.id).map_or(f32::INFINITY, |hold| {
+        if hold.right == creature.state.facing_right {
+            hold.held
+        } else {
+            0.0
+        }
+    })
+}
+
+impl World {
+    /// Note which way everyone ended the tick facing. Called once, at the end of every tick,
+    /// whatever turned them: a walk, a wall, a friend to face, a hand putting them down.
+    pub(super) fn carry_facing(&mut self, dt: f32) {
+        let holds = &mut self.facing_holds;
+        holds.retain(|id, _| self.save.creatures.iter().any(|c| c.id == *id));
+        for creature in &self.save.creatures {
+            let right = creature.state.facing_right;
+            let hold = holds.entry(creature.id).or_insert(FacingHold {
+                right,
+                held: TURN_HOLD_SECS,
+            });
+            if hold.right == right {
+                hold.held += dt;
+            } else {
+                *hold = FacingHold { right, held: 0.0 };
+            }
+        }
+    }
+}
+
+/// How fast a walk going `direction` (one way or the other along the ground) moves this tick,
+/// coming up to `pace` from whatever it was already doing that way over [`WALK_EASE_SECS`].
+/// Moving the other way, or standing, it starts from standing: a creature turns where it stands
+/// rather than sliding backwards out of its last step.
+fn eased_in(velocity_x: f32, direction: f32, pace: f32, dt: f32) -> f32 {
+    let already = (velocity_x * direction).max(0.0);
+    (already + pace / WALK_EASE_SECS * dt).min(pace)
+}
+
+/// The fastest a walk at `pace` can go this tick, `dt` long, with `remaining` points left and
+/// still come down to a stop on its mark over the last [`WALK_EASE_SECS`], slowing evenly. It is
+/// the speed half way through the tick, so the ticks between them cover the distance an even
+/// slowing would and the last one is short, rather than arriving early in a lurch.
+fn eased_out(remaining: f32, pace: f32, dt: f32) -> f32 {
+    let slowing = pace / WALK_EASE_SECS;
+    let half_tick = slowing * dt * 0.5;
+    (half_tick * half_tick + 2.0 * slowing * remaining.max(0.0)).sqrt() - half_tick
+}
+
 /// A creature doing something where it stands comes to a stop from whatever pace it arrived at,
 /// in about an eighth of a second, rather than carrying a walk's speed through a snack or a game.
 fn coast(creature: &mut Creature, dt: f32) {
@@ -47,6 +144,7 @@ pub(super) fn execute_action(
     dt: f32,
     nearest: Option<(f32, Point, CreatureId)>,
     selected_target: Option<Point>,
+    facing_held: f32,
 ) {
     if matches!(
         creature.state.action,
@@ -88,7 +186,10 @@ pub(super) fn execute_action(
             } else {
                 1.0
             };
-            creature.state.velocity.x = direction * speed * multiplier;
+            // A wander has nowhere to stop, so it only eases in; it comes to rest by coasting
+            // out of whatever it does next.
+            creature.state.velocity.x =
+                direction * eased_in(creature.state.velocity.x, direction, speed * multiplier, dt);
         }
         ActionKind::InvestigateCursor if desktop.cursor.available && context.cursor_safe => {
             target_x = Some(desktop.cursor.position.x)
@@ -180,15 +281,27 @@ pub(super) fn execute_action(
     }
     if let Some(target) = target_x {
         let dx = target - creature.state.position.x;
+        let direction = dx.signum();
+        // A walk comes up to its pace over its first quarter second and down from it over its
+        // last, slowing evenly onto the mark, so a start and a stop are steps and not a picture
+        // that begins or stops sliding.
+        let pace = speed * target_speed_multiplier;
+        let remaining = dx.abs() - target_stop_distance;
+        let walking = eased_in(creature.state.velocity.x, direction, pace, dt)
+            .min(eased_out(remaining, pace, dt));
         // Arriving means landing on the mark, not stepping over it. A walk covers one to three
         // points per tick, so a creature aimed at a spot with no room around it would overshoot,
         // turn, overshoot coming back, and shiver there for the rest of the action — close to a
         // companion, where the marks are, that reads as a creature having a fit. A step is never
         // longer than what is left of the walk, and a creature that has arrived stands still.
-        let step = speed * target_speed_multiplier * dt;
-        if dx.abs() <= target_stop_distance.max(step) {
-            if target_stop_distance <= 0.0 {
-                creature.state.position.x = target;
+        // Slowing evenly comes down to the last fraction of a point in a finite number of ticks,
+        // so this is always reached.
+        let step = walking * dt;
+        if remaining <= step {
+            // The last fraction of a point is taken up onto the mark, or onto the edge of the
+            // room it was to leave around it; already inside that room, it stays where it is.
+            if remaining > 0.0 {
+                creature.state.position.x = target - direction * target_stop_distance.max(0.0);
             }
             creature.state.velocity.x = 0.0;
             // Standing on its mark, a creature keeps the way it was walking rather than turning
@@ -199,11 +312,15 @@ pub(super) fn execute_action(
                 ActionKind::Follow | ActionKind::Greet | ActionKind::SocialPlay
             ) && let Some((_, companion, _)) = nearest
             {
-                creature.state.facing_right = companion.x >= creature.state.position.x;
+                let toward = companion.x - creature.state.position.x;
+                face_toward(&mut creature.state, facing_held, toward);
             }
+        } else if face_toward(&mut creature.state, facing_held, dx) {
+            creature.state.velocity.x = direction * walking;
         } else {
-            creature.state.facing_right = dx >= 0.0;
-            creature.state.velocity.x = dx.signum() * speed * target_speed_multiplier;
+            // Its mark has gone a little way behind it just after it turned: it waits out the
+            // turn where it stands rather than turning straight back, or walking backwards.
+            creature.state.velocity.x = 0.0;
         }
     }
     creature.state.position.x += creature.state.velocity.x * dt;
