@@ -113,6 +113,8 @@ struct Tally {
     /// Ticks, and on how many of them nobody, one, or two or more were up to something.
     frames: u64,
     busy: [u64; 3],
+    /// Ticks on which this many residents were out of doors, from none to a full colony.
+    out_of_doors: [u64; MAX_COLONY_CREATURES + 1],
     /// A resident begins the very thing it last began.
     repeats: u64,
     longest_stand: f32,
@@ -202,6 +204,13 @@ fn watch(seed: u8, residents: usize, options: &Options, tally: &mut Tally) {
         tally.tick_nanos += spent;
         tally.frames += 1;
         let mut up_to_something = 0;
+        let outside = world
+            .save
+            .creatures
+            .iter()
+            .filter(|creature| !creature.state.indoors)
+            .count();
+        tally.out_of_doors[outside.min(MAX_COLONY_CREATURES)] += 1;
         for creature in &world.save.creatures {
             let seen = Seen::of(creature);
             tally.ticks += 1;
@@ -329,6 +338,16 @@ pub fn run(args: &[String]) -> Result<()> {
             100.0 * tally.busy[0] as f64 / frames,
             100.0 * tally.busy[1] as f64 / frames,
             100.0 * tally.busy[2] as f64 / frames
+        );
+        println!(
+            "out of doors at once: {}",
+            (0..=residents.min(MAX_COLONY_CREATURES))
+                .map(|count| format!(
+                    "{count}: {:.0}%",
+                    100.0 * tally.out_of_doors[count] as f64 / frames
+                ))
+                .collect::<Vec<_>>()
+                .join("  ")
         );
         let mut kinds: Vec<(&String, &u64)> = tally.begun.iter().collect();
         kinds.sort_by(|a, b| b.1.cmp(a.1));

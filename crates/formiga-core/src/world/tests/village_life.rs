@@ -143,8 +143,62 @@ fn a_yawn_is_had_standing_still_and_nothing_yawns_in_a_still_or_hidden_colony() 
     }
 }
 
+/// A village of four or more usually has about half its residents out of doors, two or three
+/// of them, and everybody out together only now and then; a smaller one usually has them all.
+#[test]
+fn about_half_of_a_big_village_is_out_of_doors_and_all_of_a_small_one() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let desktop = desktop();
+    for members in [3_usize, 4, 5, 6] {
+        // Ticks on which this many were out of doors.
+        let mut out = [0_u32; MAX_COLONY_CREATURES + 1];
+        for seed in [70_u8, 71] {
+            let mut world = settled_colony([seed + members as u8; 32], members, created, &desktop);
+            for (index, creature) in world.save.creatures.iter_mut().enumerate() {
+                // Settled colonies are one companion several times over: tell them apart.
+                creature.behavior_seed[5] = index as u8;
+            }
+            for tick in 0..20_000 {
+                world.tick(created, 0.05, &desktop);
+                world.save.home.active_since_utc = Some(created);
+                // Everybody is out as a visit begins: count once the village has settled.
+                if tick >= 3_000 {
+                    let outside = world
+                        .save
+                        .creatures
+                        .iter()
+                        .filter(|creature| !creature.state.indoors)
+                        .count();
+                    out[outside] += 1;
+                }
+            }
+        }
+        let ticks: u32 = out.iter().sum();
+        let share = |count: u32| f64::from(count) / f64::from(ticks);
+        if members < 4 {
+            assert!(
+                share(out[members]) > 0.6,
+                "{members}: everybody was out only {:.0}% of the time",
+                100.0 * share(out[members])
+            );
+            continue;
+        }
+        assert!(
+            share(out[2] + out[3]) > 0.55,
+            "{members}: two or three were out only {:.0}% of the time: {out:?}",
+            100.0 * share(out[2] + out[3])
+        );
+        assert!(
+            share(out[members]) < 0.25,
+            "{members}: everybody was out {:.0}% of the time",
+            100.0 * share(out[members])
+        );
+        assert_eq!(out[0] + out[1], 0, "{members}: the village looked empty");
+    }
+}
+
 /// However long the village is left to itself, somebody is always outside to be seen: a lone
-/// companion never goes in at all, and a bigger village never has more than two in at once.
+/// companion never goes in at all, and a bigger village always has two out of doors at least.
 /// Whoever is in has its own house's curtain drawn, and nobody else's.
 #[test]
 fn somebody_is_always_outside_and_the_curtain_drawn_is_the_right_one() {
