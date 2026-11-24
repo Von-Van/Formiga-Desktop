@@ -25,6 +25,21 @@ pub fn cast_argument(args: &[String]) -> Result<Vec<Creature>> {
         .collect()
 }
 
+/// Everybody in each colony file given with `--colony`, in the order the colony keeps them;
+/// empty when there is none. The file is only read.
+pub fn colony_argument(args: &[String]) -> Result<Vec<Creature>> {
+    let mut everybody = Vec::new();
+    for window in args.windows(2).filter(|window| window[0] == "--colony") {
+        let file = Path::new(&window[1]);
+        let bytes = std::fs::read(file).with_context(|| format!("read {}", file.display()))?;
+        let save = decode(&bytes)
+            .with_context(|| format!("{} does not read as a colony", file.display()))?
+            .into_inner();
+        everybody.extend(save.creatures);
+    }
+    Ok(everybody)
+}
+
 fn companion(spec: &str) -> Result<Creature> {
     if let Some(rest) = spec.strip_prefix("four-pawed") {
         let nth = match rest.strip_prefix(':') {

@@ -172,7 +172,13 @@ pub fn turns(clip: BodyClip) -> bool {
         || matches!(
             clip,
             BodyClip::Action(ActionKind::Traverse | ActionKind::Follow | ActionKind::Sprint)
-                | BodyClip::Gesture(Gesture::Skip | Gesture::Trudge)
+                | BodyClip::Gesture(
+                    Gesture::Skip
+                        | Gesture::Trudge
+                        | Gesture::Stride
+                        | Gesture::Dash
+                        | Gesture::Depart
+                )
         )
 }
 

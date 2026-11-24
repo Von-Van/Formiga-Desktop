@@ -2,6 +2,10 @@
 use super::*;
 use formiga_core::{BodyPlan, CreatureDesign, EarStyle};
 
+mod turned;
+pub(super) use turned::{TURNED_FACE, turned_body, turned_clip, turned_footfall};
+pub use turned::{TURNED_STRIDE_FRAMES, View, can_turn};
+
 /// The largest a body is drawn, against the average: a companion of the greatest stature.
 const MAX_SIZE: f32 = formiga_core::STATURE_MAX as f32 / 100.0 + 0.01;
 
@@ -521,40 +525,8 @@ fn draw_parts(
 
     // Tail and ears go behind the body and never through the reserved face area.
     let tx = x - rx + 1;
-    if !trunk {
-    } else if k.tail > 0 {
-        classic_tail(c, p, k.tail, tx, y, pose);
-    } else {
-        match d.tail {
-            1 => oval(c, p, tx - 2, y + 1, 3, 3, p.highlight),
-            // A stalk out behind from the rump, below where the paws rest, rising a row or two to
-            // its end, in the coat's shade with only the tip in the accent. Held up from the
-            // shoulder at the angle of a raised arm, in the accent a paw is tipped with, it read
-            // as a paw waving all day. Its root starts inside the body, which covers it.
-            2 | 3 => {
-                let root = PixelPoint {
-                    x: tx + 2,
-                    y: y + ry / 2,
-                };
-                // A row on a small body, whose head sits down beside its middle; two on a big one.
-                let ty = root.y - (ry / 4).clamp(1, 2) + pose.tail_sway.clamp(-1, 1);
-                c.line(root.x, root.y, (tx - 6).max(3), ty, 3, p.outline);
-                c.line(root.x, root.y, (tx - 6).max(3), ty, 2, p.shadow);
-                if d.details.tip > 0 {
-                    let tip = crate::palette::detail_color(&d, d.details.tip_color);
-                    // A bobble is a pixel rounder than a flame, so it keeps a pixel further in
-                    // from the edge of the frame.
-                    let end = (tx - 6).max(if d.details.tip == 2 { 5 } else { 4 });
-                    tail_tip(c, p, d.details.tip, tip, end, ty);
-                } else if d.tail == 3 {
-                    oval(c, p, (tx - 6).max(4), ty, 2, 2, p.accent);
-                } else {
-                    c.fill_circle((tx - 6).max(3), ty, 1, p.accent);
-                }
-            }
-            4 => oval(c, p, tx - 2, y, 4, 5, p.accent),
-            _ => {}
-        }
+    if trunk {
+        tail_behind(c, d, p, pose, tx, y, ry);
     }
     // A pricked ear grows out of the base it already had, so it stays joined to the head.
     let ear = ((f32::from(d.ear_size) * size).round().max(3.0) as i32 + pose.ear_perk.clamp(0, 2)
@@ -610,37 +582,8 @@ fn draw_parts(
         }
     }
     for side in [-1, 1] {
-        let ex = ear_cx + side * ear_span;
-        let ey = ear_top;
-        match d.ears {
-            _ if k.crown > 0 || !headed => {}
-            EarStyle::None => {}
-            // A round ear has no height to grow, so it rides up instead, staying on the head.
-            EarStyle::Round => oval(c, p, ex, ey - 1 - pose.ear_perk.clamp(0, 2), 3, 3, p.accent),
-            EarStyle::Long => oval(c, p, ex, ey - ear / 2, 2, ear.min(6), p.coat),
-            EarStyle::Floppy => oval(
-                c,
-                p,
-                ear_cx + side * (ear_span + 3),
-                ey + 4,
-                2,
-                ear,
-                p.accent,
-            ),
-            EarStyle::Pointed | EarStyle::Tuft => {
-                let top = ey - ear;
-                for row in 0..=ear {
-                    let half = if d.ears == EarStyle::Tuft {
-                        row / 3
-                    } else {
-                        row / 2
-                    };
-                    c.fill_rect(ex - half, top + row, half * 2 + 1, 1, p.outline);
-                    if half > 0 {
-                        c.fill_rect(ex - half + 1, top + row, half * 2 - 1, 1, p.accent);
-                    }
-                }
-            }
+        if k.crown == 0 && headed {
+            ear_at(c, d, p, pose, ear_cx, ear_span, ear_top, ear, side);
         }
     }
     let limbs = limbs(clip, frame, body, d.body);
@@ -815,6 +758,100 @@ fn draw_parts(
         }
     }
     PixelPoint { x: hx, y: hy }
+}
+
+/// The tail, out behind the body from `tx`, the body's back edge, level with its middle at `y`.
+/// It goes behind the body and never through the reserved face area.
+fn tail_behind(
+    c: &mut Canvas,
+    d: CreatureDesign,
+    p: Palette,
+    pose: Pose,
+    tx: i32,
+    y: i32,
+    ry: i32,
+) {
+    if d.classic.tail > 0 {
+        classic_tail(c, p, d.classic.tail, tx, y, pose);
+        return;
+    }
+    match d.tail {
+        1 => oval(c, p, tx - 2, y + 1, 3, 3, p.highlight),
+        // A stalk out behind from the rump, below where the paws rest, rising a row or two to
+        // its end, in the coat's shade with only the tip in the accent. Held up from the
+        // shoulder at the angle of a raised arm, in the accent a paw is tipped with, it read
+        // as a paw waving all day. Its root starts inside the body, which covers it.
+        2 | 3 => {
+            let root = PixelPoint {
+                x: tx + 2,
+                y: y + ry / 2,
+            };
+            // A row on a small body, whose head sits down beside its middle; two on a big one.
+            let ty = root.y - (ry / 4).clamp(1, 2) + pose.tail_sway.clamp(-1, 1);
+            c.line(root.x, root.y, (tx - 6).max(3), ty, 3, p.outline);
+            c.line(root.x, root.y, (tx - 6).max(3), ty, 2, p.shadow);
+            if d.details.tip > 0 {
+                let tip = crate::palette::detail_color(&d, d.details.tip_color);
+                // A bobble is a pixel rounder than a flame, so it keeps a pixel further in
+                // from the edge of the frame.
+                let end = (tx - 6).max(if d.details.tip == 2 { 5 } else { 4 });
+                tail_tip(c, p, d.details.tip, tip, end, ty);
+            } else if d.tail == 3 {
+                oval(c, p, (tx - 6).max(4), ty, 2, 2, p.accent);
+            } else {
+                c.fill_circle((tx - 6).max(3), ty, 1, p.accent);
+            }
+        }
+        4 => oval(c, p, tx - 2, y, 4, 5, p.accent),
+        _ => {}
+    }
+}
+
+/// One ear, `ear` rows tall, on the `side` of a head whose ears are rooted `ear_span` either side
+/// of `ear_cx` on the row `ear_top`.
+#[allow(clippy::too_many_arguments)]
+fn ear_at(
+    c: &mut Canvas,
+    d: CreatureDesign,
+    p: Palette,
+    pose: Pose,
+    ear_cx: i32,
+    ear_span: i32,
+    ear_top: i32,
+    ear: i32,
+    side: i32,
+) {
+    let ex = ear_cx + side * ear_span;
+    let ey = ear_top;
+    match d.ears {
+        EarStyle::None => {}
+        // A round ear has no height to grow, so it rides up instead, staying on the head.
+        EarStyle::Round => oval(c, p, ex, ey - 1 - pose.ear_perk.clamp(0, 2), 3, 3, p.accent),
+        EarStyle::Long => oval(c, p, ex, ey - ear / 2, 2, ear.min(6), p.coat),
+        EarStyle::Floppy => oval(
+            c,
+            p,
+            ear_cx + side * (ear_span + 3),
+            ey + 4,
+            2,
+            ear,
+            p.accent,
+        ),
+        EarStyle::Pointed | EarStyle::Tuft => {
+            let top = ey - ear;
+            for row in 0..=ear {
+                let half = if d.ears == EarStyle::Tuft {
+                    row / 3
+                } else {
+                    row / 2
+                };
+                c.fill_rect(ex - half, top + row, half * 2 + 1, 1, p.outline);
+                if half > 0 {
+                    c.fill_rect(ex - half + 1, top + row, half * 2 - 1, 1, p.accent);
+                }
+            }
+        }
+    }
 }
 
 /// A small wing folded up off the back, reaching up and out to `side`: a membrane over two ribs,
@@ -1574,7 +1611,14 @@ pub(super) fn limbs(clip: BodyClip, frame: u8, body: Body, plan: BodyPlan) -> [L
         // The near paw flopped out on the ground ahead of it.
         BodyClip::Gesture(Gesture::Sprawl) => front(to(x + rx + 4, floor - 2)),
         BodyClip::Gesture(
-            Gesture::Shake | Gesture::Sniff | Gesture::Loaf | Gesture::Skip | Gesture::Trudge,
+            Gesture::Shake
+            | Gesture::Sniff
+            | Gesture::Loaf
+            | Gesture::Skip
+            | Gesture::Trudge
+            | Gesture::Stride
+            | Gesture::Dash
+            | Gesture::Depart,
         ) => [Limb::Rest; 2],
         // Wings open up and out as far as they go.
         BodyClip::Gesture(Gesture::Stretch) if plan == BodyPlan::Winged => {
@@ -1799,7 +1843,9 @@ fn walks(clip: BodyClip) -> bool {
                 | ActionKind::AvoidCursor
                 | ActionKind::ReactToWindow
                 | ActionKind::Landing
-        ) | BodyClip::Gesture(Gesture::Skip | Gesture::Trudge)
+        ) | BodyClip::Gesture(
+            Gesture::Skip | Gesture::Trudge | Gesture::Stride | Gesture::Dash | Gesture::Depart
+        )
     )
 }
 
@@ -1941,7 +1987,7 @@ fn long_limbs(clip: BodyClip, frame: u8, body: Body) -> [Limb; 2] {
             | Gesture::Sprawl
             | Gesture::Loaf
             | Gesture::Skip
-            | Gesture::Trudge
+            | Gesture::Trudge | Gesture::Stride | Gesture::Dash | Gesture::Depart
             | Gesture::Pluck
             | Gesture::Bask,
         ) => [rest; 2],

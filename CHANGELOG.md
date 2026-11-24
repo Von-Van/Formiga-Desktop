@@ -12,6 +12,25 @@ All notable changes are documented here.
   the mouth each frame holds things by, so a belonging in the wrong place shows at a glance. `formiga-tools climb-sheet` shows a
   whole climb onto a window, a tenth of a second a picture, placed exactly as the desktop places a
   companion, and each body dangling from a ledge. Nothing a companion does or looks like changes.
+- Companions turn to the way they are going. Walking along a window top, the floor or the
+  village, a companion is seen from the side, one eye showing, its near foot planted and carried
+  back under it while the far one comes forward; running, it leans into it with its ears back
+  and both feet off the ground between strides; and walking back into the village, up a path to
+  a doorstep, it has its back to you, its tail swinging across and the sole of each foot showing
+  as it comes up. Coming forward and standing it faces you as before. Until now every walk was
+  the body facing the screen, shuffling sideways. A turned body is put together from the parts
+  and measurements the same companion is drawn from facing you, so it keeps its size, colours,
+  markings, ears, wings and tail, and side-on it wears the near half of its own face. The
+  original round companions and every newer body but the four-pawed one turn; the four-pawed
+  ones, hoppers, soft quadrupeds, the Echo Fox and sculpted forms walk as they did. With reduced
+  motion nothing changes. While it walks turned a companion keeps a plain open-eyed face, and a
+  skip or a trudge is only taken facing you. Nothing is saved. Each companion's textures grow
+  by eighteen frames, 1.89 MB to 2.07 MB, a full colony's from 11.3 MB to 12.4 MB.
+- `formiga-tools turn-sheet` draws each companion facing the screen, side-on, from behind and
+  side-on the other way, and the turned walks and run beside the ones facing the screen;
+  `--animate` writes a GIF of them walking, running and going up and down a lane, and
+  `--colony COLONY.json` draws everybody in a colony file, which is only read. `village-watch`
+  also reports how a village's walks are drawn and how often a walker turns.
 - Every companion now stands on a small shadow, so it reads as standing on a window's top or the
   floor rather than floating over the desktop. The shadow is as wide as its feet in the frame it is
   drawn in, dark at about a third, and drawn under the body so it never covers the feet. Thrown,

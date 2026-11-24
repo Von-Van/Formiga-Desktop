@@ -42,6 +42,7 @@ pub use meals::{
     MealPose, held_now, meal_eyelids, meal_face, meal_held, meal_offset, meal_pose,
     shows_held_by_default,
 };
+pub use modular::{TURNED_STRIDE_FRAMES, View, can_turn};
 pub use play::{held_tether, play_face, play_held, play_offset, play_pose, prop_in_motion};
 pub use playthings::Plaything as PlayPicture;
 use pose::*;
@@ -323,9 +324,11 @@ impl BodyClip {
     }
 
     /// Whether the clip's frames have the face drawn into them, so that nothing draws a face
-    /// over them: only a squeeze, whose face is pinched narrower with its body.
+    /// over them: a squeeze, whose face is pinched narrower with its body, and a walk or a run
+    /// turned side-on or away, which shows half a face or none.
     pub const fn face_in_frame(self) -> bool {
         matches!(self.body(), Self::Action(ActionKind::SqueezeWindow))
+            || modular::turned_clip(self).is_some()
     }
 }
 
@@ -461,6 +464,10 @@ impl AnimationSpec {
             // Sprung up, tucked over the top, opened out coming down and feet put down to land: a
             // hop picks the frame by how far across it is.
             Gesture::Leap => (4, 4),
+            // Strides turned to the way they go, counted from the ground covered like any
+            // walk's or run's.
+            Gesture::Stride | Gesture::Depart => (6, 10),
+            Gesture::Dash => (6, 12),
         };
         Self {
             frames,
@@ -1086,6 +1093,19 @@ impl BodyPresentation {
                 ActionKind::Traverse
             };
             let frame = motion.stride_frame(presence.stride);
+            // Going along, it is seen from the side; going back into the village, from behind.
+            // Coming forward it faces the screen, as it does standing.
+            if modular::can_turn(&creature.appearance) && !presence.reduced {
+                let turned = match presence.turn {
+                    formiga_core::Turn::Side if walk == ActionKind::Sprint => Some(Gesture::Dash),
+                    formiga_core::Turn::Side => Some(Gesture::Stride),
+                    formiga_core::Turn::Back => Some(Gesture::Depart),
+                    formiga_core::Turn::Front => None,
+                };
+                if let Some(turned) = turned {
+                    return body(BodyClip::Gesture(turned), frame);
+                }
+            }
             // A plain walk can be taken in a mood; a run, a squeeze and a bob along a ledge
             // cannot. A greeting walking over is eager about it.
             let mood = matches!(walk, ActionKind::Traverse | ActionKind::Follow)
@@ -1203,11 +1223,14 @@ pub fn shown_set_back(creature: &Creature, village_out: bool, was: Option<bool>)
     let striding = matches!(
         body.clip,
         BodyClip::Action(ActionKind::Traverse | ActionKind::Follow | ActionKind::Sprint)
-            | BodyClip::Gesture(Gesture::Skip | Gesture::Trudge)
+            | BodyClip::Gesture(
+                Gesture::Skip | Gesture::Trudge | Gesture::Stride | Gesture::Dash | Gesture::Depart
+            )
     );
     // A skip lands on frames of its own, whatever the body's stride: in between, it is in the air.
     let planted = match body.clip {
         BodyClip::Gesture(Gesture::Skip) => pose::skip_landing(usize::from(body.frame % 6)),
+        clip if modular::turned_clip(clip).is_some() => modular::turned_footfall(body.frame),
         _ => footfall_frame(&creature.appearance, body.frame),
     };
     if !striding || planted { wanted } else { was }
@@ -1527,6 +1550,15 @@ impl CreatureRenderer {
             frame
         };
         let clip = clip.body();
+        // A walk or a run turned to the way it goes: drawn turned, face and all, for a body
+        // that can be; for one that cannot, the walk it has facing the screen with its face
+        // drawn in, since nothing draws a face over a turned clip.
+        let turned = modular::turned_clip(clip);
+        let drawn_turned = turned.filter(|_| modular::can_turn(genome));
+        let clip = match turned {
+            Some((_, gait)) if drawn_turned.is_none() => gait.facing_the_screen(),
+            _ => clip,
+        };
         let previous = (trail && !reduce_motion && clip == BodyClip::Action(ActionKind::SoloPlay))
             .then(|| {
                 let frames = AnimationSpec::for_clip(clip).frames;
@@ -1559,6 +1591,9 @@ impl CreatureRenderer {
                 fine = Some((canvas.clone(), body));
             }
             (&face_genome, canvas, figure)
+        } else if let Some((view, gait)) = drawn_turned {
+            let (canvas, figure) = modular::turned_body(genome, view, gait, frame);
+            (genome, canvas, figure)
         } else {
             let (canvas, figure) = Self::draw_recipe_body(genome, clip, frame, reduce_motion);
             (genome, canvas, figure)
@@ -1635,7 +1670,20 @@ impl CreatureRenderer {
         }
         // Slipping through a gap, the face is drawn into the frame and pinched narrower with the
         // body: the overlay draws no face of its own over it (see `BodyClip::face_in_frame`).
-        if clip.face_in_frame() {
+        if turned.is_some() && drawn_turned.is_none() {
+            let face = Self::render_face_frame(wearer, modular::TURNED_FACE);
+            let left = face_anchor.x - FACE_FRAME_SIZE as i32 / 2;
+            let top = face_anchor.y - FACE_FRAME_SIZE as i32 / 2;
+            blit_transparent(&mut canvas, &face, left, top);
+            if let Some((bare, body)) = &mut fine {
+                blit_transparent(bare, &face, left, top);
+                let fine_face =
+                    Self::render_face_frame_in_detail(wearer, modular::TURNED_FACE, detail);
+                let d = detail as i32;
+                blit_transparent(body, &fine_face, left * d, top * d);
+            }
+        }
+        if clip == BodyClip::Action(ActionKind::SqueezeWindow) {
             let face = Self::render_face_frame(wearer, squeeze::face());
             let left = face_anchor.x - FACE_FRAME_SIZE as i32 / 2;
             let top = face_anchor.y - FACE_FRAME_SIZE as i32 / 2;

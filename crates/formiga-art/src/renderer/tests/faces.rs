@@ -176,6 +176,8 @@ fn every_face_layout_keeps_two_eyes_and_sits_on_its_head() {
         .into_iter()
         .map(BodyClip::Action)
         .chain(Gesture::ALL.into_iter().map(BodyClip::Gesture))
+        // A clip with its face drawn in has no face put over it.
+        .filter(|clip| !clip.face_in_frame())
         .collect();
     for body in formiga_core::BodyPlan::ALL {
         for head in 7..=9 {

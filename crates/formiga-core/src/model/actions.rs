@@ -287,6 +287,24 @@ pub struct Presence {
     /// keeps the one action from the gather to the touchdown, so this is what lets the art draw
     /// the crouch, the flight and the landing each as its own pose.
     pub hop: Option<HopMoment>,
+    /// Which way it is turned to whoever is watching, from which way its feet are carrying it.
+    pub turn: Turn,
+    /// Seconds its feet have been carrying it some other way than the way it is turned.
+    pub turning: f32,
+}
+
+/// Which way a creature is turned to whoever is watching it. Standing, and doing anything but
+/// walking, it faces the screen, as everything it does is drawn; walking along it is side-on to
+/// the way it goes, and walking back into the village it has its back to the screen.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Turn {
+    /// Facing the screen.
+    #[default]
+    Front,
+    /// Side-on, facing the way it is going.
+    Side,
+    /// Its back to the screen, going away.
+    Back,
 }
 
 /// Where a creature is in a hop or a leap, as the world saw it at the end of the last tick.

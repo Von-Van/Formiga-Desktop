@@ -1095,3 +1095,101 @@ fn a_mini_rests_and_gestures_quicker_than_its_adult() {
         assert!(held(small) < held(grown));
     }
 }
+
+/// A body that can be drawn turned walks side-on to the way it goes, runs side-on leant into
+/// it, and walks away with its back to the screen; coming forward, with motion reduced, or on a
+/// body nothing draws turned, it walks as it always has.
+#[test]
+fn a_walk_is_drawn_turned_the_way_it_goes() {
+    use formiga_core::Turn;
+    let mut blob = measured(41);
+    blob.appearance.family = BodyFamily::Blob;
+    blob.appearance.design = None;
+    blob.appearance.sculpt = None;
+    blob.appearance.echo_fox = false;
+    assert!(crate::can_turn(&blob.appearance));
+    blob.state.action = ActionKind::Traverse;
+    blob.state.presence.stepping = true;
+    let shown = |creature: &Creature| BodyPresentation::for_creature(creature).clip;
+    let plain = shown(&blob);
+    assert!(
+        matches!(
+            plain,
+            BodyClip::Action(ActionKind::Traverse)
+                | BodyClip::Gesture(Gesture::Skip | Gesture::Trudge)
+        ),
+        "coming forward it faces the screen: {plain:?}"
+    );
+    blob.state.presence.turn = Turn::Side;
+    assert_eq!(shown(&blob), BodyClip::Gesture(Gesture::Stride));
+    blob.state.action = ActionKind::Sprint;
+    assert_eq!(shown(&blob), BodyClip::Gesture(Gesture::Dash));
+    blob.state.action = ActionKind::Follow;
+    blob.state.presence.turn = Turn::Back;
+    assert_eq!(shown(&blob), BodyClip::Gesture(Gesture::Depart));
+    // Standing, it faces the screen whichever way it was last turned.
+    blob.state.presence.stepping = false;
+    assert!(!matches!(
+        shown(&blob),
+        BodyClip::Gesture(Gesture::Stride | Gesture::Dash | Gesture::Depart)
+    ));
+    blob.state.presence.stepping = true;
+    blob.state.presence.reduced = true;
+    assert!(!matches!(
+        shown(&blob),
+        BodyClip::Gesture(Gesture::Stride | Gesture::Dash | Gesture::Depart)
+    ));
+    blob.state.presence.reduced = false;
+    blob.appearance.family = BodyFamily::Hopper;
+    assert!(!crate::can_turn(&blob.appearance));
+    assert!(!matches!(
+        shown(&blob),
+        BodyClip::Gesture(Gesture::Stride | Gesture::Dash | Gesture::Depart)
+    ));
+}
+
+/// A turned walk's frames are its own: six that differ, each with a face drawn in or none at
+/// all, never the walk facing the screen; and a body nothing draws turned shows that walk
+/// with its face in instead.
+#[test]
+fn turned_walks_are_drawn_for_bodies_that_turn_and_stood_in_for_the_rest() {
+    for (name, genome) in every_body() {
+        let eye = crate::palette_for(&genome).eye;
+        for (turned, front) in [
+            (Gesture::Stride, ActionKind::Traverse),
+            (Gesture::Dash, ActionKind::Sprint),
+            (Gesture::Depart, ActionKind::Traverse),
+        ] {
+            let frames: Vec<Canvas> = (0..6)
+                .map(|frame| {
+                    CreatureRenderer::render_body_frame(&genome, turned, frame, false).canvas
+                })
+                .collect();
+            let plain = CreatureRenderer::render_body_frame(&genome, front, 0, false).canvas;
+            let eyes = |canvas: &Canvas| canvas.pixels().iter().filter(|px| **px == eye).count();
+            if !crate::can_turn(&genome) {
+                // The fox and a sculpted form colour their own eyes, so the face is told by
+                // the frame being more than the bare walk's.
+                let drawn = |canvas: &Canvas| canvas.pixels().iter().filter(|px| px.a > 0).count();
+                assert_ne!(frames[0], plain, "{name} {turned:?}: its face is in");
+                assert!(drawn(&frames[0]) >= drawn(&plain), "{name} {turned:?}");
+                continue;
+            }
+            for pair in frames.windows(2) {
+                assert_ne!(pair[0], pair[1], "{name} {turned:?} holds a frame");
+            }
+            assert_ne!(
+                frames[0], plain,
+                "{name} {turned:?} is the walk facing the screen"
+            );
+            if turned == Gesture::Depart {
+                assert_eq!(eyes(&frames[0]), eyes(&plain), "{name}: a back has no face");
+            } else {
+                assert!(
+                    eyes(&frames[0]) > eyes(&plain),
+                    "{name} {turned:?} has an eye"
+                );
+            }
+        }
+    }
+}

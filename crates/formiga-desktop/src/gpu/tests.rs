@@ -937,7 +937,8 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     let total_bytes = atlas.body_pixels.len() + atlas.face_pixels.len();
     eprintln!("layered atlas: {total_bytes} bytes, baked in {bake_time:?}");
     // 110 action frames — six of them the climb, a stroke with each paw, two the toss's own and
-    // the last two a squeeze's own, pinched — and 134 gesture frames — five of them the mantle
+    // the last two a squeeze's own, pinched — and 152 gesture frames — eighteen of them a walk
+    // and a run seen side-on and a walk away, six frames each (see `formiga_core::Turn`), five of them the mantle
     // a climb tops out with, eight the seat and the sled wonders brought in 0.66.0, twenty-eight a
     // companion's own repertoire (a wash, a shake, a sniff, two more ways to sleep and two more
     // ways to walk), sixteen the chores and a pet leaned into, fourteen the nibble, chomp, chew and
@@ -950,7 +951,7 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     // nothing read: 1,824,768 bytes with the temperament poses and their faces. Since 0.62.0 a
     // frame or face that comes out the same as one already baked shares its cell — a held pose,
     // eyes shut whichever way they would be looking — and the trinket cells are gone.
-    assert_eq!(total_animation_frames(), 244);
+    assert_eq!(total_animation_frames(), 262);
     // 1,244,160 until 0.66.0, when the walk, the run, the greeting and the meal stopped repeating
     // frames they had shared and the texture grew by a row of ten cells, to 1,336,320;
     // 1,244,160 again from 0.66.1, whose scoot along on a leaf sled repeats two of its four
@@ -965,15 +966,16 @@ fn layered_atlas_matches_the_baked_budget_per_creature() {
     // the marks over a greeting, a game with a friend and a cheer drift and fade across their
     // frames, so fewer of those frames come out alike: one row more again; and still that
     // with the mantle's hang and pull-up and the leap's two more frames, which fit in cells
-    // that row had spare.
-    assert_eq!(total_bytes, 1_889_280);
-    assert_eq!(full_layout_bytes(), 2_718_720);
+    // that row had spare; and 2,073,600 with the walks and the run turned side-on and away,
+    // eighteen frames none of which is like another, two rows more.
+    assert_eq!(total_bytes, 2_073_600);
+    assert_eq!(full_layout_bytes(), 2_903_040);
     // Tripled in 0.58.0 so the pose vocabulary has somewhere to grow, and raised again with the
     // animation pass: the budget is what stops a creature costing more than a creature should,
     // not what stops it having poses.
     assert!(full_layout_bytes() <= 5_500_000);
-    // A full colony of six like this one: 11,335,680 bytes. With no two frames alike it would be
-    // 16,312,320. The ceiling was raised from 10 MiB to 15 MiB in 0.62.0 and to 32 MiB with the
+    // A full colony of six like this one: 12,441,600 bytes. With no two frames alike it would be
+    // 17,418,240. The ceiling was raised from 10 MiB to 15 MiB in 0.62.0 and to 32 MiB with the
     // animation pass, whose frames together passed 15: the owner allows the colony's atlases up
     // to about 50 MiB and prefers them between 30 and 40, so this leaves room to grow below that.
     assert!(

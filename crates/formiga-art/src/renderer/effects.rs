@@ -147,6 +147,9 @@ pub(super) fn draw_gesture_effects(
         Gesture::Groom
         | Gesture::Skip
         | Gesture::Trudge
+        | Gesture::Stride
+        | Gesture::Dash
+        | Gesture::Depart
         | Gesture::Pour
         | Gesture::Tend
         | Gesture::Nibble

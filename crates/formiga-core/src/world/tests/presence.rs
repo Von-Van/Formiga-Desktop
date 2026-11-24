@@ -224,3 +224,61 @@ fn what_it_just_stopped_doing_is_remembered_for_a_moment() {
     }
     assert_eq!(creature.state.presence.after, None, "and then forgotten");
 }
+
+/// Which way it is turned is which way its feet are taking it: side-on along the ground, its
+/// back to the screen going back into the village, facing the screen coming forward, and a step
+/// or two another way is not a turn.
+#[test]
+fn a_walker_is_turned_the_way_it_goes() {
+    let desktop = desktop();
+    let mut creature = walker(ActionKind::Traverse, 400.0);
+    for _ in 0..10 {
+        carry(&mut creature, TICK, &desktop, 1.0);
+    }
+    assert_eq!(creature.state.presence.turn, Turn::Front, "standing");
+    // Along the ground: side-on from the first step.
+    creature.state.position.x += 2.0;
+    carry(&mut creature, TICK, &desktop, 1.0);
+    assert_eq!(creature.state.presence.turn, Turn::Side);
+    for _ in 0..10 {
+        creature.state.position.x += 2.0;
+        carry(&mut creature, TICK, &desktop, 1.0);
+    }
+    assert_eq!(creature.state.presence.turn, Turn::Side);
+    // Up a path, a little along and a good deal back: one tick of it is not a turn, three are.
+    creature.state.position.x += 0.5;
+    creature.state.depth += 2.0;
+    carry(&mut creature, TICK, &desktop, 1.0);
+    assert_eq!(
+        creature.state.presence.turn,
+        Turn::Side,
+        "one step is no turn"
+    );
+    for _ in 0..3 {
+        creature.state.position.x += 0.5;
+        creature.state.depth += 2.0;
+        carry(&mut creature, TICK, &desktop, 1.0);
+    }
+    assert!(creature.state.presence.stepping);
+    assert_eq!(creature.state.presence.turn, Turn::Back);
+    // A step along in the middle of it does not turn it round.
+    creature.state.position.x += 2.0;
+    carry(&mut creature, TICK, &desktop, 1.0);
+    creature.state.depth += 2.0;
+    carry(&mut creature, TICK, &desktop, 1.0);
+    assert_eq!(creature.state.presence.turn, Turn::Back);
+    // Back down toward the front of the grass: facing the screen.
+    for _ in 0..4 {
+        creature.state.depth -= 2.0;
+        carry(&mut creature, TICK, &desktop, 1.0);
+    }
+    assert_eq!(creature.state.presence.turn, Turn::Front);
+    // Stood a while, it sets off whichever way it goes next from its first step.
+    for _ in 0..10 {
+        carry(&mut creature, TICK, &desktop, 1.0);
+    }
+    assert!(!creature.state.presence.stepping);
+    creature.state.depth += 2.0;
+    carry(&mut creature, TICK, &desktop, 1.0);
+    assert_eq!(creature.state.presence.turn, Turn::Back);
+}
