@@ -33,6 +33,12 @@ const RUN_STRIDE: f32 = 0.83;
 /// slower and a step reads as the picture sticking, any faster as a blur.
 const WALK_FRAMES_PER_SEC: std::ops::RangeInclusive<f32> = 7.0..=15.0;
 const RUN_FRAMES_PER_SEC: std::ops::RangeInclusive<f32> = 9.0..=18.0;
+/// How long its feet have to carry a walking creature a new way before it is drawn turned that
+/// way, in seconds: three ticks, so a step or two round a corner of a path is not a spin.
+const TURN_SECS: f32 = 0.15;
+/// How much further back or forward than along a walk has to go, to be a walk away or a walk
+/// toward the screen rather than a walk along.
+const AWAY_SHARE: f32 = 1.0;
 /// How long what a creature last did is remembered after it stops, in seconds: long enough for
 /// a stretch on waking or a shake on being set down.
 const AFTER_SECS: f32 = 3.0;
@@ -166,6 +172,10 @@ pub(super) fn carry(
         _ => None,
     };
     presence.last_action = Some(action);
+    // How far back into the village it went this tick, in points; forward is negative.
+    let away = presence
+        .last
+        .map_or(0.0, |was| (now.depth - was.depth) / pixels_per_point);
     let walked = match presence.last {
         // On the same window, how far it went less how far the window went: a window dragged
         // with a creature on it carries the creature, and that is not walking.
@@ -196,6 +206,30 @@ pub(super) fn carry(
         let frames =
             (walked * pixels_per_point / frame_length).clamp(rates.start() * dt, rates.end() * dt);
         presence.stride = (presence.stride + frames) % STRIDE_ROUND;
+    }
+    // Which way its feet are taking it: along, side-on to whoever is watching, unless it is
+    // going back or coming forward a good deal more than along.
+    let heading = if !moving {
+        None
+    } else if away.abs() > (walked - away.abs()).max(0.0) * AWAY_SHARE {
+        Some(if away > 0.0 { Turn::Back } else { Turn::Front })
+    } else {
+        Some(Turn::Side)
+    };
+    match heading {
+        Some(heading) if heading != presence.turn && presence.stepping => {
+            presence.turning += dt;
+            if presence.turning >= TURN_SECS {
+                presence.turn = heading;
+                presence.turning = 0.0;
+            }
+        }
+        // Setting off, it turns the way it is going with its first step.
+        Some(heading) if !presence.stepping => {
+            presence.turn = heading;
+            presence.turning = 0.0;
+        }
+        _ => presence.turning = 0.0,
     }
     if carried {
         // Whatever carried it, it lands standing.

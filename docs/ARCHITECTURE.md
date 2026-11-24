@@ -341,6 +341,55 @@ cursor that comes too close (AvoidCursor) gets the same scramble with the head c
 forward. The world turns a creature avoiding the cursor to face away from it, so forward is away
 from the cursor, which the art never sees.
 
+A companion walks turned to the way it is going. The world keeps `Presence::turn`
+(`formiga_core::Turn`, in `world/presence.rs`) with the rest of a presence, from where each
+creature's feet have carried it: `Side` while it goes along the ground, `Back` while it goes
+back into the village at least as far as it goes along, `Front` while it comes forward, and
+whichever of those its first step is the moment it sets off. A walker's turn changes only after
+its feet have gone the new way for `TURN_SECS` (0.15 s), so a step round the corner of a path is
+not a spin. It is runtime state like the rest of a presence: nothing is saved, and nothing the
+colony does reads it. `BodyPresentation::footing` shows a stepping companion that `can_turn` as
+`Gesture::Stride` (a walk side-on), `Gesture::Dash` (a run side-on) or `Gesture::Depart` (a walk
+away), on the stride frame its feet have reached; coming forward, standing, with motion reduced,
+and for a body nothing draws turned, it shows what it always has. A walk in a mood (a skip, a
+trudge) is taken facing the screen only.
+
+The three clips are six frames each and baked into every atlas (`renderer/modular/turned.rs`).
+A body facing the screen is already turned a little to its right, its tail out behind on the left
+and its face right of the middle; side-on it faces right the whole way and from behind it shows
+its back. Both are built from the measurements and parts the front is — `measure`, `tail_behind`,
+`ear_at`, the wings, horns and markings for a recipe, and the original blob's own mass, pattern,
+ears and tail — so a turned companion is the same size, on the same floor, in the same colours.
+Side-on the body is a little narrower, a head is carried two pixels ahead of it, the far ear,
+horn, wing and leg are drawn a third of the way to the outline's colour, the belly is down its
+front and a muzzle stands a pixel out past a head. Its face is the near half of the face cell
+the app already draws: the eye with its brow, lid and cheek mark set two pixels inside the front
+of the head, and the half of the mouth turned so its middle is at the front and its corner runs
+back. Turned away there is no face; the tail is drawn over the body, coming toward the viewer
+and round to one side, the wings over the body and under the head, a marking on the side it
+would be seen from behind, and no belly. The face is drawn into these frames
+(`BodyClip::face_in_frame`, as for a squeeze), so the overlay puts none over them: a companion
+walking turned wears `TURNED_FACE`, neutral with its eyes open, and does not blink or change
+expression until it stops. Each frame returns a `Figure` and its `hands` and `mouth` as any
+frame does, so what it wears and carries is placed against the turned body.
+
+In the side-on walk the near foot is planted and carried back under the body for three frames
+while the far one comes forward through the air, then the other way about; the body sinks a row
+as each foot takes its weight, the near paw swings against the near foot, and the tail lifts and
+the ears prick a frame after the body comes up. The run throws each foot five pixels ahead and
+behind with both off the ground as they pass, the body up a row between footfalls, the head
+carried two pixels further forward and the ears laid back. Going away each foot comes up in turn
+showing its sole while the body goes a pixel over onto the other and the tail swings across. A
+turned frame's footfalls are frames 0 and 3 (`turned_footfall`), which is where a companion
+walking up a path changes to its set-back size. A four-pawed body, a hopper, a soft quadruped,
+the fox and a sculpted form cannot turn: their cells for the three clips hold the walk or run
+they have facing the screen, with the face drawn in, and the app never shows them.
+`formiga-tools turn-sheet` draws each companion's turnaround (the standing side and back views
+are drawn only there, by `CreatureRenderer::render_turned_frame`) and the three clips beside the
+walk and run facing the screen, and `turn-sheet --animate` writes a GIF of them in use;
+`village-watch` reports how much of a village's walking is drawn each way and how often a walk
+turns.
+
 Resting is the clip a companion holds longest, so it is authored as a six-frame loop at three
 frames a second rather than a bob: it settles square and screen-facing, shifts its weight onto one
 foot, tips its head and pricks its ears toward that side, and settles back. Which side, and

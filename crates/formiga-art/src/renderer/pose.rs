@@ -1336,7 +1336,9 @@ impl Pose {
                 ..Self::default()
             },
             // Walks with a mood in them are strides; see [`Self::mood_walk`].
-            Gesture::Skip | Gesture::Trudge => Self::default(),
+            Gesture::Skip | Gesture::Trudge | Gesture::Stride | Gesture::Dash | Gesture::Depart => {
+                Self::default()
+            }
             // Leant out over the patch, braced, tipping the can further and back.
             Gesture::Pour => {
                 let tip = pour_tip(frame);

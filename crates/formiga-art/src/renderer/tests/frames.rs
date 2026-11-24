@@ -1174,8 +1174,13 @@ fn a_squeeze_is_drawn_pinched_with_its_face_in() {
         BodyClip::baked()
             .filter(|clip| clip.face_in_frame())
             .collect::<Vec<_>>(),
-        vec![squeeze],
-        "only a squeeze draws its own face"
+        vec![
+            squeeze,
+            BodyClip::Gesture(Gesture::Stride),
+            BodyClip::Gesture(Gesture::Dash),
+            BodyClip::Gesture(Gesture::Depart),
+        ],
+        "only a squeeze and the walks turned side-on or away draw their own faces"
     );
     let spec = AnimationSpec::for_clip(squeeze);
     assert_eq!((spec.frames, spec.playback), (2, PlaybackMode::Loop));

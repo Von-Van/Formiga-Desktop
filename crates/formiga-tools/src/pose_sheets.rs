@@ -44,6 +44,10 @@ pub(crate) fn gesture_face(gesture: Gesture) -> FaceRenderState {
         Gesture::Sprawl | Gesture::Loaf => (ExpressionKind::Sleepy, EyelidPose::Closed),
         Gesture::Skip => (ExpressionKind::Joy, EyelidPose::Open),
         Gesture::Trudge => (ExpressionKind::Sleepy, EyelidPose::Half),
+        // Baked with the face they are drawn with (see `BodyClip::face_in_frame`).
+        Gesture::Stride | Gesture::Dash | Gesture::Depart => {
+            (ExpressionKind::Neutral, EyelidPose::Open)
+        }
         Gesture::Pour | Gesture::Tend => (ExpressionKind::Focused, EyelidPose::Open),
         Gesture::Pluck => (ExpressionKind::Determined, EyelidPose::Open),
         // Eyes shut on a smile under the hand.
@@ -170,7 +174,7 @@ pub fn motion_sheet(path: PathBuf) -> Result<()> {
 /// shows up beside the ones it might be mistaken for.
 pub fn repertoire_sheet(path: PathBuf) -> Result<()> {
     const SCALE: u32 = 3;
-    let clips: [(formiga_art::BodyClip, FaceRenderState); 11] = {
+    let clips: [(formiga_art::BodyClip, FaceRenderState); 14] = {
         use formiga_art::BodyClip::{Action, Gesture as G};
         let face = |expression, eyelids| FaceRenderState {
             expression,
@@ -193,6 +197,9 @@ pub fn repertoire_sheet(path: PathBuf) -> Result<()> {
             ),
             (G(Gesture::Skip), gesture_face(Gesture::Skip)),
             (G(Gesture::Trudge), gesture_face(Gesture::Trudge)),
+            (G(Gesture::Stride), gesture_face(Gesture::Stride)),
+            (G(Gesture::Dash), gesture_face(Gesture::Dash)),
+            (G(Gesture::Depart), gesture_face(Gesture::Depart)),
             (
                 Action(ActionKind::Homebound),
                 face(ExpressionKind::Content, EyelidPose::Open),
@@ -1604,7 +1611,9 @@ mod tests {
         const COLS: u32 = 7;
         let subjects = gesture_subjects().len() as u32;
         let references = reference_creatures().len() as u32;
-        let before = references * 9 + (subjects - references) * 6 + subjects;
+        // Ten rows a reference body since the walks turned side-on and away took the sixty-third
+        // to sixty-fifth cells, past the end of the ninth row of seven.
+        let before = references * 10 + (subjects - references) * 6 + subjects;
         assert_eq!(gesture_sheet_rows(COLS), before + subjects);
     }
 

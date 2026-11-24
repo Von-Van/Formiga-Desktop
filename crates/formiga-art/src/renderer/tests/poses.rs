@@ -313,7 +313,16 @@ fn every_gesture_is_a_distinct_looping_pose_on_every_body() {
                 frames[0].canvas, inspecting.canvas,
                 "{body} {gesture:?} looks like plain inspecting"
             );
+            // A body nothing draws turned shows its walk in place of each turned clip, so those
+            // stand-ins are alike.
+            let stand_in = |gesture: Gesture| {
+                matches!(gesture, Gesture::Stride | Gesture::Dash | Gesture::Depart)
+                    && !crate::can_turn(genome)
+            };
             for (other, canvas) in &poses {
+                if stand_in(gesture) && stand_in(*other) {
+                    continue;
+                }
                 assert_ne!(
                     &frames[0].canvas, canvas,
                     "{body}: {gesture:?} and {other:?} share a pose"

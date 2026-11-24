@@ -435,9 +435,12 @@ fn clips_that_hold_nothing_of_their_own_draw_as_they_did() {
     let mut digest = Sha256::new();
     for (_, genome) in holding_subjects() {
         for clip in BodyClip::baked() {
+            // The walks turned side-on and away came after this digest was taken; leaving them
+            // out keeps it saying what it did about every clip there was before them.
             if matches!(
                 clip,
                 BodyClip::Action(ActionKind::Eat | ActionKind::SoloPlay | ActionKind::Drink)
+                    | BodyClip::Gesture(Gesture::Stride | Gesture::Dash | Gesture::Depart)
             ) {
                 continue;
             }

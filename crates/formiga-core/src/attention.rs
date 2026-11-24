@@ -127,10 +127,20 @@ pub enum Gesture {
     /// rising on the first frame and coming down on the second. A hop shows it while it is off
     /// the ground (see [`crate::HopMoment`]); no attention scene strikes it.
     Leap,
+    /// A walk seen from the side, facing the way it goes: the near foot planted and carried back
+    /// under the body while the far one comes forward. This and the two after it are a walk or a
+    /// run turned to the way it is going (see [`crate::Turn`]); the art shows them from where a
+    /// companion's feet have carried it, and no attention scene strikes them.
+    Stride,
+    /// A run seen from the side: leant into it, the feet thrown out ahead and behind and both
+    /// off the ground between.
+    Dash,
+    /// A walk seen from behind, going away: each foot up in turn, the body over the other.
+    Depart,
 }
 
 impl Gesture {
-    pub const ALL: [Self; 37] = [
+    pub const ALL: [Self; 40] = [
         Self::Cheer,
         Self::Gasp,
         Self::Cover,
@@ -168,6 +178,9 @@ impl Gesture {
         Self::Gulp,
         Self::Mantle,
         Self::Leap,
+        Self::Stride,
+        Self::Dash,
+        Self::Depart,
     ];
 
     /// Whether attention scenes strike this pose. The rest belong to habits, to a companion's
@@ -202,6 +215,9 @@ impl Gesture {
                 | Self::Gulp
                 | Self::Mantle
                 | Self::Leap
+                | Self::Stride
+                | Self::Dash
+                | Self::Depart
         )
     }
 }

@@ -8,6 +8,7 @@
 
 use crate::fixture_desktop;
 use anyhow::{Result, bail};
+use formiga_art::{BodyClip, BodyPresentation};
 use formiga_core::*;
 use std::collections::BTreeMap;
 use std::time::Instant;
@@ -122,6 +123,10 @@ struct Tally {
     /// Ticks two residents stood within a creature's width and a half of one another, out of
     /// doors, at least one of them turned to the other.
     together_ticks: u64,
+    /// Ticks a resident's walk was drawn side-on, from behind, and facing the screen, and how
+    /// many times a walk changed between them without stopping.
+    walked: [u64; 3],
+    turns: u64,
     tick_nanos: u128,
 }
 
@@ -190,6 +195,7 @@ fn watch(seed: u8, residents: usize, options: &Options, tally: &mut Tally) {
     let mut last_begun: BTreeMap<CreatureId, Seen> = BTreeMap::new();
     let mut last_stop: BTreeMap<CreatureId, Point> = BTreeMap::new();
     let mut standing: BTreeMap<CreatureId, f32> = BTreeMap::new();
+    let mut drawn: BTreeMap<CreatureId, usize> = BTreeMap::new();
     for tick in 0..warmup + total {
         let now = start + Duration::milliseconds((tick as f32 * DT * 1000.0) as i64);
         world.save.home.active_since_utc = Some(now - Duration::minutes(5));
@@ -220,6 +226,23 @@ fn watch(seed: u8, residents: usize, options: &Options, tally: &mut Tally) {
             }
             if !matches!(seen, Seen::Standing | Seen::Indoors) {
                 up_to_something += 1;
+            }
+            // How its walk is drawn, as the overlay asks.
+            if creature.state.presence.stepping && !creature.state.indoors {
+                let view = match BodyPresentation::for_creature(creature).clip {
+                    BodyClip::Gesture(Gesture::Stride | Gesture::Dash) => 0,
+                    BodyClip::Gesture(Gesture::Depart) => 1,
+                    _ => 2,
+                };
+                tally.walked[view] += 1;
+                if drawn
+                    .insert(creature.id, view)
+                    .is_some_and(|was| was != view)
+                {
+                    tally.turns += 1;
+                }
+            } else {
+                drawn.remove(&creature.id);
             }
             let was = last.insert(creature.id, seen);
             if was != Some(seen) {
@@ -348,6 +371,15 @@ pub fn run(args: &[String]) -> Result<()> {
                 ))
                 .collect::<Vec<_>>()
                 .join("  ")
+        );
+        let walked: u64 = tally.walked.iter().sum();
+        let of_walking = |count: u64| 100.0 * count as f64 / walked.max(1) as f64;
+        println!(
+            "walks drawn: side-on {:.0}%  from behind {:.0}%  facing the screen {:.0}%; a walk turns {:.1} times a minute of walking",
+            of_walking(tally.walked[0]),
+            of_walking(tally.walked[1]),
+            of_walking(tally.walked[2]),
+            tally.turns as f64 / (walked as f64 * f64::from(DT) / 60.0).max(1e-9)
         );
         let mut kinds: Vec<(&String, &u64)> = tally.begun.iter().collect();
         kinds.sort_by(|a, b| b.1.cmp(a.1));

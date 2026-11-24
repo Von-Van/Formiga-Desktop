@@ -1002,9 +1002,14 @@ pub(super) fn gesture_limb_targets(
         // Tucked in under the chest.
         Gesture::Loaf => offset_pair(left, right, ((2, 2), (-2, 2))),
         // A shake, a sniff, a pet and a walk with a mood in it leave the paws where they hang.
-        Gesture::Shake | Gesture::Sniff | Gesture::Skip | Gesture::Trudge | Gesture::Bask => {
-            resting()
-        }
+        Gesture::Shake
+        | Gesture::Sniff
+        | Gesture::Skip
+        | Gesture::Trudge
+        | Gesture::Stride
+        | Gesture::Dash
+        | Gesture::Depart
+        | Gesture::Bask => resting(),
         // Both paws out low in front, holding the can, tipping it further and back.
         Gesture::Pour => {
             let tip = pour_tip(frame);
