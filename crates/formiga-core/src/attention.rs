@@ -137,10 +137,18 @@ pub enum Gesture {
     Dash,
     /// A walk seen from behind, going away: each foot up in turn, the body over the other.
     Depart,
+    /// A climb up a window's face seen from behind: spread on it, a paw out past each side and a
+    /// foot under each hip, going up a paw at a time. This and the next are a climb made with its
+    /// back to the screen rather than side-on (see [`crate::Turn`]); the art shows them in place
+    /// of the climb and its mantle, and no attention scene strikes them.
+    Scale,
+    /// Topping out with its back to the screen: pulled up with a paw on the ledge either side, a
+    /// knee hooked over, half turned round in a crouch, and stood facing the screen.
+    Crest,
 }
 
 impl Gesture {
-    pub const ALL: [Self; 40] = [
+    pub const ALL: [Self; 42] = [
         Self::Cheer,
         Self::Gasp,
         Self::Cover,
@@ -181,6 +189,8 @@ impl Gesture {
         Self::Stride,
         Self::Dash,
         Self::Depart,
+        Self::Scale,
+        Self::Crest,
     ];
 
     /// Whether attention scenes strike this pose. The rest belong to habits, to a companion's
@@ -218,6 +228,8 @@ impl Gesture {
                 | Self::Stride
                 | Self::Dash
                 | Self::Depart
+                | Self::Scale
+                | Self::Crest
         )
     }
 }

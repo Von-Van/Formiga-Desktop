@@ -278,11 +278,15 @@ fn every_gesture_is_a_distinct_looping_pose_on_every_body() {
         for gesture in Gesture::ALL {
             let spec = AnimationSpec::for_clip(gesture);
             // A scene holds a pose for as long as the moment lasts, and so does a temperament's.
-            // A habit's stretch, a yawn, a swoon and a climb's mantle are done once and held at
-            // the end.
+            // A habit's stretch, a yawn, a swoon and a climb's mantle, seen either way, are done
+            // once and held at the end.
             let playback = if matches!(
                 gesture,
-                Gesture::Stretch | Gesture::Yawn | Gesture::Swoon | Gesture::Mantle
+                Gesture::Stretch
+                    | Gesture::Yawn
+                    | Gesture::Swoon
+                    | Gesture::Mantle
+                    | Gesture::Crest
             ) {
                 PlaybackMode::Hold
             } else {
@@ -314,13 +318,17 @@ fn every_gesture_is_a_distinct_looping_pose_on_every_body() {
                 "{body} {gesture:?} looks like plain inspecting"
             );
             // A body nothing draws turned shows its walk in place of each turned clip, so those
-            // stand-ins are alike.
+            // stand-ins are alike; and it tops out the one way it can, whichever of the mantle's
+            // two clips it is asked for.
             let stand_in = |gesture: Gesture| {
                 matches!(gesture, Gesture::Stride | Gesture::Dash | Gesture::Depart)
                     && !crate::can_turn(genome)
             };
+            let tops_out = |gesture: Gesture| {
+                matches!(gesture, Gesture::Mantle | Gesture::Crest) && !crate::can_turn(genome)
+            };
             for (other, canvas) in &poses {
-                if stand_in(gesture) && stand_in(*other) {
+                if stand_in(gesture) && stand_in(*other) || tops_out(gesture) && tops_out(*other) {
                     continue;
                 }
                 assert_ne!(
@@ -713,6 +721,13 @@ fn a_mantle_plays_once_at_the_worlds_rate_and_holds_its_push_with_motion_reduced
     assert_eq!(spec.frame_at(pull_secs + haul_secs + 0.01), 4);
     assert_eq!(spec.frame_at(30.0), 4);
     assert_eq!(AnimationSpec::still_frame(Gesture::Mantle), 3);
+    // Topping out with its back to the screen is the same beats, held on the same one.
+    let crest = AnimationSpec::for_clip(Gesture::Crest);
+    assert_eq!(
+        (crest.frames, crest.fps, crest.playback),
+        (spec.frames, spec.fps, spec.playback)
+    );
+    assert_eq!(AnimationSpec::still_frame(Gesture::Crest), 3);
     // Eating and drinking hold their own still frames (see `AnimationSpec::still_frame`); every
     // other clip holds its first, which for a climb is the catch, both paws on the wall.
     assert_eq!(AnimationSpec::still_frame(ActionKind::Eat), 1);
@@ -721,7 +736,7 @@ fn a_mantle_plays_once_at_the_worlds_rate_and_holds_its_push_with_motion_reduced
     for clip in BodyClip::baked().filter(|clip| {
         !matches!(
             clip,
-            BodyClip::Gesture(Gesture::Mantle)
+            BodyClip::Gesture(Gesture::Mantle | Gesture::Crest)
                 | BodyClip::Action(ActionKind::Eat | ActionKind::Drink)
         )
     }) {

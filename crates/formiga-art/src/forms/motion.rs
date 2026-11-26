@@ -77,9 +77,15 @@ impl Intent {
                 G::Groom => Self::Idle,
                 G::Shake => Self::React,
                 G::Sniff => Self::Inspect,
-                G::Skip | G::Trudge | G::Mantle | G::Leap | G::Stride | G::Dash | G::Depart => {
-                    Self::Move
-                }
+                G::Skip
+                | G::Trudge
+                | G::Mantle
+                | G::Leap
+                | G::Stride
+                | G::Dash
+                | G::Depart
+                | G::Scale
+                | G::Crest => Self::Move,
                 G::Pour | G::Pluck | G::Tend => Self::Inspect,
                 G::Bask => Self::React,
                 G::Nibble | G::Chomp | G::Chew | G::Gulp => Self::Inspect,

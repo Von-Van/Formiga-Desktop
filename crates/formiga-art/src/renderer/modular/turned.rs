@@ -90,6 +90,311 @@ struct Stride {
     tail: i32,
     ears_back: i32,
     ear_perk: i32,
+    /// Up against a wall on the side it faces rather than walking: where its paws and feet hold
+    /// it.
+    cling: Option<Cling>,
+}
+
+/// How far above its crown a paw reaches for a ledge at the most, in rows: short arms, so a ledge
+/// further up than this is not held yet and the paws stay on the wall under it.
+const CLING_REACH: i32 = 3;
+
+/// A body up against a wall, climbing it or topping out over the ledge at the top of it: where
+/// its paws and feet hold. Side-on, the wall is on the side it faces, its edge line the column
+/// [`CLIMB_WALL`] of the frame, and the paws and feet are the near one and the far. With its back
+/// to the screen the wall is what it is on, and they are the right one and the left.
+///
+/// Rows are measured from the body as it hangs, before a stretch or a lift carries it up, so a
+/// paw or a foot that keeps its row stays where it gripped.
+#[derive(Clone, Copy)]
+struct Cling {
+    /// How many rows above its shoulder each paw holds: less than nought, below it.
+    paws: [i32; 2],
+    /// How many pixels each paw is off the wall, come up off it to reach for its next hold.
+    off: [i32; 2],
+    /// How many rows up the wall from where it would stand each foot is set.
+    feet: [i32; 2],
+    /// Taller and narrower by this many pixels, stretched up to a catch; less than nought,
+    /// bunched up on a pull.
+    stretch: i32,
+    /// Rows the body is carried up past where it hangs.
+    lift: i32,
+    /// How far below a ledge its feet are, in rows, once the top of the wall is that near. Paws
+    /// that can reach the ledge go on top of it, and none holds the wall above it.
+    drop: Option<i32>,
+    /// Side-on: pixels the body is carried over the edge line, its belly on the corner of the
+    /// ledge. No further than keeps its face inside the box the simulation spaces faces by.
+    over: i32,
+    /// Side-on: the feet off the wall and kicking in the air behind.
+    kicking: bool,
+    /// Back to the screen: its right knee hooked up, that foot on the ledge beside it.
+    knee: bool,
+}
+
+impl Cling {
+    /// The row of the frame the ledge is on.
+    fn ledge(self) -> Option<i32> {
+        self.drop.map(|drop| FRAME_SIZE as i32 - 5 - drop)
+    }
+
+    /// The row a paw holds at, for a body whose shoulder and crown are on those rows as it
+    /// hangs, and whether that is on top of the ledge rather than on the wall.
+    fn paw_row(self, which: usize, shoulder: i32, crown: i32) -> (i32, bool) {
+        let row = shoulder - self.paws[which];
+        match self.ledge() {
+            Some(ledge) if ledge >= crown - CLING_REACH => (ledge - 2, true),
+            Some(ledge) => (row.max(ledge + 2), false),
+            None => (row, false),
+        }
+    }
+
+    /// Side-on: where a paw holds, the near one or the far.
+    fn paw(self, far: bool, shoulder: i32, crown: i32) -> PixelPoint {
+        let which = usize::from(far);
+        // Side-on its arms go out from its chest, so what it can reach is measured from there:
+        // no higher than its crown, and no further than a short arm goes.
+        let (y, on_ledge) = self.paw_row(which, shoulder, crown.max(shoulder - 4));
+        let x = if on_ledge {
+            // The far paw further in along the ledge.
+            CLIMB_WALL + (self.over - 1).max(1) + 2 * which as i32
+        } else {
+            CLIMB_WALL - 1 - self.off[which]
+        };
+        PixelPoint { x, y }
+    }
+
+    /// Side-on: where a foot is, the near one or the far, for a body that would stand on the
+    /// row `stand` and whose rump is at the column `rump`.
+    fn foot(self, far: bool, stand: i32, rump: i32) -> PixelPoint {
+        let step = self.feet[usize::from(far)];
+        if self.kicking {
+            PixelPoint {
+                x: rump - step,
+                y: stand + 1 - i32::from(far),
+            }
+        } else {
+            // Lower than it would stand: there is no ground under a climber's feet.
+            PixelPoint {
+                x: CLIMB_WALL - 2,
+                y: stand + 1 - step,
+            }
+        }
+    }
+
+    /// One frame of a climb: a stroke with one paw, frames 0 to 2, and then the same with the
+    /// other. A stroke is a catch, the paw landed `top` rows over the shoulder and the body
+    /// stretched up after it; a pull, the body bunched up and hauled past the paw; and a lock,
+    /// the paw down under the shoulder while the other comes up off the wall for its own catch.
+    /// The world raises the frame as each of these comes (see `formiga_core::CLIMB_FRAME_RISE`)
+    /// and whatever holds the wall is drawn lower by as much, so it stays where it gripped. The
+    /// feet go up against the paws: the one across from the catching paw is planted high, pushes
+    /// straight through the pull, and steps up again as the other plants.
+    fn climbing(frame: u8, top: i32) -> Self {
+        let rise = formiga_core::CLIMB_FRAME_RISE.map(i32::from);
+        let whole: i32 = rise.iter().sum();
+        let lift = crate::renderer::pose::CLIMB_LIFT[usize::from(frame % 3)];
+        // Each paw's rows over the shoulder and pixels off the wall; the stretch; and the feet,
+        // the one on the catching paw's side first.
+        let (lead, other, stretch, feet) = match frame % 3 {
+            0 => ((top, 0), (top - whole, 0), 1, [0, 3]),
+            1 => ((top - rise[1], 0), (top - whole + 4, 2), -1, [2, -1]),
+            _ => ((top - rise[1] - rise[2], 0), (top - 1, 1), 0, [4, -1]),
+        };
+        let second = frame % 6 >= 3;
+        let (first, last) = if second { (other, lead) } else { (lead, other) };
+        Self {
+            paws: [first.0, last.0],
+            off: [first.1, last.1],
+            feet: if second { [feet[1], feet[0]] } else { feet },
+            stretch,
+            lift,
+            drop: None,
+            over: 0,
+            kicking: false,
+            knee: false,
+        }
+    }
+
+    /// One of a mantle's frames beside the window, side-on, for a ledge `drop` rows above the
+    /// feet: hung under it or still climbing to it, pulled up on it, and flopped over its corner
+    /// on its belly with its feet kicking behind.
+    fn topping_out(frame: u8, drop: i32) -> Self {
+        let hold = Self {
+            paws: [4, 1],
+            off: [0, 0],
+            feet: [0, 2],
+            stretch: 1,
+            lift: 0,
+            drop: Some(drop),
+            over: 0,
+            kicking: false,
+            knee: false,
+        };
+        match frame {
+            0 => hold,
+            1 => Self {
+                paws: [2, 4],
+                feet: [3, 0],
+                stretch: -1,
+                lift: 1,
+                over: 2,
+                ..hold
+            },
+            _ => Self {
+                paws: [0, 0],
+                feet: [3, 6],
+                stretch: -1,
+                over: 3,
+                kicking: true,
+                ..hold
+            },
+        }
+    }
+
+    /// The same frames with its back to the screen, on the window's face: reaching for the
+    /// ledge, pulled up with a paw on it either side, and pressed up on them with a knee hooked
+    /// over.
+    fn topping_out_back(frame: u8, drop: i32) -> Self {
+        let hold = Self {
+            paws: [6, 3],
+            off: [0, 0],
+            feet: [0, 3],
+            stretch: 1,
+            lift: 0,
+            drop: Some(drop),
+            over: 0,
+            kicking: false,
+            knee: false,
+        };
+        match frame {
+            0 => hold,
+            1 => Self {
+                paws: [4, 6],
+                feet: [3, 0],
+                stretch: -1,
+                lift: 1,
+                ..hold
+            },
+            _ => Self {
+                paws: [0, 0],
+                feet: [0, 0],
+                stretch: 0,
+                knee: true,
+                ..hold
+            },
+        }
+    }
+}
+
+/// The frames of a climb and of the mantle it tops out with that a body which [`can_turn`] is
+/// drawn turned for: all of the climb, and the mantle until it is up on the ledge and faces the
+/// screen again.
+pub(in crate::renderer) fn clings(clip: BodyClip, frame: u8) -> bool {
+    match clip {
+        BodyClip::Action(ActionKind::ClimbWindow) => true,
+        BodyClip::Gesture(Gesture::Mantle) => frame <= formiga_core::MANTLE_PULL_FRAMES + 1,
+        _ => false,
+    }
+}
+
+/// The face a climb and a mantle are baked with (see `BodyClip::face_in_frame`): set on it and
+/// looking up the wall to where it is going, and straight ahead once it is over the top.
+pub(in crate::renderer) fn climbing_face(clip: BodyClip, frame: u8) -> FaceRenderState {
+    let up = match clip {
+        BodyClip::Action(ActionKind::ClimbWindow) => true,
+        _ => frame < formiga_core::MANTLE_PULL_FRAMES,
+    };
+    let stood =
+        clip == BodyClip::Gesture(Gesture::Mantle) && frame > formiga_core::MANTLE_PULL_FRAMES + 1;
+    FaceRenderState {
+        expression: if stood {
+            ExpressionKind::Content
+        } else {
+            ExpressionKind::Determined
+        },
+        eyelids: EyelidPose::Open,
+        gaze: GazeDirection {
+            x: i8::from(!stood),
+            y: -i8::from(up),
+        },
+    }
+}
+
+/// A frame of a climb or of the start of a mantle (see [`clings`]) for a body that [`can_turn`],
+/// its face drawn in where it shows one: side-on, facing right with the wall's edge line on the
+/// column [`CLIMB_WALL`]; or with its `back` to the screen, in the middle of its frame.
+pub(in crate::renderer) fn clinging_body(
+    genome: &AppearanceGenome,
+    clip: BodyClip,
+    frame: u8,
+    back: bool,
+) -> (Canvas, Figure) {
+    let view = if back { View::Back } else { View::Side };
+    let (view, stride) = match clip {
+        BodyClip::Action(_) => (
+            view,
+            Stride {
+                tail: [-1, 1, 0, 1, -1, 0][usize::from(frame % 6)],
+                // Its hips go over to the side whose paw is reaching.
+                sway: if back {
+                    [1, 0, 0, -1, 0, 0][usize::from(frame % 6)]
+                } else {
+                    0
+                },
+                // Side-on its head is tipped back to look up the wall.
+                lean: -i32::from(!back),
+                ear_perk: i32::from(frame.is_multiple_of(3)),
+                ears_back: i32::from(frame % 3 == 1),
+                cling: Some(Cling::climbing(frame, if back { 7 } else { 4 })),
+                ..Stride::default()
+            },
+        ),
+        // Up on the ledge. Having climbed its face it is half turned round, crouched; over its
+        // corner, it scrambles in on its belly, low over a near foot planted under it, the far
+        // one still trailing off the edge behind.
+        _ if frame > formiga_core::MANTLE_PULL_FRAMES => (
+            View::Side,
+            if back {
+                Stride {
+                    near_x: 1,
+                    far_x: -1,
+                    bob: 2,
+                    ears_back: 1,
+                    ..Stride::default()
+                }
+            } else {
+                Stride {
+                    near_x: 3,
+                    far_x: -7,
+                    far_lift: -2,
+                    bob: 2,
+                    lean: 1,
+                    tail: 1,
+                    ears_back: 1,
+                    ..Stride::default()
+                }
+            },
+        ),
+        _ => {
+            let drops = formiga_core::mantle_frame_drop(genome);
+            let drop = i32::from(drops[usize::from(frame).min(drops.len() - 1)]);
+            (
+                view,
+                Stride {
+                    tail: [-1, 1, 1][usize::from(frame.min(2))],
+                    ear_perk: i32::from(frame == 1),
+                    lean: -i32::from(!back && frame == 0),
+                    cling: Some(if back {
+                        Cling::topping_out_back(frame, drop)
+                    } else {
+                        Cling::topping_out(frame, drop)
+                    }),
+                    ..Stride::default()
+                },
+            )
+        }
+    };
+    draw_turned(genome, view, stride, climbing_face(clip, frame))
 }
 
 impl Stride {
@@ -413,10 +718,16 @@ fn blob_turned(
 ) -> (Mass, Figure) {
     let s = scale(genome);
     let pose = standing(genome, stride);
+    let cling = stride.cling;
+    let (stretch, lift) = cling.map_or((0, 0), |cling| (cling.stretch, cling.lift));
     let wide = ((genome.body_width as f32 * s / 2.0).round() as i32).clamp(6, 16);
     // As facing the screen, a blob presses down onto feet that stay where they are.
-    let ry = ((genome.body_height as f32 * s / 2.0).round() as i32 - stride.bob).clamp(5, 14);
-    let cy = 38 - ry;
+    let ry =
+        ((genome.body_height as f32 * s / 2.0).round() as i32 - stride.bob).clamp(5, 14) + stretch;
+    // Where it stands, and its middle over that: carried up past it on a pull. Stretched, it is
+    // longer above its middle and below it, hanging down as far as it reaches up.
+    let stand = 38;
+    let cy = stand - (ry - stretch) - lift;
     let root_y = cy - ry + 2;
     let ground = cy + ry;
     let foot = i32::from(genome.foot_size);
@@ -438,8 +749,13 @@ fn blob_turned(
     };
     if view == View::Side {
         // A round mass is nearly as deep as it is wide.
-        let rx = (wide - 1).max(6);
-        let cx = 24;
+        let deep = (wide - 1).max(6);
+        let rx = (deep - stretch).max(5);
+        // Against a wall, its belly is a pixel or two off the edge line, however deep it is.
+        let cx = match cling {
+            Some(cling) => (CLIMB_WALL - 5 - deep).max(19) + cling.over,
+            None => 24,
+        };
         // Nearer the crown than they are facing the screen, where the mass is at its tallest.
         let root_y = root_y - 2;
         draw_tail(c, genome, p, cx - rx + 1, cy + 1, s, pose);
@@ -449,6 +765,61 @@ fn blob_turned(
             blob_ear(far, genome, p, cx + 4 - back, root_y, size)
         });
         blob_ear(c, genome, p, cx - 2 - back, root_y, size);
+        let mass_at = Mass {
+            x: cx,
+            y: cy,
+            rx,
+            ry,
+            face_y: cy - 1,
+        };
+        let face = PixelPoint {
+            x: mass_at.front(cy - 1) - 4,
+            y: cy - 1,
+        };
+        if let Some(cling) = cling {
+            let crown = stand - 2 * (ry - stretch);
+            // Its paws go out from its chest, under its face.
+            let shoulder = stand - (ry - stretch) + (ry - stretch) / 3;
+            let rump = cx - rx / 2;
+            // A short arm out to the wall from the nearest of the body's own edge to the paw.
+            let arm = |c: &mut Canvas, far: bool| {
+                let paw = cling.paw(far, shoulder, crown);
+                let row = paw.y.clamp(cy - ry * 2 / 3, cy + ry * 2 / 3);
+                // The far one shows only where it meets the wall.
+                let root = if far {
+                    PixelPoint {
+                        x: paw.x - 2,
+                        y: paw.y,
+                    }
+                } else {
+                    PixelPoint {
+                        x: mass_at.front(row) - 1,
+                        y: row,
+                    }
+                };
+                classic_arm(c, p, root, paw);
+            };
+            let leg = |c: &mut Canvas, far: bool| {
+                let at = cling.foot(far, stand, rump);
+                if cling.kicking {
+                    c.line(rump, ground - 2, at.x, at.y, 2, p.outline);
+                    blob_foot(c, p, at.x - 1, at.y, foot);
+                } else {
+                    // Its sole flat to the wall, toes up it.
+                    c.line(cx + rx / 2, ground - 2, at.x, at.y, 2, p.outline);
+                    c.fill_ellipse(at.x, at.y, 2, foot.clamp(2, 3), p.outline);
+                    c.fill_ellipse(at.x, at.y - 1, 1, (foot - 1).clamp(1, 2), p.accent);
+                }
+            };
+            shaded(c, p, |far| {
+                arm(far, true);
+                leg(far, true);
+            });
+            mass(c, cx, rx, cx - 2);
+            leg(c, false);
+            arm(c, false);
+            return (mass_at, blob_figure(mass_at, face, None));
+        }
         shaded(c, p, |far| {
             blob_foot(far, p, cx + stride.far_x, ground - stride.far_lift, foot);
         });
@@ -464,6 +835,50 @@ fn blob_turned(
         c.fill_circle(tip.x, tip.y, 2, p.outline);
         c.line(root.x, root.y, tip.x, tip.y, 1, p.coat);
         c.fill_circle(tip.x, tip.y, 1, p.accent);
+        return (mass_at, blob_figure(mass_at, face, Some(tip)));
+    }
+    let rx = wide;
+    let cx = 24 + stride.sway;
+    if let Some(cling) = cling {
+        // On a wall, its back to the screen: a paw out past each side of it and a foot out
+        // under each, all four behind the body they belong to.
+        let crown = stand - 2 * (ry - stretch);
+        let shoulder = stand - (ry - stretch);
+        let half_at = |row: i32| {
+            if (row - cy).abs() < ry {
+                ellipse_half_width(rx, ry, row - cy)
+            } else {
+                rx / 2
+            }
+        };
+        for (which, side) in [(0, 1), (1, -1)] {
+            let (row, _) = cling.paw_row(which, shoulder, crown);
+            let paw = PixelPoint {
+                x: cx + side * (half_at(row) + 3),
+                y: row,
+            };
+            let root = PixelPoint {
+                x: cx + side * (rx - 3),
+                y: row.clamp(cy - ry / 2, cy + ry / 2),
+            };
+            classic_arm(c, p, root, paw);
+            let at = match cling.ledge() {
+                Some(ledge) if cling.knee && which == 0 => PixelPoint {
+                    x: cx + rx + 2,
+                    y: ledge - 2,
+                },
+                _ => PixelPoint {
+                    x: cx + side * (rx * 2 / 3 + 1),
+                    y: stand - 1 - cling.feet[which],
+                },
+            };
+            c.line(cx + side * rx / 2, ground - 3, at.x, at.y, 2, p.outline);
+            c.fill_ellipse(at.x, at.y, (foot - 1).max(2), 2, p.outline);
+            c.fill_ellipse(at.x, at.y, (foot - 2).max(1), 1, p.accent);
+        }
+        draw_head_appendages(c, genome, p, cx, root_y, s, pose);
+        mass(c, cx, rx, cx);
+        blob_back_tail(c, genome, p, cx, cy + ry / 2, stride.tail);
         let mass = Mass {
             x: cx,
             y: cy,
@@ -471,14 +886,9 @@ fn blob_turned(
             ry,
             face_y: cy - 1,
         };
-        let face = PixelPoint {
-            x: mass.front(cy - 1) - 4,
-            y: cy - 1,
-        };
-        return (mass, blob_figure(mass, face, Some(tip)));
+        let face = PixelPoint { x: cx, y: cy - 1 };
+        return (mass, blob_figure(mass, face, None));
     }
-    let rx = wide;
-    let cx = 24 + stride.sway;
     // The paws rest on its front: only their tips show past its sides.
     for side in [-1, 1] {
         c.fill_circle(cx + side * rx, cy + 2, 2, p.outline);
@@ -612,6 +1022,21 @@ fn leg(
     }
 }
 
+/// `figure` for a body drawn `dx` pixels along from where it was measured.
+fn carried(figure: Figure, dx: i32) -> Figure {
+    let along = |at: PixelPoint| PixelPoint { x: at.x + dx, ..at };
+    Figure {
+        face: along(figure.face),
+        crown: along(figure.crown),
+        neck: along(figure.neck),
+        chest: along(figure.chest),
+        hip: along(figure.hip),
+        back: along(figure.back),
+        hand: figure.hand.map(along),
+        ..figure
+    }
+}
+
 /// A recipe's body (see `draw_parts`) side-on or turned away.
 fn recipe_turned(
     c: &mut Canvas,
@@ -624,7 +1049,14 @@ fn recipe_turned(
     let k = d.classic;
     let blob = d.body == BodyPlan::Blob;
     let size = scale(genome);
-    let pose = standing(genome, stride);
+    let cling = stride.cling;
+    let hung = measure(d, standing(genome, stride), size);
+    let mut pose = standing(genome, stride);
+    if let Some(cling) = cling {
+        pose.squash_x = -cling.stretch;
+        pose.squash_y = cling.stretch;
+        pose.play_lift = cling.lift;
+    }
     let Body {
         x,
         y,
@@ -635,13 +1067,53 @@ fn recipe_turned(
         floor,
         ..
     } = measure(d, pose, size);
+    // Against a wall, the front of it is a pixel or two off the edge line, however it is built.
+    // Stretched on a wall, it is longer below its middle as well as above it, hanging down as
+    // far as it reaches up, under a head that stays where it was.
+    let stretched = cling.map_or(0, |cling| cling.stretch);
+    let (y, hy) = (y + stretched, hy + stretched);
+    let shift = cling.filter(|_| view == View::Side).map_or(0, |cling| {
+        let deep = if blob {
+            hung.rx * 6 / 7
+        } else {
+            hung.rx * 4 / 5
+        }
+        .max(5);
+        let front = if blob {
+            hung.x + deep + 1
+        } else {
+            (hung.x + deep + 2).max(hung.x + 2 + stride.lean + hung.head + i32::from(d.muzzle > 0))
+        };
+        CLIMB_WALL - 4 - front + cling.over
+    });
+    // Where its crown and its shoulders are as it hangs: on a body that carries its own face,
+    // across its middle; under a head, just under its chin side-on, and up beside it from
+    // behind, where the arms come out past it.
+    let hung_top = if blob {
+        hung.y - hung.ry
+    } else {
+        hung.hy - hung.head
+    };
+    let hung_shoulder = if blob && view == View::Side {
+        hung.y + hung.ry / 3
+    } else if blob {
+        hung.y
+    } else if view == View::Side {
+        (hung.hy + hung.head).min(hung.y + 1)
+    } else {
+        hung.y - hung.ry / 2
+    };
+    let x = x + shift;
     let ear = ((f32::from(d.ear_size) * drawn_size(d, size))
         .round()
         .max(3.0) as i32
         + pose.ear_perk.clamp(0, 2)
         - pose.ears_back.clamp(0, 3))
     .max(2);
-    let standing = standing_figure(d, pose, size, BodyClip::Action(ActionKind::Idle), 0);
+    let standing = carried(
+        standing_figure(d, pose, size, BodyClip::Action(ActionKind::Idle), 0),
+        shift,
+    );
     let belly = crate::palette::detail_color(&d, d.details.belly_color);
     let horn_shade = if d.details.belly > 0 {
         belly
@@ -669,7 +1141,7 @@ fn recipe_turned(
         }
     };
     let top = if blob { y - ry } else { hy - head };
-    let feet = 24;
+    let feet = 24 + shift;
     if view == View::Side {
         // Deeper than a head is, but not as deep as it is wide across the shoulders.
         let rx = if blob { rx * 6 / 7 } else { rx * 4 / 5 }.max(5);
@@ -731,8 +1203,76 @@ fn recipe_turned(
             }
         }
         let hip = PixelPoint { x, y: y + ry - 2 };
-        shaded(c, p, |far| {
-            leg(
+        // Against a wall: a paw out to it, or a wing; and a leg braced forward against it, its
+        // sole flat to it, or trailing in the air behind.
+        let reach = |c: &mut Canvas, cling: Cling, far: bool| {
+            let paw = cling.paw(far, hung_shoulder, hung_top);
+            let root = if far {
+                // The far one shows only where it meets the wall.
+                PixelPoint {
+                    x: paw.x - 2,
+                    y: paw.y,
+                }
+            } else if blob {
+                // A short arm from the nearest of its own edge.
+                let row = paw.y.clamp(y - ry * 2 / 3, y + ry * 2 / 3);
+                PixelPoint {
+                    x: mass.front(row) - 1,
+                    y: row,
+                }
+            } else {
+                // From the front of the chest, under the chin.
+                PixelPoint {
+                    x: x + rx - 2,
+                    y: (hung_shoulder + 1 - cling.lift).min(y + ry - 3),
+                }
+            };
+            if d.body == BodyPlan::Winged {
+                draw_open_wing(c, p, wing_style(d), root, paw, 1);
+            } else if k.limbs > 0 {
+                classic_arm(c, p, root, paw);
+            } else {
+                draw_arm(c, p, root, paw);
+            }
+        };
+        let brace = |c: &mut Canvas, cling: Cling, far: bool| {
+            let rump = x - rx / 2;
+            let at = cling.foot(far, floor - 1, rump);
+            // Stick legs are drawn in shade, so they read as thin legs rather than coat.
+            let fill = if k.limbs == 2 { p.shadow } else { p.coat };
+            let from = if far && !cling.kicking {
+                PixelPoint {
+                    x: at.x - 2,
+                    y: at.y,
+                }
+            } else {
+                PixelPoint {
+                    x: if cling.kicking { rump } else { x + rx / 2 },
+                    y: hip.y,
+                }
+            };
+            c.line(from.x, from.y, at.x, at.y, 2, p.outline);
+            c.line(from.x, from.y, at.x, at.y, 1, fill);
+            if cling.kicking {
+                if k.limbs > 0 {
+                    classic_foot(c, p, k.limbs, at);
+                } else {
+                    oval(c, p, at.x, at.y, 3, 2, p.coat);
+                }
+            } else if k.limbs > 0 {
+                let (rim, fork) = if k.limbs == 2 { (3, 2) } else { (2, 1) };
+                c.fill_ellipse(at.x, at.y, 2, rim, p.outline);
+                c.fill_ellipse(at.x, at.y - 1, 1, fork, p.accent);
+            } else {
+                oval(c, p, at.x - 1, at.y, 2, 2, p.coat);
+            }
+        };
+        shaded(c, p, |far| match cling {
+            Some(cling) => {
+                reach(far, cling, true);
+                brace(far, cling, true);
+            }
+            None => leg(
                 far,
                 d,
                 p,
@@ -741,7 +1281,7 @@ fn recipe_turned(
                 floor,
                 stride.far_lift,
                 (1, 3),
-            );
+            ),
         });
         // A muzzle stands a pixel out past the front of a head: its edge goes down first, and
         // its colour over the head. On a body that carries its own face it stays inside the mass.
@@ -762,16 +1302,19 @@ fn recipe_turned(
                 );
             });
         }
-        leg(
-            c,
-            d,
-            p,
-            hip,
-            feet + stride.near_x,
-            floor,
-            stride.near_lift,
-            (1, 3),
-        );
+        match cling {
+            Some(cling) => brace(c, cling, false),
+            None => leg(
+                c,
+                d,
+                p,
+                hip,
+                feet + stride.near_x,
+                floor,
+                stride.near_lift,
+                (1, 3),
+            ),
+        }
         if let Some((mx, half)) = muzzle
             && !blob
         {
@@ -800,7 +1343,11 @@ fn recipe_turned(
             x: x + 1 - stride.near_x.signum(),
             y: y + 3,
         };
-        arm(c, paw, 1);
+        match cling {
+            // Over its own chin, where the paw is up past it.
+            Some(cling) => reach(c, cling, false),
+            None => arm(c, paw, 1),
+        }
         if d.details.wings > 0 {
             let root = PixelPoint {
                 x: x - rx / 3 - 1,
@@ -817,8 +1364,9 @@ fn recipe_turned(
                 x: hx,
                 y: standing.crown.y,
             },
-            // A folded wing holds nothing: what it carries goes in its mouth.
-            hand: (d.body != BodyPlan::Winged).then_some(paw),
+            // A folded wing holds nothing, nor a paw that is holding a wall: what it carries
+            // goes in its mouth.
+            hand: (d.body != BodyPlan::Winged && cling.is_none()).then_some(paw),
             ..standing
         };
         return (mass, figure);
@@ -842,17 +1390,93 @@ fn recipe_turned(
             horn(c, p, horn_shade, d.details.horns, root, side);
         }
     }
-    // Heels, toes away: a foot is shorter from behind than from in front.
-    for (side, lift) in [(-1, stride.far_lift), (1, stride.near_lift)] {
-        let hip = PixelPoint {
-            x: x + side * (rx - 4),
-            y: y + ry - 2,
+    // On a wall, its back to the screen: a paw out past each side of it, up beside its head or
+    // down beside its body, and a foot out under each hip, all behind the body. Wings on its
+    // back would hide a paw beside them, so its paws go on after those.
+    let paws_out = |c: &mut Canvas, cling: Cling| {
+        let half_at = |row: i32| {
+            let trunk = if (row - y).abs() < ry {
+                ellipse_half_width(rx, ry, row - y)
+            } else {
+                0
+            };
+            let over = if !blob && (row - hy).abs() < head - 1 {
+                ellipse_half_width(head, head - 1, row - hy)
+            } else {
+                0
+            };
+            trunk.max(over).max(rx / 2)
         };
-        leg(c, d, p, hip, feet + side * (rx - 4), floor, lift, (0, 2));
+        for (which, side) in [(0, 1), (1, -1)] {
+            let (row, _) = cling.paw_row(which, hung_shoulder, hung_top);
+            let paw = PixelPoint {
+                x: x + side * (half_at(row) + 3),
+                y: row,
+            };
+            let root = PixelPoint {
+                x: x + side * (rx - 3),
+                y: row.clamp(y - ry / 2, y + ry / 2),
+            };
+            if d.body == BodyPlan::Winged {
+                draw_open_wing(c, p, wing_style(d), root, paw, side);
+            } else if k.limbs > 0 {
+                classic_arm(c, p, root, paw);
+            } else {
+                draw_arm(c, p, root, paw);
+            }
+        }
+    };
+    if let Some(cling) = cling {
+        if d.details.wings == 0 {
+            paws_out(c, cling);
+        }
+        for (which, side) in [(0, 1), (1, -1)] {
+            let hip = PixelPoint {
+                x: x + side * (rx - 4),
+                y: y + ry - 2,
+            };
+            match cling.ledge() {
+                Some(ledge) if cling.knee && which == 0 => {
+                    let at = PixelPoint {
+                        x: x + rx + 3,
+                        y: ledge - 2,
+                    };
+                    let fill = if k.limbs == 2 { p.shadow } else { p.coat };
+                    c.line(hip.x, hip.y, at.x, at.y, 2, p.outline);
+                    c.line(hip.x, hip.y, at.x, at.y, 1, fill);
+                    if k.limbs > 0 {
+                        classic_foot(c, p, k.limbs, at);
+                    } else {
+                        oval(c, p, at.x, at.y, 2, 2, p.coat);
+                    }
+                }
+                _ => leg(
+                    c,
+                    d,
+                    p,
+                    hip,
+                    feet + side * (rx - 2),
+                    floor,
+                    cling.feet[which] + 1,
+                    (0, 2),
+                ),
+            }
+        }
+    } else {
+        // Heels, toes away: a foot is shorter from behind than from in front.
+        for (side, lift) in [(-1, stride.far_lift), (1, stride.near_lift)] {
+            let hip = PixelPoint {
+                x: x + side * (rx - 4),
+                y: y + ry - 2,
+            };
+            leg(c, d, p, hip, feet + side * (rx - 4), floor, lift, (0, 2));
+        }
     }
     trunk(c, d, p, body, -1);
-    for side in [-1, 1] {
-        arm(c, shoulder(measure(d, pose, size), pose, side), side);
+    if cling.is_none() {
+        for side in [-1, 1] {
+            arm(c, shoulder(measure(d, pose, size), pose, side), side);
+        }
     }
     // Its wings are on its back, over the body they grow from and under the head.
     if d.details.wings > 0 {
@@ -862,6 +1486,9 @@ fn recipe_turned(
                 y: y - 1 - pose.appendage_lift.clamp(-1, 2),
             };
             wing_nub(c, p, d.details.wings, root, side, true);
+        }
+        if let Some(cling) = cling {
+            paws_out(c, cling);
         }
     }
     head_oval(c, x);
@@ -907,7 +1534,84 @@ fn recipe_turned(
         mass,
         Figure {
             face: PixelPoint { x, y: hy },
+            // Both paws are on the wall: what it carries goes in its mouth.
+            hand: standing.hand.filter(|_| cling.is_none()),
             ..standing
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A paw or a foot that holds the wall stays where it gripped. The world raises the body by
+    /// a set number of pixels as each frame of a climb comes (`formiga_core::CLIMB_FRAME_RISE`),
+    /// so whatever is on the wall in one frame and still on it in the next is placed lower
+    /// against the body by exactly that, whichever way the climb is seen. Only a paw come up off
+    /// the wall to reach, or a foot stepping up, moves on it.
+    #[test]
+    fn what_holds_the_wall_stays_where_it_gripped_as_the_body_goes_up_past_it() {
+        let rise = formiga_core::CLIMB_FRAME_RISE.map(i32::from);
+        for top in [4, 7] {
+            for frame in 0..6_u8 {
+                let now = Cling::climbing(frame, top);
+                let next = Cling::climbing((frame + 1) % 6, top);
+                let coming = rise[usize::from((frame + 1) % 3)];
+                let mut held = 0;
+                for which in 0..2 {
+                    if now.off[which] == 0 && next.off[which] == 0 {
+                        assert_eq!(
+                            next.paws[which],
+                            now.paws[which] - coming,
+                            "frame {frame}, paw {which}"
+                        );
+                        held += 1;
+                    }
+                    // A foot that is lower against the body is one the body has gone up past:
+                    // by the rise and no more, down to a leg at full stretch.
+                    if next.feet[which] < now.feet[which] {
+                        assert!(
+                            now.feet[which] - next.feet[which] <= coming || next.feet[which] == -1,
+                            "frame {frame}, foot {which}"
+                        );
+                    }
+                }
+                assert!(held >= 1, "frame {frame}: a paw is on the wall throughout");
+            }
+            // One paw lands at the top of each stroke, and they take turns.
+            assert_eq!(Cling::climbing(0, top).paws[0], top);
+            assert_eq!(Cling::climbing(3, top).paws[1], top);
+        }
+    }
+
+    /// The simulation decides which way a climb is made, and can only pick a way the art draws:
+    /// what it takes to be a body that turns for a climb is exactly what the art draws turned.
+    #[test]
+    fn the_simulation_turns_for_a_climb_whatever_the_art_draws_turned() {
+        let desktop = formiga_core::DesktopSnapshot::default();
+        for index in 0..120_u8 {
+            let mut seed = [index; 32];
+            seed[1] = index.wrapping_mul(37);
+            let modular = formiga_core::World::preview_adult(
+                seed,
+                time::OffsetDateTime::UNIX_EPOCH,
+                &desktop,
+            )
+            .appearance;
+            let mut classic = modular.clone();
+            classic.design = None;
+            let mut fox = modular.clone();
+            fox.echo_fox = true;
+            for genome in [modular, classic, fox] {
+                assert_eq!(
+                    formiga_core::climbs_turned(&genome),
+                    can_turn(&genome),
+                    "{:?} {:?}",
+                    genome.family,
+                    genome.design.map(|design| design.body)
+                );
+            }
+        }
+    }
 }

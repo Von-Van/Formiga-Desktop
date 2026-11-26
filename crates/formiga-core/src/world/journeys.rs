@@ -42,7 +42,7 @@ pub const CLIMB_STROKE_FRAMES: u8 = 3;
 /// the catch, most of it onto the pull, and the rest onto the lock. The art draws the paw that
 /// holds the wall lower against the body by exactly this much from each frame to the next, so the
 /// paw stays where it gripped while the body goes up past it.
-pub const CLIMB_FRAME_RISE: [u8; CLIMB_STROKE_FRAMES as usize] = [1, 7, 4];
+pub const CLIMB_FRAME_RISE: [u8; CLIMB_STROKE_FRAMES as usize] = [1, 5, 2];
 /// How much of the rise onto the next frame is made while this one is still showing. Never none,
 /// so a climber is never stood still on the wall — a journey that holds still is a pause, which a
 /// scene may fill with a pose — and little enough that the paws drawn stay where they gripped.
@@ -84,6 +84,46 @@ pub fn climb_grip_reach(appearance: &AppearanceGenome) -> f32 {
         None if appearance.family == BodyFamily::Hopper => CLIMB_REACH_LONG,
         _ => CLIMB_REACH,
     }
+}
+
+/// How far inside a window's edge line the middle of a companion that climbs with its back to
+/// the screen goes up, in art pixels: as far as the widest of them is drawn from the middle of
+/// its frame, paws and wings and all, so all of it is on the window's face. `formiga_art`'s
+/// `a_climb_seen_from_behind_is_all_on_the_windows_face` holds it to the frames.
+pub const CLIMB_BACK_INSET: f32 = 21.0;
+/// How many climbs in a hundred a companion that can be drawn turned makes with its back to the
+/// screen, up the window's face; it makes the rest side-on, up the outside of the window's side.
+const CLIMBS_AWAY_IN_100: u64 = 60;
+
+/// Whether a companion wearing `appearance` is drawn turned for a climb, side-on to the wall or
+/// with its back to the screen, rather than facing the screen as it stands: an original blob,
+/// and every recipe body but the four-pawed one. This crate cannot see the art, which decides
+/// (`formiga_art::can_turn`); `formiga_art`'s
+/// `the_simulation_turns_for_a_climb_whatever_the_art_draws_turned` holds the two together.
+pub fn climbs_turned(appearance: &AppearanceGenome) -> bool {
+    !appearance.echo_fox
+        && appearance.sculpt.is_none()
+        && match appearance.design {
+            Some(design) => design.body != BodyPlan::Long,
+            None => appearance.family == BodyFamily::Blob,
+        }
+}
+
+/// Whether `creature` makes its next climb onto the window `window` with its back to the screen,
+/// up the window's face, rather than side-on up the outside of its side: a little more often
+/// than not, for a body that is drawn turned, and the same answer however often it is asked
+/// until that climb has been made, so a climb planned again partway keeps the way it began.
+pub fn climbs_away(creature: &Creature, window: WindowKey) -> bool {
+    if !climbs_turned(&creature.appearance) {
+        return false;
+    }
+    let mut roll = creature.id
+        ^ window.rotate_left(17)
+        ^ u64::from(creature.memory.window_climbs).wrapping_mul(0x9e37_79b9_7f4a_7c15);
+    roll = (roll ^ (roll >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    roll = (roll ^ (roll >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    roll ^= roll >> 31;
+    roll % 100 < CLIMBS_AWAY_IN_100
 }
 
 /// Whether a companion wearing `appearance` goes up a wall as a long body does: upright against
@@ -183,6 +223,9 @@ pub(super) struct ClimbJourney {
     /// Risen steadily rather than a stroke at a time, as it is drawn with motion reduced: the
     /// climb holds one frame then, which a body going up in steps would not match.
     pub(super) steady: bool,
+    /// Made with its back to the screen, up the window's face, rather than side-on up the
+    /// outside of its side (see [`climbs_away`]).
+    pub(super) back: bool,
 }
 
 #[derive(Clone)]
@@ -341,6 +384,17 @@ impl WindowJourney {
                 monitor.id == journey.surface.monitor_id
                     && monitor.usable_bounds.contains(journey.target)
             }),
+        }
+    }
+
+    /// Which way a climb has its companion turned while it is on the wall or topping out: its
+    /// back to the screen, or side-on. `None` for any other journey, and on the walk over.
+    pub(super) fn wall_turn(&self) -> Option<Turn> {
+        match self {
+            Self::Climb(journey) if journey.elapsed >= journey.approach_duration => {
+                Some(if journey.back { Turn::Back } else { Turn::Side })
+            }
+            _ => None,
         }
     }
 
@@ -883,6 +937,16 @@ pub(super) fn build_window_journey(
             half,
         )
     };
+    // With its back to the screen it goes up the window's face instead, all of it on the window.
+    let back = climbs_away(creature, window.key);
+    let inset = (CLIMB_BACK_INSET * unit).min(window.bounds.width / 2.0);
+    let track = |edge: f32, outward: f32| {
+        if back {
+            edge - outward * inset
+        } else {
+            track(edge, outward)
+        }
+    };
     let left_track = track(window.bounds.x, -1.0);
     let right_track = track(window.bounds.right(), 1.0);
     let use_left = (start.x - left_track).abs() <= (start.x - right_track).abs();
@@ -891,7 +955,8 @@ pub(super) fn build_window_journey(
     } else {
         (right_track, window.bounds.right(), -1.0)
     };
-    let target_x = edge + inward * 18.0;
+    // Up a window's face, it stands up where it climbed.
+    let target_x = if back { track_x } else { edge + inward * 18.0 };
     // Over the edge far enough for both paws to be on the ledge for the push, but never past
     // where it is going to stand, nor back from where it climbed.
     let over_x = {
@@ -941,6 +1006,7 @@ pub(super) fn build_window_journey(
         pixel: unit,
         mantle_skip,
         steady: false,
+        back,
     })
 }
 

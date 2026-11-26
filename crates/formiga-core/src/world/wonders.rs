@@ -1731,6 +1731,9 @@ fn go_toward(
                     && creature.state.facing_right;
             creature.state.position = step.position;
             creature.state.attention = None;
+            if let Some(turn) = journey.wall_turn() {
+                creature.state.presence.turn = turn;
+            }
             if creature.state.action != step.action {
                 creature.state.action = step.action;
                 creature.state.action_elapsed = journey.action_elapsed();

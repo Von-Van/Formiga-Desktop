@@ -509,8 +509,10 @@ impl Pose {
     /// body hung long under it, the front foot stepped up the wall and the back one low on it; a
     /// pull, the body hauled up past the paw with its head tucked in, the front foot pushing
     /// straight as the back one steps up, the tail down; and a lock, the paw down at the cheek
-    /// while the other reaches up for its own catch. The body is drawn leant in to the wall (see
-    /// `modular::draw_leaning`).
+    /// while the other reaches up for its own catch. This is the climb of a body that is not
+    /// drawn turned for it — an original hopper or soft quadruped, and the Echo Fox; every other
+    /// is drawn turned to the wall by `modular::clinging_body`, which takes only the lift from
+    /// here.
     ///
     /// The world raises the frame as each of these comes (see `formiga_core::CLIMB_FRAME_RISE`),
     /// and the paws are drawn lower by as much. The body goes up past them a little further than
@@ -1335,10 +1337,15 @@ impl Pose {
                 crouch: 3,
                 ..Self::default()
             },
-            // Walks with a mood in them are strides; see [`Self::mood_walk`].
-            Gesture::Skip | Gesture::Trudge | Gesture::Stride | Gesture::Dash | Gesture::Depart => {
-                Self::default()
-            }
+            // Walks with a mood in them are strides; see [`Self::mood_walk`]. A climb seen from
+            // behind and its mantle are drawn as the climb and the mantle are.
+            Gesture::Skip
+            | Gesture::Trudge
+            | Gesture::Stride
+            | Gesture::Dash
+            | Gesture::Depart
+            | Gesture::Scale
+            | Gesture::Crest => Self::default(),
             // Leant out over the patch, braced, tipping the can further and back.
             Gesture::Pour => {
                 let tip = pour_tip(frame);

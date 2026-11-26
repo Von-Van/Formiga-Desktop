@@ -324,11 +324,15 @@ impl BodyClip {
     }
 
     /// Whether the clip's frames have the face drawn into them, so that nothing draws a face
-    /// over them: a squeeze, whose face is pinched narrower with its body, and a walk or a run
-    /// turned side-on or away, which shows half a face or none.
+    /// over them: a squeeze, whose face is pinched narrower with its body; a walk or a run
+    /// turned side-on or away, which shows half a face or none; and a climb and the mantle it
+    /// tops out with, side-on to the wall or with its back to the screen.
     pub const fn face_in_frame(self) -> bool {
-        matches!(self.body(), Self::Action(ActionKind::SqueezeWindow))
-            || modular::turned_clip(self).is_some()
+        matches!(
+            self.body(),
+            Self::Action(ActionKind::SqueezeWindow | ActionKind::ClimbWindow)
+                | Self::Gesture(Gesture::Mantle | Gesture::Scale | Gesture::Crest)
+        ) || modular::turned_clip(self).is_some()
     }
 }
 
@@ -457,9 +461,15 @@ impl AnimationSpec {
             Gesture::Gulp => (4, 6),
             // Hang, pull up, chest over, push up, stand: the pull-up is the first two frames, the
             // haul the next two and the step in the last, at the rate the world times them by.
-            Gesture::Mantle => (
+            // The same beats with its back to the screen.
+            Gesture::Mantle | Gesture::Crest => (
                 formiga_core::MANTLE_PULL_FRAMES + formiga_core::MANTLE_HAUL_FRAMES + 1,
                 formiga_core::MANTLE_FRAMES_PER_SECOND,
+            ),
+            // A climb's strokes seen from behind, at the climb's own rate.
+            Gesture::Scale => (
+                2 * formiga_core::CLIMB_STROKE_FRAMES,
+                formiga_core::CLIMB_FRAMES_PER_SECOND,
             ),
             // Sprung up, tucked over the top, opened out coming down and feet put down to land: a
             // hop picks the frame by how far across it is.
@@ -477,7 +487,11 @@ impl AnimationSpec {
             // as long as the moment asks for it.
             playback: if matches!(
                 gesture,
-                Gesture::Stretch | Gesture::Yawn | Gesture::Swoon | Gesture::Mantle
+                Gesture::Stretch
+                    | Gesture::Yawn
+                    | Gesture::Swoon
+                    | Gesture::Mantle
+                    | Gesture::Crest
             ) {
                 PlaybackMode::Hold
             } else {
@@ -498,7 +512,9 @@ impl AnimationSpec {
         match clip.into() {
             BodyClip::Action(ActionKind::Eat) => 1,
             BodyClip::Action(ActionKind::Drink) => 2,
-            BodyClip::Gesture(Gesture::Mantle) => formiga_core::MANTLE_PULL_FRAMES + 1,
+            BodyClip::Gesture(Gesture::Mantle | Gesture::Crest) => {
+                formiga_core::MANTLE_PULL_FRAMES + 1
+            }
             _ => 0,
         }
     }
@@ -832,7 +848,8 @@ impl MotionSignature {
         // start at the clip's own rate, which a mini's quicker pace would run ahead of.
         if matches!(
             clip,
-            BodyClip::Action(ActionKind::ClimbWindow) | BodyClip::Gesture(Gesture::Mantle)
+            BodyClip::Action(ActionKind::ClimbWindow)
+                | BodyClip::Gesture(Gesture::Mantle | Gesture::Scale | Gesture::Crest)
         ) {
             return spec.frame_at(elapsed);
         }
@@ -867,6 +884,23 @@ const CIRCLE_TURN_SECS: f32 = 0.4;
 
 impl BodyPresentation {
     pub fn for_creature(creature: &Creature) -> Self {
+        let mut body = Self::facing(creature);
+        // A climb made with its back to the screen, and its mantle, are clips of their own, on
+        // the same frames at the same rate (see `formiga_core::climbs_away`).
+        if creature.state.presence.turn == formiga_core::Turn::Back
+            && modular::can_turn(&creature.appearance)
+        {
+            body.clip = match body.clip {
+                BodyClip::Action(ActionKind::ClimbWindow) => BodyClip::Gesture(Gesture::Scale),
+                BodyClip::Gesture(Gesture::Mantle) => BodyClip::Gesture(Gesture::Crest),
+                clip => clip,
+            };
+        }
+        body
+    }
+
+    /// What it shows before a climb is turned away from the screen.
+    fn facing(creature: &Creature) -> Self {
         let state = &creature.state;
         let motion = MotionSignature::for_creature(creature);
         let shown = |clip: BodyClip, elapsed: f32| Self {
@@ -1559,6 +1593,21 @@ impl CreatureRenderer {
             Some((_, gait)) if drawn_turned.is_none() => gait.facing_the_screen(),
             _ => clip,
         };
+        // A climb made with its back to the screen is the climb seen from behind, and its mantle
+        // the mantle: everything about them but how the body is turned is the same.
+        let (clip, away) = match clip {
+            BodyClip::Gesture(Gesture::Scale) => (BodyClip::Action(ActionKind::ClimbWindow), true),
+            BodyClip::Gesture(Gesture::Crest) => (BodyClip::Gesture(Gesture::Mantle), true),
+            clip => (clip, false),
+        };
+        // A climb, and the mantle until it is up on the ledge: turned to the wall, face and all,
+        // for a body that can be drawn turned. One that cannot climbs as it always has, whichever
+        // of the clips it is asked for.
+        let climbs = matches!(
+            clip,
+            BodyClip::Action(ActionKind::ClimbWindow) | BodyClip::Gesture(Gesture::Mantle)
+        );
+        let clinging = climbs && modular::clings(clip, frame) && modular::can_turn(genome);
         let previous = (trail && !reduce_motion && clip == BodyClip::Action(ActionKind::SoloPlay))
             .then(|| {
                 let frames = AnimationSpec::for_clip(clip).frames;
@@ -1593,6 +1642,9 @@ impl CreatureRenderer {
             (&face_genome, canvas, figure)
         } else if let Some((view, gait)) = drawn_turned {
             let (canvas, figure) = modular::turned_body(genome, view, gait, frame);
+            (genome, canvas, figure)
+        } else if clinging {
+            let (canvas, figure) = modular::clinging_body(genome, clip, frame, away);
             (genome, canvas, figure)
         } else {
             let (canvas, figure) = Self::draw_recipe_body(genome, clip, frame, reduce_motion);
@@ -1670,15 +1722,21 @@ impl CreatureRenderer {
         }
         // Slipping through a gap, the face is drawn into the frame and pinched narrower with the
         // body: the overlay draws no face of its own over it (see `BodyClip::face_in_frame`).
-        if turned.is_some() && drawn_turned.is_none() {
-            let face = Self::render_face_frame(wearer, modular::TURNED_FACE);
+        let whole_face = if turned.is_some() && drawn_turned.is_none() {
+            Some(modular::TURNED_FACE)
+        } else if climbs && !clinging {
+            Some(modular::climbing_face(clip, frame))
+        } else {
+            None
+        };
+        if let Some(state) = whole_face {
+            let face = Self::render_face_frame(wearer, state);
             let left = face_anchor.x - FACE_FRAME_SIZE as i32 / 2;
             let top = face_anchor.y - FACE_FRAME_SIZE as i32 / 2;
             blit_transparent(&mut canvas, &face, left, top);
             if let Some((bare, body)) = &mut fine {
                 blit_transparent(bare, &face, left, top);
-                let fine_face =
-                    Self::render_face_frame_in_detail(wearer, modular::TURNED_FACE, detail);
+                let fine_face = Self::render_face_frame_in_detail(wearer, state, detail);
                 let d = detail as i32;
                 blit_transparent(body, &fine_face, left * d, top * d);
             }
@@ -1754,8 +1812,8 @@ impl CreatureRenderer {
                 clip,
                 frame,
             );
-            // The face is where the drawing put it, which for a body leant in to a wall is known
-            // only once it is drawn.
+            // The face is where the drawing put it, which for a body turned upright against a
+            // wall is known only once it is drawn.
             Figure {
                 face,
                 ..modular::figure(design, pose, scale(genome), clip, frame)

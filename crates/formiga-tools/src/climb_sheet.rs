@@ -29,7 +29,7 @@ const VIEW_RIGHT: f32 = 46.0;
 const VIEW_ABOVE: f32 = 56.0;
 const VIEW_BELOW_FLOOR: f32 = 6.0;
 const SAMPLES_PER_ROW: u32 = 20;
-const LABEL: u32 = 96;
+const LABEL: u32 = 150;
 const CAPTION: u32 = 20;
 const ROW_GAP: u32 = 6;
 const HANGING: [f32; 3] = [0.0, 0.5, 1.0];
@@ -37,6 +37,10 @@ const HANGING: [f32; 3] = [0.0, 0.5, 1.0];
 const DANGLE_WIDE: f32 = 64.0;
 const DANGLE_ABOVE: f32 = 50.0;
 const DANGLE_BELOW: f32 = 54.0;
+
+/// What a body's two climbs are told apart by on the sheet.
+const SIDE_LABEL: &str = ", SIDE-ON";
+const BACK_LABEL: &str = ", BACK TO US";
 
 const WALLPAPER: [u8; 4] = [236, 234, 228, 255];
 const WINDOW_FACE: [u8; 4] = [200, 210, 218, 255];
@@ -89,6 +93,122 @@ fn climbers() -> Vec<(String, AppearanceGenome)> {
     fox.echo_fox = true;
     named.push(("FOX".into(), fox));
     named
+}
+
+/// The companions named with `--colony` and `--cast`, or the sheet's own bodies when none is.
+fn cast_or_climbers(args: &[String]) -> Result<Vec<(String, AppearanceGenome)>> {
+    let mut cast = crate::cast::colony_argument(args)?;
+    cast.extend(crate::cast::cast_argument(args)?);
+    if cast.is_empty() {
+        return Ok(climbers());
+    }
+    Ok(cast
+        .into_iter()
+        .map(|creature| (creature.name.to_uppercase(), creature.appearance))
+        .collect())
+}
+
+/// Every climb the sheet shows: each body side-on, up the outside of the window's side, and
+/// then, where it can be drawn so, with its back to the screen up the window's face.
+fn climbs_shown(args: &[String], every: u32) -> Result<Vec<(String, AppearanceGenome, Climb)>> {
+    let mut shown = Vec::new();
+    for (name, genome) in cast_or_climbers(args)? {
+        let both = climbs_both_ways(&genome);
+        let side = climb_sampled(&genome, every, false);
+        let label = if both {
+            format!("{name}{SIDE_LABEL}")
+        } else {
+            name.clone()
+        };
+        shown.push((label, genome.clone(), side));
+        if both {
+            let back = climb_sampled(&genome, every, true);
+            shown.push((format!("{name}{BACK_LABEL}"), genome, back));
+        }
+    }
+    Ok(shown)
+}
+
+/// `climb-sheet --animate`: the same climbs moving, side by side, as a looping GIF at the
+/// simulation's own twenty pictures a second, each placed as the overlay places it: a row of
+/// climbs made side-on, and under it the climbs made with their backs to the screen.
+pub fn animate(path: PathBuf, args: &[String]) -> Result<()> {
+    const SCALE: u32 = 2;
+    // A row of everybody side-on, and under it a row of those that climb with their backs to us.
+    let (back, side): (Vec<_>, Vec<_>) = climbs_shown(args, 1)?
+        .into_iter()
+        .map(|(name, _, climb)| (name, climb))
+        .partition(|(name, _)| name.ends_with(BACK_LABEL));
+    let across = side.len().max(1) as u32;
+    let rows = 1 + u32::from(!back.is_empty());
+    let climbs: Vec<_> = side.into_iter().chain(back).collect();
+    let view_w = ((VIEW_RIGHT - VIEW_LEFT) * UNIT as f32) as u32;
+    let view_h = ((VIEW_ABOVE + RISE + VIEW_BELOW_FLOOR) * UNIT as f32) as u32;
+    let (width, height) = (view_w * across, (view_h + CAPTION) * rows);
+    let longest = climbs
+        .iter()
+        .map(|(_, climb)| climb.samples.len())
+        .max()
+        .unwrap_or(0);
+    let file = std::fs::File::create(&path)?;
+    let mut encoder = gif::Encoder::new(
+        std::io::BufWriter::new(file),
+        (width * SCALE) as u16,
+        (height * SCALE) as u16,
+        &[],
+    )?;
+    encoder.set_repeat(gif::Repeat::Infinite)?;
+    // Held on the perch at the end for a second before it comes round.
+    for index in 0..longest + 20 {
+        let mut sheet = Sheet {
+            pixels: vec![0; (width * height * 4) as usize],
+            width,
+            height,
+        };
+        for chunk in sheet.pixels.chunks_exact_mut(4) {
+            chunk.copy_from_slice(&WALLPAPER);
+        }
+        for (column, (name, climb)) in climbs.iter().enumerate() {
+            let (_, creature) = &climb.samples[index.min(climb.samples.len() - 1)];
+            let bounds = window_bounds(climb.floor);
+            let origin = Point {
+                x: bounds.x + VIEW_LEFT,
+                y: bounds.y - VIEW_ABOVE,
+            };
+            let top = column as u32 / across * (view_h + CAPTION);
+            let view = (column as u32 % across * view_w, top, view_w, view_h);
+            let floor_y = top as i32 + ((climb.floor - origin.y) * UNIT as f32) as i32;
+            sheet.rect_in(
+                view,
+                view.0 as i32,
+                floor_y,
+                view_w as i32,
+                view_h as i32,
+                FLOOR,
+            );
+            sheet.window(view, origin, bounds);
+            sheet.companion(view, origin, creature);
+            sheet.text(view.0 + 4, top + view_h + 6, name);
+        }
+        let mut scaled = vec![0; (width * SCALE * height * SCALE * 4) as usize];
+        for y in 0..height * SCALE {
+            for x in 0..width * SCALE {
+                let from = ((y / SCALE * width + x / SCALE) * 4) as usize;
+                let to = ((y * width * SCALE + x) * 4) as usize;
+                scaled[to..to + 4].copy_from_slice(&sheet.pixels[from..from + 4]);
+            }
+        }
+        let mut frame = gif::Frame::from_rgba_speed(
+            (width * SCALE) as u16,
+            (height * SCALE) as u16,
+            scaled.as_mut_slice(),
+            20,
+        );
+        frame.delay = 5;
+        encoder.write_frame(&frame)?;
+    }
+    println!("wrote {}", path.display());
+    Ok(())
 }
 
 /// One display with one window on it whose top is [`RISE`] points above the floor a companion
@@ -146,9 +266,18 @@ pub(crate) struct Climb {
     pub(crate) samples: Vec<(f32, Creature)>,
 }
 
+/// Whether a companion wearing `appearance` can make a climb with its back to the screen, up the
+/// window's face, as well as side-on up the outside of its side.
+fn climbs_both_ways(appearance: &AppearanceGenome) -> bool {
+    formiga_core::climbs_turned(appearance)
+}
+
 /// One companion wearing `appearance` climbs onto the window from the floor beside it, in the
-/// colony's own simulation, until it has perched for [`PERCH_SHOWN`] seconds.
-pub(crate) fn climb(appearance: &AppearanceGenome) -> Climb {
+/// colony's own simulation, until it has perched for [`PERCH_SHOWN`] seconds: sampled every
+/// `every` ticks, and made with its `back` to the screen where the body can be (see
+/// [`climbs_both_ways`]). A companion picks one way or the other for each climb from how many it
+/// has made; the sheet gives it a count that picks the way asked for.
+fn climb_sampled(appearance: &AppearanceGenome, every: u32, back: bool) -> Climb {
     let created = OffsetDateTime::UNIX_EPOCH + Duration::days(400);
     let floor = World::new([47; 32], created, &bare_desktop())
         .save
@@ -189,6 +318,13 @@ pub(crate) fn climb(appearance: &AppearanceGenome) -> Climb {
         creature.state.beat = None;
         creature.state.flourish = None;
         creature.state.arrival_delay_secs = 0.0;
+        let back = back && climbs_both_ways(appearance);
+        creature.memory.window_climbs = (0..u32::MAX)
+            .find(|climbs| {
+                creature.memory.window_climbs = *climbs;
+                formiga_core::climbs_away(creature, WINDOW_KEY) == back
+            })
+            .unwrap_or(0);
     }
     let began = world.begin_window_climb(id, WINDOW_KEY, &desktop);
     assert!(began, "the climb sheet's companion starts its climb");
@@ -202,7 +338,7 @@ pub(crate) fn climb(appearance: &AppearanceGenome) -> Climb {
         if creature.state.action == ActionKind::Perch && perched_at.is_none() {
             perched_at = Some(at);
         }
-        if tick % TICKS_PER_SAMPLE == 0 {
+        if tick % every == 0 {
             samples.push((at, creature.clone()));
         }
         if perched_at.is_some_and(|perched| at >= perched + PERCH_SHOWN) {
@@ -215,6 +351,15 @@ pub(crate) fn climb(appearance: &AppearanceGenome) -> Climb {
 /// What a sample is doing, in a word or two: a mantle by its frame, as its haul and its step in.
 fn doing(creature: &Creature) -> String {
     let body = BodyPresentation::for_creature(creature);
+    if body.clip == formiga_art::BodyClip::Gesture(Gesture::Crest) {
+        return match body.frame {
+            0 => "CREST REACH".into(),
+            1 => "CREST PULL UP".into(),
+            2 => "CREST KNEE".into(),
+            3 => "CREST TURN".into(),
+            _ => "CREST STAND".into(),
+        };
+    }
     if body.clip == formiga_art::BodyClip::Gesture(Gesture::Mantle) {
         return match body.frame {
             0 => "MANTLE HANG".into(),
@@ -384,18 +529,17 @@ impl Sheet {
 /// second a picture at 2x, placed exactly as the overlay places a companion and with the window
 /// behind it, the time and what it is doing under each. Under those, each body dangling from a
 /// ledge, every frame, as the hang takes its weight at nothing, half and all of it.
-pub fn climb_sheet(path: PathBuf) -> Result<()> {
-    let bodies: Vec<_> = climbers()
-        .into_iter()
-        .map(|(name, genome)| {
-            let climb = climb(&genome);
-            (name, genome, climb)
-        })
-        .collect();
+pub fn climb_sheet(path: PathBuf, args: &[String]) -> Result<()> {
+    let bodies = climbs_shown(args, TICKS_PER_SAMPLE)?;
     let view_w = ((VIEW_RIGHT - VIEW_LEFT) * UNIT as f32) as u32;
     let view_h = ((VIEW_ABOVE + RISE + VIEW_BELOW_FLOOR) * UNIT as f32) as u32;
     let rows_of = |climb: &Climb| (climb.samples.len() as u32).div_ceil(SAMPLES_PER_ROW);
     let climb_rows: u32 = bodies.iter().map(|(_, _, climb)| rows_of(climb)).sum();
+    // A dangle is drawn one way: once for each body.
+    let dangling: Vec<_> = bodies
+        .iter()
+        .filter(|(name, _, _)| !name.ends_with(BACK_LABEL))
+        .collect();
     let dangle_frames =
         u32::from(formiga_art::AnimationSpec::for_action(ActionKind::Dangle).frames);
     let dangle_w = (DANGLE_WIDE * UNIT as f32) as u32;
@@ -405,7 +549,7 @@ pub fn climb_sheet(path: PathBuf) -> Result<()> {
     let height = 20
         + climb_rows * (view_h + CAPTION + ROW_GAP)
         + 20
-        + bodies.len() as u32 * (dangle_h + CAPTION + ROW_GAP);
+        + dangling.len() as u32 * (dangle_h + CAPTION + ROW_GAP);
     let mut sheet = Sheet {
         pixels: vec![0; (width * height * 4) as usize],
         width,
@@ -468,8 +612,8 @@ pub fn climb_sheet(path: PathBuf) -> Result<()> {
         "DANGLING FROM A LEDGE, EVERY FRAME, AS THE HANG TAKES NONE, HALF AND ALL OF ITS WEIGHT",
     );
     top += 20;
-    for (name, genome, climb) in &bodies {
-        sheet.text(6, top + 6, name);
+    for (name, genome, climb) in dangling {
+        sheet.text(6, top + 6, name.trim_end_matches(SIDE_LABEL));
         // Hanging from the window's top, partway along it.
         let ledge = Point {
             x: WINDOW_LEFT + 40.0,
@@ -548,38 +692,71 @@ mod tests {
     use super::*;
 
     /// Every body on the sheet makes the whole climb, so no row of it is ever a companion
-    /// standing about: it looks, walks, climbs, tops out in its mantle — every frame of it shown
-    /// — and perches on the window's top.
+    /// standing about: it looks, walks, climbs, tops out — every frame of its mantle shown — and
+    /// perches on the window's top. A body that can be drawn turned does it both ways, side-on
+    /// in the climb's own clips and with its back to the screen in the two that show it so.
     #[test]
     fn every_climber_on_the_sheet_reaches_its_perch() {
         for (name, genome) in climbers() {
-            let climb = climb(&genome);
-            let mut stages: Vec<ActionKind> = Vec::new();
-            let mut mantle = Vec::new();
-            for (_, creature) in &climb.samples {
-                if stages.last() != Some(&creature.state.action) {
-                    stages.push(creature.state.action);
+            let ways: &[bool] = if climbs_both_ways(&genome) {
+                &[false, true]
+            } else {
+                &[false]
+            };
+            for &back in ways {
+                let climb = climb_sampled(&genome, TICKS_PER_SAMPLE, back);
+                let mantle_clip = formiga_art::BodyClip::Gesture(if back {
+                    Gesture::Crest
+                } else {
+                    Gesture::Mantle
+                });
+                let climb_clip = if back {
+                    formiga_art::BodyClip::Gesture(Gesture::Scale)
+                } else {
+                    formiga_art::BodyClip::Action(ActionKind::ClimbWindow)
+                };
+                let mut stages: Vec<ActionKind> = Vec::new();
+                let mut mantle = Vec::new();
+                let mut climbing = 0;
+                for (_, creature) in &climb.samples {
+                    if stages.last() != Some(&creature.state.action) {
+                        stages.push(creature.state.action);
+                    }
+                    let body = BodyPresentation::for_creature(creature);
+                    if body.clip == mantle_clip && mantle.last() != Some(&body.frame) {
+                        mantle.push(body.frame);
+                    }
+                    climbing += u32::from(body.clip == climb_clip);
+                    if creature.state.action == ActionKind::ClimbWindow {
+                        assert!(
+                            body.clip == climb_clip || body.clip == mantle_clip,
+                            "{name} back {back}: {:?} on the wall",
+                            body.clip
+                        );
+                    }
                 }
-                let body = BodyPresentation::for_creature(creature);
-                if body.clip == formiga_art::BodyClip::Gesture(Gesture::Mantle)
-                    && mantle.last() != Some(&body.frame)
-                {
-                    mantle.push(body.frame);
-                }
+                assert!(
+                    climbing > 6,
+                    "{name} back {back}: {climbing} samples of climbing"
+                );
+                assert_eq!(mantle, [0, 1, 2, 3, 4], "{name} back {back}");
+                assert_eq!(
+                    stages,
+                    [
+                        ActionKind::InspectScreen,
+                        ActionKind::Traverse,
+                        ActionKind::ClimbWindow,
+                        ActionKind::Perch,
+                    ],
+                    "{name} back {back}"
+                );
+                let (_, last) = climb.samples.last().expect("samples");
+                assert_eq!(
+                    last.state.position.y,
+                    climb.floor - RISE,
+                    "{name} back {back}"
+                );
             }
-            assert_eq!(mantle, [0, 1, 2, 3, 4], "{name}");
-            assert_eq!(
-                stages,
-                [
-                    ActionKind::InspectScreen,
-                    ActionKind::Traverse,
-                    ActionKind::ClimbWindow,
-                    ActionKind::Perch,
-                ],
-                "{name}"
-            );
-            let (_, last) = climb.samples.last().expect("samples");
-            assert_eq!(last.state.position.y, climb.floor - RISE, "{name}");
         }
     }
 }

@@ -150,6 +150,8 @@ pub(super) fn draw_gesture_effects(
         | Gesture::Stride
         | Gesture::Dash
         | Gesture::Depart
+        | Gesture::Scale
+        | Gesture::Crest
         | Gesture::Pour
         | Gesture::Tend
         | Gesture::Nibble

@@ -475,7 +475,7 @@ impl TrainScene {
                 }
                 Shown::AsItWas => continue,
                 Shown::Standing { x, facing_right } => (x, facing_right, ActionKind::Idle, t),
-                // The climb's own first frame, as a climb up a window starts.
+                // The climb's own first frame, as a climb up a window's face starts.
                 Shown::SteppingUp { x, facing_right } => {
                     (x, facing_right, ActionKind::ClimbWindow, 0.0)
                 }
@@ -506,6 +506,11 @@ impl TrainScene {
             state.facing_right = facing_right;
             state.action = action;
             state.action_elapsed = elapsed;
+            // Up the carriage's side it has its back to us, as on a window's face, whichever way
+            // its last climb was made.
+            if action == ActionKind::ClimbWindow {
+                state.presence.turn = formiga_core::Turn::Back;
+            }
             state.velocity = Point::default();
             state.attention = None;
             state.flourish = None;

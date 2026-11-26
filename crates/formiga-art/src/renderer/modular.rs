@@ -3,7 +3,9 @@ use super::*;
 use formiga_core::{BodyPlan, CreatureDesign, EarStyle};
 
 mod turned;
-pub(super) use turned::{TURNED_FACE, turned_body, turned_clip, turned_footfall};
+pub(super) use turned::{
+    TURNED_FACE, climbing_face, clinging_body, clings, turned_body, turned_clip, turned_footfall,
+};
 pub use turned::{TURNED_STRIDE_FRAMES, View, can_turn};
 
 /// The largest a body is drawn, against the average: a companion of the greatest stature.
@@ -44,17 +46,14 @@ fn oval(c: &mut Canvas, p: Palette, x: i32, y: i32, rx: i32, ry: i32, color: Rgb
     c.fill_ellipse(x, y, rx, ry, color);
 }
 
-/// Which of a body `draw_parts` draws: all of it, as nearly every frame is; the head and what
+/// Which of a body `draw_parts` draws: all of it, as nearly every frame is; or the head and what
 /// grows on it apart from everything else, for a four-pawed body turned upright against a wall
-/// under a head that stays level; or all of it but its legs and the paws it is using, for a
-/// two-legged body leant in to a wall, whose limbs go out to the wall from where the lean has put
-/// its shoulders and hips.
+/// under a head that stays level.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Parts {
     All,
     Trunk,
     Head,
-    Core,
 }
 
 pub(super) fn draw(
@@ -70,321 +69,8 @@ pub(super) fn draw(
     if d.body == BodyPlan::Long && pose.wall {
         return draw_upright(c, d, p, pose, size, clip, frame);
     }
-    if pose.wall {
-        return draw_leaning(c, d, p, pose, size, clip, frame);
-    }
     let body = measure(d, pose, size);
     draw_parts(c, d, p, pose, size, clip, frame, body, Parts::All)
-}
-
-/// How a two-legged body up against a wall is leant in to it: turned as one piece about the
-/// middle of its trunk, a little the way the hands of a clock go when the wall is on its right, so
-/// its head tips toward the wall and its hips come out from it. A climber faces what it climbs;
-/// drawn square to the screen with only its paws and feet gone to the wall, it reads as standing
-/// in the air beside it. Whole numbers throughout, so every machine turns it the same.
-#[derive(Clone, Copy)]
-struct Lean {
-    about: PixelPoint,
-    /// How many rows the leant body is set down by, so that a tall one's crown, tipped over,
-    /// stays inside its frame.
-    drop: i32,
-}
-
-impl Lean {
-    /// The sine and cosine of the lean, sixteen degrees, in 1024ths.
-    const SIN: i32 = 282;
-    const COS: i32 = 984;
-
-    fn of(body: Body) -> Self {
-        Self {
-            about: PixelPoint {
-                x: body.x,
-                y: body.y,
-            },
-            drop: 0,
-        }
-    }
-
-    fn rounded(value: i32) -> i32 {
-        (value + 512).div_euclid(1024)
-    }
-
-    /// Where a point of the body as it stands is once it leans.
-    fn turn(self, at: PixelPoint) -> PixelPoint {
-        let (dx, dy) = (at.x - self.about.x, at.y - self.about.y);
-        PixelPoint {
-            x: self.about.x + Self::rounded(dx * Self::COS - dy * Self::SIN),
-            y: self.about.y + Self::rounded(dx * Self::SIN + dy * Self::COS) + self.drop,
-        }
-    }
-
-    /// `standing` leant. Each pixel looks back at the standing body from nine points across
-    /// itself, and is drawn if four of them or more find the body there, in the colour most of
-    /// those find; so an edge comes out as even as a turned edge can and a line one pixel wide
-    /// stays joined up rather than falling between pixels. Any pixel left on the edge of the
-    /// turned shape that is not outline is given the outline's colour, so the turn invents no
-    /// colour and leaves the outline whole. Set down as far as keeps it a row inside the top of
-    /// its frame, which [`Self::turn`] follows from then on.
-    fn lean(&mut self, standing: &Canvas, outline: Rgba) -> Canvas {
-        let size = FRAME_SIZE as i32;
-        let mut leant = Canvas::new(FRAME_SIZE, FRAME_SIZE);
-        let third = |value: i32| (value + 1536).div_euclid(3072);
-        for y in 0..size {
-            for x in 0..size {
-                let mut found: Vec<(Rgba, u8)> = Vec::with_capacity(4);
-                let mut solid = 0;
-                let mut middle = None;
-                for oy in -1..=1 {
-                    for ox in -1..=1 {
-                        let dx = (x - self.about.x) * 3 + ox;
-                        let dy = (y - self.about.y) * 3 + oy;
-                        let pixel = standing.get(
-                            self.about.x + third(dx * Self::COS + dy * Self::SIN),
-                            self.about.y + third(dy * Self::COS - dx * Self::SIN),
-                        );
-                        if pixel.a == 0 {
-                            continue;
-                        }
-                        solid += 1;
-                        if (ox, oy) == (0, 0) {
-                            middle = Some(pixel);
-                        }
-                        match found.iter_mut().find(|(colour, _)| *colour == pixel) {
-                            Some((_, count)) => *count += 1,
-                            None => found.push((pixel, 1)),
-                        }
-                    }
-                }
-                if solid < 4 {
-                    continue;
-                }
-                // The colour most of them found; the middle's own, where it is one of those.
-                let most = found.iter().map(|(_, count)| *count).max().unwrap_or(0);
-                let colour = middle
-                    .filter(|middle| found.contains(&(*middle, most)))
-                    .or_else(|| {
-                        found
-                            .iter()
-                            .find(|(_, count)| *count == most)
-                            .map(|(colour, _)| *colour)
-                    });
-                if let Some(colour) = colour {
-                    leant.set(x, y, colour);
-                }
-            }
-        }
-        // A stalk or a whisker one pixel wide can still fall between pixels: each pixel of the
-        // standing body with three neighbours or fewer, which only a thin line's has, is carried
-        // forward to where it leans, and so is the point halfway to each of those neighbours,
-        // into any gap left there, so the line stays joined up along its length.
-        let half = |value: i32| (value + 1024).div_euclid(2048);
-        for y in 0..size {
-            for x in 0..size {
-                let pixel = standing.get(x, y);
-                if pixel.a == 0 {
-                    continue;
-                }
-                let neighbours: Vec<(i32, i32)> = (-1..=1)
-                    .flat_map(|dy| (-1..=1).map(move |dx| (dx, dy)))
-                    .filter(|&(dx, dy)| (dx, dy) != (0, 0) && standing.get(x + dx, y + dy).a > 0)
-                    .collect();
-                if neighbours.len() > 3 {
-                    continue;
-                }
-                for (toward_x, toward_y) in neighbours.into_iter().chain([(0, 0)]) {
-                    let dx = (x - self.about.x) * 2 + toward_x;
-                    let dy = (y - self.about.y) * 2 + toward_y;
-                    let to = PixelPoint {
-                        x: self.about.x + half(dx * Self::COS - dy * Self::SIN),
-                        y: self.about.y + half(dx * Self::SIN + dy * Self::COS),
-                    };
-                    if leant.get(to.x, to.y).a == 0 {
-                        leant.set(to.x, to.y, pixel);
-                    }
-                }
-            }
-        }
-        let mut edged = leant.clone();
-        for y in 0..size {
-            for x in 0..size {
-                if leant.get(x, y).a == 0 {
-                    continue;
-                }
-                let open = [(1, 0), (-1, 0), (0, 1), (0, -1)]
-                    .into_iter()
-                    .any(|(dx, dy)| leant.get(x + dx, y + dy).a == 0);
-                if open {
-                    edged.set(x, y, outline);
-                }
-            }
-        }
-        if let Some((_, top, _, _)) = edged.alpha_bounds() {
-            self.drop = (1 - top as i32).max(0);
-            edged.translate(0, self.drop);
-        }
-        edged
-    }
-}
-
-/// A two-legged body up against a wall (see [`Lean`]): its trunk and head, with everything that
-/// grows on them, drawn as they stand and leant in to the wall as one piece; and its limbs drawn
-/// straight, out to the wall from where that puts its shoulders and hips. The far paw comes round
-/// from behind the body, so only the end of it shows past the head, on the wall; both feet are on
-/// the wall, neither left hanging under the body, the front one with its sole on the edge line
-/// and the back one brought round under the body to the wall just short of it, further from us
-/// and so in shade. The face goes where the lean puts the middle of the head.
-fn draw_leaning(
-    c: &mut Canvas,
-    d: CreatureDesign,
-    p: Palette,
-    pose: Pose,
-    size: f32,
-    clip: BodyClip,
-    frame: u8,
-) -> PixelPoint {
-    let k = d.classic;
-    let body = measure(d, pose, size);
-    let mut lean = Lean::of(body);
-    let Body {
-        x,
-        y,
-        rx,
-        ry,
-        floor,
-        ..
-    } = body;
-    let mut standing = Canvas::new(FRAME_SIZE, FRAME_SIZE);
-    let face = draw_parts(
-        &mut standing,
-        d,
-        p,
-        pose,
-        size,
-        clip,
-        frame,
-        body,
-        Parts::Core,
-    );
-    let leant = lean.lean(&standing, p.outline);
-    let limbs = limbs(clip, frame, body, d.body);
-    let reach = |c: &mut Canvas, root: PixelPoint, hand: PixelPoint, side: i32| {
-        if d.body == BodyPlan::Winged {
-            draw_open_wing(c, p, wing_style(d), root, hand, side);
-        } else if k.limbs > 0 {
-            classic_arm(c, p, root, hand);
-        } else {
-            draw_arm(c, p, root, hand);
-        }
-    };
-    if let Limb::Reach(hand) = limbs[0] {
-        let root = lean.turn(PixelPoint {
-            x: x - rx / 2,
-            y: y + 1,
-        });
-        reach(c, root, hand, 1);
-    }
-    for row in 0..FRAME_SIZE as i32 {
-        for column in 0..FRAME_SIZE as i32 {
-            let pixel = leant.get(column, row);
-            if pixel.a > 0 {
-                c.set(column, row, pixel);
-            }
-        }
-    }
-    // The face is drawn square to the screen on a head that is not, quite: wherever the head as
-    // it stands would be behind the face and the leant one is not, the standing head's own edge
-    // is put in, so no corner of a face is left hanging off a small head.
-    let face = seat_face(c, lean.turn(face));
-    if d.body != BodyPlan::Blob {
-        let mut behind = Canvas::new(FRAME_SIZE, FRAME_SIZE);
-        oval(
-            &mut behind,
-            p,
-            face.x,
-            face.y,
-            body.head,
-            body.head - 1,
-            p.coat,
-        );
-        for row in 0..FRAME_SIZE as i32 {
-            for column in 0..FRAME_SIZE as i32 {
-                let pixel = behind.get(column, row);
-                if pixel.a > 0 && c.get(column, row).a == 0 {
-                    c.set(column, row, pixel);
-                }
-            }
-        }
-    }
-    // The back foot's step is how far up the wall it has stepped; the front one's knee, how far
-    // it is drawn up it.
-    for (far, step) in [(true, pose.step_a), (false, pose.step_b)] {
-        let hip = lean.turn(PixelPoint {
-            x: if far {
-                x + (rx - 8).max(4 - rx)
-            } else {
-                x + rx - 4
-            },
-            y: y + ry - 2,
-        });
-        let fx = CLIMB_WALL - if far { 9 } else { 5 };
-        let lift = if far {
-            step.clamp(0, 5) - pose.trail.clamp(0, 4)
-        } else {
-            step.abs().min(2) + pose.knee.clamp(0, 6)
-        };
-        // Stick legs are drawn in shade, so they read as thin legs rather than coat.
-        let leg = if k.limbs == 2 || far {
-            p.shadow
-        } else {
-            p.coat
-        };
-        c.line(hip.x, hip.y, fx, floor - 2 - lift, 2, p.outline);
-        c.line(hip.x, hip.y, fx, floor - 2 - lift, 1, leg);
-        let foot = PixelPoint {
-            x: fx,
-            y: floor - 1 - lift,
-        };
-        if k.limbs > 0 {
-            classic_foot(c, p, k.limbs, foot);
-        } else {
-            oval(c, p, foot.x, foot.y, 3, 2, leg);
-        }
-    }
-    if let Limb::Reach(hand) = limbs[1] {
-        reach(c, lean.turn(shoulder(body, pose, 1)), hand, 1);
-    }
-    face
-}
-
-/// Where the face goes on a body leant in to a wall, for a head the lean has put the middle of
-/// `at`: there, or a pixel or two from there where more of the body is behind it. A turned head
-/// is not quite the shape it was, and a face is drawn square to the screen, so on a small head
-/// the corner of one could otherwise hang off the edge.
-fn seat_face(c: &Canvas, at: PixelPoint) -> PixelPoint {
-    let covered = |centre: PixelPoint, across: i32, down: i32| {
-        (-across..=across)
-            .flat_map(|dx| (-down..=down).map(move |dy| (dx, dy)))
-            .filter(|(dx, dy)| c.get(centre.x + dx, centre.y + dy).a > 0)
-            .count() as i32
-    };
-    let mut best = (i32::MIN, at);
-    for dy in -2..=2_i32 {
-        for dx in -2..=2_i32 {
-            let centre = PixelPoint {
-                x: at.x + dx,
-                y: at.y + dy,
-            };
-            // The face's own box has to be covered; past that, the more behind it the better,
-            // and the nearer where the head is the better.
-            let reserved = covered(centre, 5, 3) == 11 * 7;
-            let score = i32::from(reserved) * 10_000 + covered(centre, 7, 6) * 4
-                - (dx.abs() + dy.abs()) * 3;
-            if score > best.0 {
-                best = (score, centre);
-            }
-        }
-    }
-    best.1
 }
 
 /// Where a four-pawed body is drawn in its frame while it is upright against a wall: its trunk as
@@ -502,9 +188,6 @@ fn draw_parts(
     // A blob's ears and gleam ride its one mass, so they are part of its trunk.
     let trunk = parts != Parts::Head;
     let headed = parts != Parts::Trunk;
-    // Leant in to a wall, the legs and the paws in use are drawn after the lean, by
-    // `draw_leaning`.
-    let limbed = parts != Parts::Core;
     let Body {
         x,
         y,
@@ -642,7 +325,7 @@ fn draw_parts(
         }
         if long {
             four_legs(c, p, d, body, pose, clip, limbs, true);
-        } else if limbed {
+        } else {
             // Balled up in the air, the feet are drawn in under the body; leaping, drawn up off
             // the ground as well.
             let leap = airborne_feet(clip, pose);
@@ -743,7 +426,7 @@ fn draw_parts(
         let Limb::Reach(hand) = limb else {
             continue;
         };
-        if !trunk || !limbed {
+        if !trunk {
             continue;
         }
         if long {
@@ -1142,26 +825,10 @@ pub(super) fn figure(
     clip: BodyClip,
     frame: u8,
 ) -> Figure {
-    let d = design.bounded();
-    let standing = standing_figure(d, pose, size, clip, frame);
-    if d.body == BodyPlan::Long || !pose.wall {
-        return standing;
-    }
-    // Leant in to a wall, everything it wears leans with it (see `draw_leaning`, which says
-    // exactly where the face is seated once the body is drawn).
-    let lean = Lean::of(measure(d, pose, size));
-    Figure {
-        face: lean.turn(standing.face),
-        crown: lean.turn(standing.crown),
-        neck: lean.turn(standing.neck),
-        chest: lean.turn(standing.chest),
-        hip: lean.turn(standing.hip),
-        back: lean.turn(standing.back),
-        ..standing
-    }
+    standing_figure(design.bounded(), pose, size, clip, frame)
 }
 
-/// [`figure`] before any lean in to a wall.
+/// [`figure`], for a design already bounded.
 fn standing_figure(d: CreatureDesign, pose: Pose, size: f32, clip: BodyClip, frame: u8) -> Figure {
     // Upright against a wall, the trunk is turned and the head is carried level over it.
     let turned = (d.body == BodyPlan::Long && pose.wall).then(|| {
@@ -1276,11 +943,6 @@ fn measure(d: CreatureDesign, pose: Pose, size: f32) -> Body {
     let head = (f32::from(d.head) * size.sqrt()).round().max(7.0) as i32;
     let x = if long {
         20 + pose.forward.clamp(0, 9)
-    } else if pose.wall {
-        // Close in to the wall, the widest of it a paw's width short of the edge line, whatever
-        // its build, so the paws holding the wall are beside it rather than across it.
-        let widest = if blob { rx } else { rx.max(head) };
-        (CLIMB_WALL - 7 - widest).clamp(17, 25)
     } else {
         24 + sway(d, pose)
     };
@@ -1409,6 +1071,8 @@ pub(super) fn limbs(clip: BodyClip, frame: u8, body: Body, plan: BodyPlan) -> [L
     match clip {
         // Dangling hands share the existing y=7 ledge anchor.
         BodyClip::Action(ActionKind::Dangle) => both(&|side| to(beside_head(side), 7)),
+        // A recipe body is drawn turned to the wall for these (see `turned::clinging_body`); the
+        // fox, which places its paws from here, still climbs facing the screen.
         // A stroke with one paw and then the other (see `Pose::climb`): the reaching paw goes
         // high up beside the head while the other holds at the cheek; on the pull the reached paw
         // comes down to the head as the body rises to it, and on the settle the two meet halfway,
@@ -1618,7 +1282,9 @@ pub(super) fn limbs(clip: BodyClip, frame: u8, body: Body, plan: BodyPlan) -> [L
             | Gesture::Trudge
             | Gesture::Stride
             | Gesture::Dash
-            | Gesture::Depart,
+            | Gesture::Depart
+            | Gesture::Scale
+            | Gesture::Crest,
         ) => [Limb::Rest; 2],
         // Wings open up and out as far as they go.
         BodyClip::Gesture(Gesture::Stretch) if plan == BodyPlan::Winged => {
@@ -1988,6 +1654,7 @@ fn long_limbs(clip: BodyClip, frame: u8, body: Body) -> [Limb; 2] {
             | Gesture::Loaf
             | Gesture::Skip
             | Gesture::Trudge | Gesture::Stride | Gesture::Dash | Gesture::Depart
+            | Gesture::Scale | Gesture::Crest
             | Gesture::Pluck
             | Gesture::Bask,
         ) => [rest; 2],
@@ -2447,8 +2114,8 @@ mod tests {
                     if plan == BodyPlan::Long {
                         continue;
                     }
-                    // Leant in to a wall, the body is turned from where this looks for it, and
-                    // both its paws are on the wall.
+                    // On a wall a body is drawn turned to it, not from here (see
+                    // `turned::clinging_body`).
                     if pose.wall {
                         continue;
                     }
@@ -2600,7 +2267,7 @@ mod tests {
                 for clip in BodyClip::baked() {
                     for frame in 0..AnimationSpec::for_clip(clip).frames {
                         let (canvas, _, pose) = render(&creature, d, clip, frame, 1.0);
-                        // Leant in to a wall, the body is turned from where this looks for it.
+                        // On a wall a body is drawn turned to it, not from here.
                         if pose.wall {
                             continue;
                         }
@@ -2708,106 +2375,6 @@ mod tests {
                     raised + lifted <= 1,
                     "{clip:?} frame {frame}: {raised} forepaws in use and {lifted} legs lifted"
                 );
-            }
-        }
-    }
-
-    /// A climber's paw stays where it gripped. The world raises the body by a set number of
-    /// pixels as each frame of a stroke comes, so the paw whose stroke it is is drawn lower in
-    /// the frame by exactly that many each time, all the way down from its catch to where it
-    /// holds under the other paw's catch, whatever the body does around it. Both paws hold the
-    /// wall on the side the body faces, on the edge line, and the body is drawn clear of them.
-    #[test]
-    fn a_climbing_paw_stays_where_it_gripped_while_the_body_goes_up_past_it() {
-        let creature = preview();
-        let rise = formiga_core::CLIMB_FRAME_RISE.map(i32::from);
-        let clip = BodyClip::Action(ActionKind::ClimbWindow);
-        for plan in BodyPlan::ALL
-            .into_iter()
-            .filter(|plan| *plan != BodyPlan::Long)
-        {
-            let mut d = creature.appearance.design.unwrap();
-            d.body = plan;
-            for size in [0.55, 0.85, 1.0, 1.15] {
-                let paws = |frame: u8| {
-                    let pose = Pose::new(&creature.appearance, clip, frame, false);
-                    let body = measure(d, pose, size);
-                    let reach = limbs(clip, frame, body, plan).map(|limb| match limb {
-                        Limb::Reach(at) => at,
-                        Limb::Rest => panic!("{plan:?} frame {frame}: a paw off the wall"),
-                    });
-                    (body, reach)
-                };
-                // The front paw's stroke is frames 0 to 2, and the back paw's 3 to 5.
-                for (first, side) in [(0_u8, 1_usize), (3, 0)] {
-                    let label = format!("{plan:?} size {size} stroke from frame {first}");
-                    let rows: Vec<i32> = (first..first + 4)
-                        .map(|frame| paws(frame % 6).1[side].y)
-                        .collect();
-                    assert_eq!(rows[1] - rows[0], rise[1], "{label}: onto the pull");
-                    assert_eq!(rows[2] - rows[1], rise[2], "{label}: onto the lock");
-                    assert_eq!(rows[3] - rows[2], rise[0], "{label}: onto the next catch");
-                    for frame in first..first + 3 {
-                        let (body, reach) = paws(frame);
-                        assert_eq!(reach[side].x, CLIMB_PAW, "{label}: on the edge line");
-                        let widest = if plan == BodyPlan::Blob {
-                            body.x + body.rx
-                        } else {
-                            (body.x + body.rx).max(body.hx + body.head)
-                        };
-                        assert!(
-                            widest + 1 < CLIMB_WALL - 2,
-                            "{label} frame {frame}: the body reaches column {widest}"
-                        );
-                    }
-                }
-            }
-        }
-    }
-
-    /// A two-legged body up against a wall faces it. Drawn square to the screen with only its
-    /// paws and feet gone to the wall, it read as standing in the air beside it, one leg hanging;
-    /// so the whole of it leans in, its head tipped toward the wall and its hips out from it, and
-    /// both its feet are on the wall, the lowest thing drawn being a foot there and never a leg
-    /// hung under the far side of the body.
-    #[test]
-    fn a_two_legged_body_leans_in_to_the_wall_it_climbs_with_both_feet_on_it() {
-        let creature = preview();
-        for plan in BodyPlan::ALL
-            .into_iter()
-            .filter(|plan| *plan != BodyPlan::Long)
-        {
-            for limbs in 0..=2 {
-                let mut d = creature.appearance.design.unwrap();
-                d.body = plan;
-                d.classic.limbs = limbs;
-                for size in [0.55, 0.85, 1.0, 1.15] {
-                    let frames = (0..AnimationSpec::for_action(ActionKind::ClimbWindow).frames)
-                        .map(|frame| (BodyClip::Action(ActionKind::ClimbWindow), frame))
-                        .chain(
-                            (0..=formiga_core::MANTLE_PULL_FRAMES)
-                                .map(|frame| (BodyClip::Gesture(Gesture::Mantle), frame)),
-                        );
-                    for (clip, frame) in frames {
-                        let (canvas, face, pose) = render(&creature, d, clip, frame, size);
-                        let label = format!("{plan:?} limbs {limbs} size {size} {clip:?} {frame}");
-                        assert!(pose.wall, "{label}");
-                        let body = measure(d, pose, size);
-                        // A head above the middle of its trunk is carried toward the wall by
-                        // the lean; a blob's face rides the middle and barely moves.
-                        if plan != BodyPlan::Blob && body.hy < body.y - 3 {
-                            assert!(face.x > body.hx, "{label}: the head is not tipped in");
-                        }
-                        let (_, _, _, bottom) = canvas.alpha_bounds().expect("drawn");
-                        let lowest: Vec<i32> = (0..FRAME_SIZE as i32)
-                            .filter(|x| canvas.get(*x, bottom as i32).a > 0)
-                            .collect();
-                        assert!(
-                            lowest.iter().all(|x| *x >= CLIMB_WALL - 14),
-                            "{label}: something hangs under it at columns {lowest:?}"
-                        );
-                    }
-                }
             }
         }
     }
