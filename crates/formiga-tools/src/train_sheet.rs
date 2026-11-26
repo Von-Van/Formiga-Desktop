@@ -15,7 +15,7 @@ use formiga_art::{
     TRAIN_GROUND, TRAIN_HEIGHT, TRAIN_WIDTH, TRAIN_WINDOWS, TrainLook, TrainRenderer, door_centers,
     window_origins,
 };
-use formiga_core::ActionKind;
+use formiga_core::{ActionKind, Gesture};
 use std::path::PathBuf;
 
 const SCALE: u32 = 3;
@@ -143,12 +143,11 @@ pub fn run(path: PathBuf) -> Result<()> {
         if let Some(stepping) = companions.get(2) {
             let doors = door_centers();
             let door = doors[2 * doors.len() / companions.len()];
-            let frame = CreatureRenderer::render_frame(
-                &stepping.appearance,
-                ActionKind::ClimbWindow,
-                0,
-                true,
-            );
+            // Up the carriage's side with its back to us, as the trip's scene shows it: the
+            // climb's own first frame for a body nothing draws turned.
+            let frame =
+                CreatureRenderer::render_body_frame(&stepping.appearance, Gesture::Scale, 0, false)
+                    .canvas;
             let baseline = CreatureRenderer::resting_baseline(&stepping.appearance, false);
             let placement = FramePlacement::for_action(ActionKind::ClimbWindow, baseline);
             stamp(

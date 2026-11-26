@@ -45,7 +45,7 @@ pub(crate) fn gesture_face(gesture: Gesture) -> FaceRenderState {
         Gesture::Skip => (ExpressionKind::Joy, EyelidPose::Open),
         Gesture::Trudge => (ExpressionKind::Sleepy, EyelidPose::Half),
         // Baked with the face they are drawn with (see `BodyClip::face_in_frame`).
-        Gesture::Stride | Gesture::Dash | Gesture::Depart => {
+        Gesture::Stride | Gesture::Dash | Gesture::Depart | Gesture::Scale | Gesture::Crest => {
             (ExpressionKind::Neutral, EyelidPose::Open)
         }
         Gesture::Pour | Gesture::Tend => (ExpressionKind::Focused, EyelidPose::Open),
@@ -1612,8 +1612,10 @@ mod tests {
         let subjects = gesture_subjects().len() as u32;
         let references = reference_creatures().len() as u32;
         // Ten rows a reference body since the walks turned side-on and away took the sixty-third
-        // to sixty-fifth cells, past the end of the ninth row of seven.
-        let before = references * 10 + (subjects - references) * 6 + subjects;
+        // to sixty-fifth cells, past the end of the ninth row of seven; and seven rows for any
+        // other since the climb seen from behind and its mantle took the forty-third and
+        // forty-fourth, past the end of its sixth.
+        let before = references * 10 + (subjects - references) * 7 + subjects;
         assert_eq!(gesture_sheet_rows(COLS), before + subjects);
     }
 

@@ -1193,3 +1193,150 @@ fn turned_walks_are_drawn_for_bodies_that_turn_and_stood_in_for_the_rest() {
         }
     }
 }
+
+/// A climb is drawn turned the way it is made: side-on to the wall in the climb's own clips, and
+/// with its back to the screen in the two that show it so, for a companion the world has turned
+/// away. A body nothing draws turned climbs as it always has, whichever way it is turned.
+#[test]
+fn a_climb_is_drawn_turned_the_way_it_is_made() {
+    use formiga_core::Turn;
+    let mut blob = measured(41);
+    blob.appearance.family = BodyFamily::Blob;
+    blob.appearance.design = None;
+    blob.appearance.sculpt = None;
+    blob.appearance.echo_fox = false;
+    assert!(crate::can_turn(&blob.appearance));
+    blob.state.action = ActionKind::ClimbWindow;
+    let shown = |creature: &Creature| BodyPresentation::for_creature(creature);
+    let mantle = formiga_core::AttentionPose {
+        target: blob.state.position,
+        emotion: formiga_core::AttentionEmotion::Curious,
+        hanging: 0.0,
+        gesture: Some(Gesture::Mantle),
+    };
+    for turn in [Turn::Side, Turn::Front] {
+        blob.state.presence.turn = turn;
+        blob.state.attention = None;
+        assert_eq!(shown(&blob).clip, BodyClip::Action(ActionKind::ClimbWindow));
+        blob.state.attention = Some(mantle);
+        assert_eq!(shown(&blob).clip, BodyClip::Gesture(Gesture::Mantle));
+    }
+    blob.state.presence.turn = Turn::Back;
+    for elapsed in [0.0, 0.15, 0.31, 0.55, 0.9] {
+        blob.state.action_elapsed = elapsed;
+        blob.state.attention = None;
+        let away = shown(&blob);
+        assert_eq!(away.clip, BodyClip::Gesture(Gesture::Scale));
+        blob.state.attention = Some(mantle);
+        let crest = shown(&blob);
+        assert_eq!(crest.clip, BodyClip::Gesture(Gesture::Crest));
+        // On the same frame the climb and the mantle would show, so the height the world has
+        // it at is the height its paws are drawn for.
+        blob.state.presence.turn = Turn::Side;
+        assert_eq!(shown(&blob).frame, crest.frame, "{elapsed}");
+        blob.state.attention = None;
+        assert_eq!(shown(&blob).frame, away.frame, "{elapsed}");
+        blob.state.presence.turn = Turn::Back;
+    }
+    blob.state.attention = None;
+    blob.appearance.family = BodyFamily::Hopper;
+    assert!(!crate::can_turn(&blob.appearance));
+    assert_eq!(shown(&blob).clip, BodyClip::Action(ActionKind::ClimbWindow));
+}
+
+/// Every frame of a climb is drawn turned to the wall for a body that turns: side-on with an
+/// eye showing, and from behind with no face at all, each stroke's frames its own. The mantle
+/// follows it round, until it stands on the ledge facing the screen the same way either time.
+/// A body nothing draws turned shows the one climb and the one mantle it has for both.
+#[test]
+fn a_climb_and_its_mantle_are_drawn_both_ways_for_bodies_that_turn() {
+    let climb = BodyClip::Action(ActionKind::ClimbWindow);
+    let frames = |genome: &AppearanceGenome, clip: BodyClip| -> Vec<Canvas> {
+        (0..AnimationSpec::for_clip(clip).frames)
+            .map(|frame| CreatureRenderer::render_body_frame(genome, clip, frame, false).canvas)
+            .collect()
+    };
+    for (name, genome) in every_body() {
+        let eye = crate::palette_for(&genome).eye;
+        let eyes = |canvas: &Canvas| canvas.pixels().iter().filter(|px| **px == eye).count();
+        let side = frames(&genome, climb);
+        let back = frames(&genome, Gesture::Scale.into());
+        let mantle = frames(&genome, Gesture::Mantle.into());
+        let crest = frames(&genome, Gesture::Crest.into());
+        assert_eq!(
+            (side.len(), mantle.len()),
+            (back.len(), crest.len()),
+            "{name}"
+        );
+        if !crate::can_turn(&genome) {
+            assert_eq!(side, back, "{name}: the one climb it has");
+            assert_eq!(mantle, crest, "{name}: the one mantle it has");
+            continue;
+        }
+        for (way, strokes) in [("side-on", &side), ("from behind", &back)] {
+            for pair in strokes.windows(2) {
+                assert_ne!(pair[0], pair[1], "{name} {way} holds a frame");
+            }
+        }
+        // Bare, as it stands: whatever of the eye's colour its coat or its markings carry.
+        let bare = CreatureRenderer::render_body_frame(&genome, ActionKind::Idle, 0, true).canvas;
+        for (frame, (side, back)) in side.iter().zip(&back).enumerate() {
+            assert_ne!(side, back, "{name} frame {frame}");
+            assert!(
+                eyes(side) > eyes(&bare),
+                "{name} frame {frame}: side-on has an eye"
+            );
+            assert!(
+                eyes(back) <= eyes(&bare),
+                "{name} frame {frame}: a back has no face"
+            );
+        }
+        let turned = usize::from(formiga_core::MANTLE_PULL_FRAMES) + 2;
+        for frame in 0..turned {
+            assert_ne!(mantle[frame], crest[frame], "{name} mantle frame {frame}");
+        }
+        assert_eq!(
+            mantle[turned..],
+            crest[turned..],
+            "{name}: stood, it faces the screen"
+        );
+    }
+}
+
+/// A climb seen from behind goes up a window's face with the middle of its frame
+/// `formiga_core::CLIMB_BACK_INSET` pixels in from the window's edge. The simulation cannot see
+/// the art, so this holds that to the frames: across generated companions, nothing a climber
+/// seen from behind draws — a paw out to the side, a wing, a tail — is further from the middle
+/// of its frame than that, so all of it is on the window.
+#[test]
+fn a_climb_seen_from_behind_is_all_on_the_windows_face() {
+    const CENTRE: i32 = FRAME_SIZE as i32 / 2;
+    let desktop = DesktopSnapshot::default();
+    let mut turned = 0;
+    for index in 0..120_u8 {
+        let mut seed = [index; 32];
+        seed[1] = index.wrapping_mul(37);
+        let modular =
+            World::preview_adult(seed, time::OffsetDateTime::UNIX_EPOCH, &desktop).appearance;
+        let mut classic = modular.clone();
+        classic.design = None;
+        for genome in [modular, classic] {
+            if !crate::can_turn(&genome) {
+                continue;
+            }
+            turned += 1;
+            for clip in [Gesture::Scale, Gesture::Crest] {
+                for frame in 0..=formiga_core::MANTLE_PULL_FRAMES {
+                    let body = CreatureRenderer::render_body_frame(&genome, clip, frame, false);
+                    let (left, _, right, _) = body.canvas.alpha_bounds().expect("drawn");
+                    let reach = (CENTRE - left as i32).max(right as i32 + 1 - CENTRE);
+                    assert!(
+                        reach as f32 <= formiga_core::CLIMB_BACK_INSET,
+                        "{clip:?} frame {frame} draws {reach} from the middle of its frame"
+                    );
+                }
+            }
+        }
+    }
+    assert!(turned > 60, "{turned} companions that turn");
+}

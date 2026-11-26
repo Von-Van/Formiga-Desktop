@@ -1009,6 +1009,8 @@ pub(super) fn gesture_limb_targets(
         | Gesture::Stride
         | Gesture::Dash
         | Gesture::Depart
+        | Gesture::Scale
+        | Gesture::Crest
         | Gesture::Bask => resting(),
         // Both paws out low in front, holding the can, tipping it further and back.
         Gesture::Pour => {

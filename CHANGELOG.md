@@ -43,6 +43,30 @@ All notable changes are documented here.
 
 ### Changed
 
+- Climbing a window is redrawn, and a companion now does it one of two ways. Side-on, it goes up
+  the outside of the window's edge as before, but turned to face the wall with its belly to it:
+  a short arm out from its chest to a paw on the edge, a leg braced against it, its head tipped
+  back to look up, one eye showing. Or it walks in under the window, turns its back to you and
+  goes up the window's face, spread on it with a paw out past each side and a foot under each
+  hip, its hips and tail swinging with each reach. It picks one for each climb, the back view a
+  little more often than not (six climbs in ten). Either way it goes hand over hand, stretching
+  long for each catch and bunching up to pull past it, and its paws stay where they grip. At the
+  top, side-on it flops its belly over the corner of the window with its feet kicking and
+  scrambles in; with its back to you it pulls up with a paw on the ledge either side, hooks a
+  knee over and turns round to face you. A companion's arms stay short through all of it: it
+  reaches for the ledge only once the ledge is in reach. Until now a climber faced the screen,
+  leant over at an angle and held off the wall by long thin arms and legs. A stroke is shorter
+  than it was, eight pixels rather than twelve, so short arms can keep hold; a climb is about a
+  third slower for it, 27 pixels a second rather than 40. The original round companions and
+  every newer body but the four-pawed one climb these two ways; four-pawed companions, hoppers,
+  soft quadrupeds, the Echo Fox and sculpted forms climb as they did, at the new pace. While it
+  climbs and tops out a companion keeps one set face, looking up the wall, rather than blinking
+  or changing expression. Boarding the train for a trip, a companion that climbs these ways
+  steps up with its back to you. Nothing is saved. Each companion's textures grow by eleven
+  frames, 2.07 MB to 2.17 MB, a full colony's from 12.4 MB to 13.0 MB.
+- `formiga-tools climb-sheet` shows each body climbing both ways, takes `--colony COLONY.json`
+  and `--cast NAME@COLONY.json` to climb with a real colony's companions (the file is only read),
+  and with `--animate` writes the climbs moving as a GIF.
 - A village of four or more usually has about half its companions out of doors, two or three
   of them, with the rest in their houses behind drawn curtains. Everybody used to be out about
   four fifths of the time, at most two indoors, which made a full village a crowd. Now the more

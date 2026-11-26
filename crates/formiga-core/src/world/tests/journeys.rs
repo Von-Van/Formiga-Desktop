@@ -1,5 +1,18 @@
 use super::*;
 
+/// Gives `creature` a count of climbs behind it with which it makes its next one onto `window`
+/// the way asked: with its back to the screen up the window's face, or side-on up the outside of
+/// its side (see `climbs_away`). A test of either way's geometry asks for it, rather than leave
+/// it to the roll.
+fn set_to_climb(creature: &mut Creature, window: WindowKey, away: bool) {
+    creature.memory.window_climbs = (0..10_000)
+        .find(|climbs| {
+            creature.memory.window_climbs = *climbs;
+            climbs_away(creature, window) == away
+        })
+        .expect("a count of climbs that picks this way up");
+}
+
 #[test]
 fn a_tall_staircase_step_needs_individual_traversal_ability() {
     let created = datetime!(2026-01-01 0:00 UTC);
@@ -242,7 +255,9 @@ fn upward_window_routes_stage_traverse_climb_mantle_and_perch() {
     let created = datetime!(2026-01-01 0:00 UTC);
     let mut desktop = desktop();
     let world = World::new([33; 32], created, &desktop);
-    let creature = &world.save.creatures[0];
+    let mut creature = world.save.creatures[0].clone();
+    set_to_climb(&mut creature, 93, false);
+    let creature = &creature;
     let start = creature.state.position;
     let bounds = DesktopRect {
         x: start.x - 110.0,
@@ -414,6 +429,7 @@ fn climb_cancels_when_its_path_leaves_the_habitat() {
         enabled: true,
     });
     let creature = &mut world.save.creatures[0];
+    set_to_climb(creature, 96, false);
     creature.state.position = Point { x: 100.0, y: 846.0 };
     creature.state.surface = SurfaceAttachment {
         kind: SurfaceKind::ScreenFloor,
@@ -560,6 +576,7 @@ fn a_climb_hangs_beside_the_window_by_its_edge_and_crosses_it_on_the_push() {
         (bounds.x - 30.0, 4, true),
     ] {
         let mut creature = world.save.creatures[0].clone();
+        set_to_climb(&mut creature, 95, false);
         creature.state.position = Point {
             x: start_x,
             y: 846.0,
@@ -705,6 +722,7 @@ fn a_window_side_with_no_room_beside_it_is_climbed_just_inside() {
             application_name: None,
         }];
         let mut creature = world.save.creatures[0].clone();
+        set_to_climb(&mut creature, 95, false);
         creature.state.position = Point {
             x: window_x + 20.0,
             y: 846.0,
@@ -776,6 +794,7 @@ fn a_climb_begun_on_demand_runs_every_stage_and_perches() {
         relative_x: 0.5,
     };
     assert!(!world.begin_window_climb(id, 7, &desktop), "no such window");
+    set_to_climb(&mut world.save.creatures[0], 96, false);
     assert!(world.begin_window_climb(id, 96, &desktop));
     let mut stages = vec![world.save.creatures[0].state.action];
     for _ in 0..200 {
@@ -850,6 +869,7 @@ fn a_climb_goes_up_as_its_frames_come_so_its_paws_hold_where_they_grip() {
             application_name: None,
         });
         creature.state.position = start;
+        set_to_climb(&mut creature, 97, false);
         let mut journey = build_window_journey(
             &creature,
             Point {
@@ -963,6 +983,7 @@ fn a_climbing_companion_is_as_high_as_the_frame_its_clip_shows() {
         window_key: None,
         relative_x: 0.5,
     };
+    set_to_climb(&mut world.save.creatures[0], 98, false);
     assert!(world.begin_window_climb(id, 98, &desktop));
     let pixel = f32::from(world.save.settings.display_scale) / desktop.monitors[0].scale_factor;
     let mut ticks = 0;
@@ -1046,6 +1067,7 @@ fn climbing_world(reduce_motion: bool) -> (World, DesktopSnapshot, OffsetDateTim
         window_key: None,
         relative_x: 0.5,
     };
+    set_to_climb(&mut world.save.creatures[0], 96, false);
     assert!(world.begin_window_climb(id, 96, &desktop));
     (world, desktop, now, floor)
 }
@@ -1268,4 +1290,154 @@ fn a_hop_let_go_of_by_a_pick_up_is_no_longer_a_hop() {
     world.window_journeys.remove(&id);
     world.tick(created, 0.05, &desktop);
     assert_eq!(world.save.creatures[0].state.presence.hop, None);
+}
+
+/// A companion that can be drawn turned picks its way up for each climb: with its back to the
+/// screen a little more often than side-on, the same answer however often it is asked before the
+/// climb is made, and another roll once it has been. One that cannot be drawn turned — a
+/// four-pawed body, an original hopper, the fox — always climbs as it did.
+#[test]
+fn a_companion_picks_its_way_up_for_each_climb_and_keeps_to_it() {
+    let created = datetime!(2026-01-01 0:00 UTC);
+    let desktop = desktop();
+    let (mut away, mut asked) = (0, 0);
+    let mut both_ways = 0;
+    for seed in 1..=12_u8 {
+        let world = World::new([seed; 32], created, &desktop);
+        for creature in &world.save.creatures {
+            let mut creature = creature.clone();
+            let mut ways = [false; 2];
+            for climbs in 0..40 {
+                creature.memory.window_climbs = climbs;
+                for window in [7, 96, 4_021] {
+                    let way = climbs_away(&creature, window);
+                    assert_eq!(way, climbs_away(&creature, window), "the same climb");
+                    if climbs_turned(&creature.appearance) {
+                        away += u32::from(way);
+                        asked += 1;
+                        ways[usize::from(way)] = true;
+                    } else {
+                        assert!(!way, "a body nothing draws turned climbs as it did");
+                    }
+                }
+            }
+            both_ways += u32::from(ways == [true; 2]);
+            if climbs_turned(&creature.appearance) {
+                assert_eq!(
+                    ways, [true; 2],
+                    "every companion that turns climbs both ways"
+                );
+            }
+            let mut fox = creature.clone();
+            fox.appearance.echo_fox = true;
+            assert!((0..40).all(|climbs| {
+                fox.memory.window_climbs = climbs;
+                !climbs_away(&fox, 96)
+            }));
+        }
+    }
+    assert!(
+        both_ways > 0 && asked > 1_000,
+        "{both_ways} companions, {asked} climbs"
+    );
+    let share = away as f32 / asked as f32;
+    assert!(
+        (0.55..0.65).contains(&share),
+        "{away} of {asked} climbs were made back to the screen"
+    );
+}
+
+/// A climb made with its back to the screen goes up the window's face: the companion walks in
+/// under the window, goes straight up with all of it on the window, and stands up where it
+/// climbed, never crossing the edge. It is turned away the whole time it is on the wall, which is
+/// what the art draws it by, and side-on for a climb up the outside of the window's side.
+#[test]
+fn a_climb_made_back_to_the_screen_goes_up_the_windows_face() {
+    for away in [true, false] {
+        let created = datetime!(2026-01-01 0:00 UTC);
+        let mut desktop = desktop();
+        let world = World::new([41; 32], created, &desktop);
+        let floor = world.save.creatures[0].state.position.y;
+        let bounds = DesktopRect {
+            x: 600.0,
+            y: floor - 160.0,
+            width: 320.0,
+            height: 160.0,
+        };
+        desktop.windows.push(DesktopWindow {
+            key: 96,
+            bounds,
+            z_order: 0,
+            visible: true,
+            minimized: false,
+            application: None,
+            application_name: None,
+        });
+        let mut world = World::new([41; 32], created, &desktop);
+        let mut now = created;
+        for _ in 0..60 {
+            now += Duration::milliseconds(50);
+            world.tick(now, 0.05, &desktop);
+        }
+        let_colony_wander(&mut world, now);
+        world.clear_attention();
+        let turner = 0;
+        let id = world.save.creatures[turner].id;
+        let creature = &mut world.save.creatures[turner];
+        // An original blob, which is drawn turned whatever the founder of this colony is.
+        creature.appearance.design = None;
+        creature.appearance.sculpt = None;
+        creature.appearance.echo_fox = false;
+        creature.appearance.family = BodyFamily::Blob;
+        assert!(climbs_turned(&creature.appearance));
+        creature.state.position = Point { x: 560.0, y: floor };
+        creature.state.surface = SurfaceAttachment {
+            kind: SurfaceKind::ScreenFloor,
+            monitor_id: 1,
+            window_key: None,
+            relative_x: 0.5,
+        };
+        set_to_climb(creature, 96, away);
+        assert!(world.begin_window_climb(id, 96, &desktop));
+        let pixel = f32::from(world.save.settings.display_scale) / desktop.monitors[0].scale_factor;
+        let mut on_the_wall = 0;
+        let mut perched = false;
+        for _ in 0..400 {
+            now += Duration::milliseconds(50);
+            world.tick(now, 0.05, &desktop);
+            let creature = &world.save.creatures[turner];
+            if creature.state.action == ActionKind::ClimbWindow {
+                on_the_wall += 1;
+                let turn = creature.state.presence.turn;
+                let x = creature.state.position.x;
+                if away {
+                    assert_eq!(turn, Turn::Back);
+                    assert!(
+                        (x - (bounds.x + CLIMB_BACK_INSET * pixel)).abs() < 0.01,
+                        "it goes straight up the face, {x} against a window from {}",
+                        bounds.x
+                    );
+                } else {
+                    assert_eq!(turn, Turn::Side);
+                    assert!(x < bounds.x + 18.0 + 0.01, "{x}");
+                }
+            }
+            if creature.state.action == ActionKind::Perch {
+                perched = true;
+                break;
+            }
+        }
+        assert!(
+            perched && on_the_wall > 20,
+            "away {away}: {on_the_wall} ticks on the wall"
+        );
+        let stood = world.save.creatures[turner].state.position;
+        assert_eq!(stood.y, bounds.y, "away {away}");
+        let inside = if away { CLIMB_BACK_INSET * pixel } else { 18.0 };
+        assert!(
+            (stood.x - (bounds.x + inside)).abs() < 0.01,
+            "away {away}: {}",
+            stood.x
+        );
+    }
 }

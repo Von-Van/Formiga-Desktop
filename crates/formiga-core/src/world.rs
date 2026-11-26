@@ -58,9 +58,9 @@ use habits::*;
 use interaction::*;
 use journeys::*;
 pub use journeys::{
-    CLIMB_FRAME_RISE, CLIMB_FRAMES_PER_SECOND, CLIMB_STROKE_FRAMES, MANTLE_FRAMES_PER_SECOND,
-    MANTLE_HAUL_FRAMES, MANTLE_PULL_FRAMES, climb_grip_reach, climbs_on_all_fours,
-    mantle_frame_drop, mantle_frame_drop_for,
+    CLIMB_BACK_INSET, CLIMB_FRAME_RISE, CLIMB_FRAMES_PER_SECOND, CLIMB_STROKE_FRAMES,
+    MANTLE_FRAMES_PER_SECOND, MANTLE_HAUL_FRAMES, MANTLE_PULL_FRAMES, climb_grip_reach,
+    climbs_away, climbs_on_all_fours, climbs_turned, mantle_frame_drop, mantle_frame_drop_for,
 };
 use movement::*;
 use objects::*;

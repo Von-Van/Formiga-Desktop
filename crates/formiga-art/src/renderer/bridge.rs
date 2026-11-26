@@ -206,6 +206,8 @@ pub fn stands(clip: BodyClip) -> bool {
                 | Gesture::Scoot
                 | Gesture::Mantle
                 | Gesture::Leap
+                | Gesture::Scale
+                | Gesture::Crest
         ),
     }
 }

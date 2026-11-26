@@ -596,31 +596,47 @@ little, back through the middle and out to the other, the tail following a beat 
 staying where they hold the ledge; as the legs come back through the middle it glances down at the
 drop (`glancing_down` in `renderer/face.rs`), and for a frame longer when its attention is startled
 or worried. Climbing's six are
-a stroke with one paw and then the other, each a catch (the paw landed high on the wall above the
-head, the body hung long under it, the other paw holding a row below the cheek), a pull (the body
-hauled up past the paw with a glint of effort, the foot on the wall pushing straight, the tail
-down, while the other paw lets go and comes up off the wall) and a lock (the paw down at the cheek,
-the other nearly up to its own catch). Both paws hold the wall on the side the body faces, on the
-window's edge line: `Pose::wall` places the body close in to the wall and clear of the paws
-(`measure`), and `modular::draw_leaning` draws it facing the wall rather than the screen. The trunk
-and head, with everything that grows on them, are drawn as they stand (`Parts::Core`) and leant in
-to the wall as one piece, sixteen degrees about the middle of the trunk (`Lean`), so the head tips
-toward the wall and the hips come out from it; the turn is done in whole numbers, each pixel
-looking back from nine points across itself, so an edge stays even, a thin stalk stays joined and
-every machine draws the same. The limbs are drawn straight afterwards, out to the wall from where
-the lean has put the shoulders and hips: the far paw from behind the body, so that only its end
-shows past the head, and both feet on the wall, the front one with its sole on the edge line and
-the back one brought round under the body to the wall just short of it, in shade, the two stepping
-up in turn so that neither hangs. The face is seated where the leant head is behind it
-(`seat_face`). A winged body holds on with its wings the same way. A four-pawed body goes up the wall upright with all four paws on it:
+a stroke with one paw and then the other, each a catch (the paw landed on the wall above the
+shoulder and the body hung long under it), a pull (the body bunched up and hauled past the paw,
+while the other paw lets go and comes up off the wall) and a lock (the paw down under the shoulder,
+the other nearly up to its own catch). A body the art draws turned (`can_turn`: an original blob,
+and every recipe body but the four-pawed one) is turned to the wall for all of it, one of two ways,
+which the simulation picks for each climb (`climbs_away`, below). Both are drawn by
+`turned::clinging_body` from the same parts as the turned walks, placed by a `Cling`: how many rows
+over the shoulder each paw holds, how far up from where it would stand each foot is set, and how far
+the body is stretched and lifted, all measured from the body as it hangs, so whatever keeps its row
+stays where it gripped.
+
+- **Side-on, up the outside of the window's side** (the `ClimbWindow` clip). The body is side-on
+  with its belly to the wall and a pixel or two off it, its head tipped back to look up. The near
+  arm goes out from the chest, under the chin, to a paw on the window's edge line, and the near leg
+  is braced forward with its sole flat to the wall; the far arm and leg show only where they meet
+  the wall, in shade. The catch is four rows over the shoulder. One eye shows
+  (`turned::profile_face`).
+- **With its back to the screen, up the window's face** (the `Scale` clip). The body is seen from
+  behind in the middle of its frame, a paw out past each side of it and a foot out under each hip,
+  all four behind the body they belong to, its hips going over to the side whose paw is reaching
+  and its tail swinging the other way. The catch is seven rows over the shoulder, up beside the
+  head. Wing-nubs on a back would hide a paw beside them, so the paws go on after those. It shows
+  no face.
+
+Stretched for a catch a body is longer below its middle as well as above it, hanging down as far as
+it reaches up, so its crown stays within a pixel of where it hangs and whatever it wears on its
+head stays in the frame; bunched up on a pull it is shorter both ways. The feet go up against the
+paws: the one across from the catching paw is planted high, pushes straight through the pull, and
+steps up again as the other plants. A climb and its mantle are baked with their faces in
+(`BodyClip::face_in_frame`, `turned::climbing_face`): set on it and looking up the wall, so a
+climber does not blink or change expression until it stands. A winged body holds on with its wings the same way. A four-pawed body goes up the wall upright with all four paws on it:
 `modular::draw_upright` draws its trunk, legs and tail as they stand and walk (`Parts::Trunk`),
 turns them a quarter turn so the paws are on the wall and the head uppermost (`upright`), and draws
 the head and what grows on it level over that (`Parts::Head`), so its face is the right way up;
-its legs step up the wall in turn (`Pose::long_climb`). The looks from before recipes, which are
-drawn side on, stroke the wall with the front paw and keep the back one on its own side
-(`classic::wall_targets`). Upward window transfers are staged as ordinary traversal to the outside
-of the window's nearer side, a vertical climb of 40 art pixels a second, and a mantle of a little
-over a second; downward transfers keep the existing hop, which lands as a hop does. The climb goes up beside the
+its legs step up the wall in turn (`Pose::long_climb`). The original hopper and soft quadruped,
+which are drawn side on, stroke the wall with the front paw and keep the back one on its own side
+(`classic::wall_targets`), and the Echo Fox places its paws from `modular::climb_grip`; none of
+these is drawn turned, and each climbs the one way, up the outside of the window's side, facing the
+screen. Upward window transfers are staged as ordinary traversal to the foot of the climb, a
+vertical climb of about 27 art pixels a second, and a mantle of a little
+over a second; downward transfers keep the existing hop, which lands as a hop does. Side-on, the climb goes up beside the
 window, hung from the paw gripping its edge, so none of the body is over the window until it tops
 out: the frame's middle is `climb_grip_reach` art pixels out from the edge line, less a two-pixel
 grip (`CLIMB_GRIP_OVER_EDGE`), turned into points for the display the window is on the way
@@ -634,12 +650,36 @@ every climb once was, and one with a little room hangs as far out as the whole c
 drawn (`climb_track`). From the moment it reaches the wall until it stands on the ledge a climb
 faces the window (`WindowJourney::facing_right`), whichever way the walk to it went.
 
+Which way a climb is made is decided when its journey is built. `climbs_away` in
+`world/journeys.rs` answers for a companion and a window: never for a body the art does not draw
+turned (`climbs_turned`, which `the_simulation_turns_for_a_climb_whatever_the_art_draws_turned` in
+`formiga-art` holds to `can_turn`), and otherwise 60 times in 100 (`CLIMBS_AWAY_IN_100`), from a
+scramble of the companion's id, the window's key and `memory.window_climbs`, the count of climbs it
+has made. That is the same answer however often it is asked until the climb is finished and
+counted, so a climb planned again partway keeps the way it began, and it needs no state of its own
+and nothing saved. A climb made with its back to the screen (`ClimbJourney::back`) goes up the
+window's face rather than beside it: the middle of its frame is `CLIMB_BACK_INSET` (21) art pixels
+inside the edge line, as far as the widest companion is drawn from the middle of its frame, so all
+of it is on the window (`a_climb_seen_from_behind_is_all_on_the_windows_face` in `formiga-art`
+holds that to the frames), and never more than half the window's width in. It walks in under the
+window, goes straight up, and stands up where it climbed instead of stepping in from the edge.
+`WindowJourney::wall_turn` says which way a climber is turned while it is on the wall, and
+`World::step` (and a wonder's player on its way over) writes it to `Presence::turn` each tick;
+`BodyPresentation::for_creature` shows `Gesture::Scale` in place of the climb and `Gesture::Crest`
+in place of the mantle for a companion turned `Turn::Back` that can be drawn so, on the same frames
+at the same rate, so the height the simulation has it at is the height its paws are drawn for
+either way. Asked for either clip, a body nothing draws turned shows its one climb or its one
+mantle. A companion stepping up onto the train at the start of a trip is shown the climb's first
+frame, with its back to us (`hill/scene.rs`).
+
 The climb is paced in the pixels its paws are drawn in, so that a paw stays where it gripped. Each
 stroke is `CLIMB_STROKE_FRAMES` (3) frames at `CLIMB_FRAMES_PER_SECOND` (10), and the body rises by
-`CLIMB_FRAME_RISE` art pixels as each frame comes: 1 onto the catch, 7 onto the pull and 4 onto the
-lock, twelve a stroke. The art draws the stroke's paw lower in the frame by exactly as much from
-each frame to the next (`modular::climb_grip`, `classic::wall_targets`), from eleven rows above the
-head at its catch down to a row below the cheek, where it holds under the other paw's catch; so in
+`CLIMB_FRAME_RISE` art pixels as each frame comes: 1 onto the catch, 5 onto the pull and 2 onto the
+lock, eight a stroke, which is as far as a short arm can keep hold of the wall while the body goes
+up past it. The art draws the stroke's paw lower in the frame by exactly as much from
+each frame to the next (`Cling::climbing`, and `modular::climb_grip` and `classic::wall_targets`
+for the bodies that are not drawn turned), down from its catch to where it holds under the other
+paw's catch; so in
 desktop pixels the paw does not move while the body goes up past it. `climb_rise` in
 `world/journeys.rs` makes nearly all of each rise the moment the frame changes and creeps a little
 (`CLIMB_CREEP`) while it shows, never none, so a climbing journey never holds still and reads as a
@@ -653,11 +693,22 @@ climb is one still frame, so it rises steadily at the same speed instead
 and `MotionSignature::frame` plays the climb on that clock without a companion's own tempo and
 phase. `a_climb_goes_up_as_its_frames_come_so_its_paws_hold_where_they_grip` and
 `a_climbing_companion_is_as_high_as_the_frame_its_clip_shows` in `formiga-core`, and
-`a_climbing_paw_stays_where_it_gripped_while_the_body_goes_up_past_it` in `formiga-art`, hold the
+`what_holds_the_wall_stays_where_it_gripped_as_the_body_goes_up_past_it` in `formiga-art`, hold the
 two sides to each other.
 
-The climb stops with the paws on the ledge and the body hung under it, and tops out in a mantle of
-its own, `Gesture::Mantle`, five frames played once at `MANTLE_FRAMES_PER_SECOND` (5): hung from
+The climb stops under the ledge and tops out in a mantle of
+its own, `Gesture::Mantle`, five frames played once at `MANTLE_FRAMES_PER_SECOND` (5). A body
+drawn turned stays turned for the first four of them (`turned::clings`), and its arms stay short:
+a paw goes on top of the ledge only once the ledge is within reach (`CLING_REACH` rows over its
+crown, or a short arm from its chest side-on), and until then holds the wall under it, so a small
+companion is still climbing on the frames a tall one is already pulling up. Side-on it reaches for
+the ledge; pulls up with its paws over the corner; flops its belly onto the corner with its paws
+out along the ledge and its feet kicking in the air behind (`Cling::over`, `Cling::kicking`); and
+scrambles in low over a near foot planted under it, the far one still trailing off the edge. With
+its back to the screen (`Gesture::Crest`) it reaches for the ledge; pulls up with a paw on it
+either side; presses up on them with its right knee hooked over (`Cling::knee`); and crouches half
+turned round. Either way the last frame is the same: stood on the ledge facing the screen, with a
+little settle. A body that is not drawn turned mantles facing the screen: hung from
 the ledge by both paws hooked over its corner; pulled up on them until the chin is over it, a foot
 scrabbling up the wall; the chest brought up over the edge, both paws pressed down on the ledge
 and the front knee drawn up to it (`Pose::knee`); the push, raised on both paws planted flat on the
@@ -3588,11 +3639,15 @@ has (a test holds every frame to that), the paw and the mouth the frame places b
 holds up a find or a village prop, so a crosshair off the limb or the mouth is a belonging drawn
 in the wrong place. `formiga-tools climb-sheet` runs a whole climb in the colony's
 own simulation: `World::begin_window_climb` starts one companion up onto a window 120 points above
-the floor the way it climbs one itself (a look, the walk to the window's side, the climb, the
+the floor the way it climbs one itself (a look, the walk to the foot of the climb, the climb, the
 mantle's haul and step in, each sample labelled with the mantle frame it shows), and every tenth of
 a second up to two seconds into the perch is drawn at 2x against the window, placed by
 `FramePlacement::frame_rect`, the rule `gpu.rs` places
-every companion's quad by. Under the climbs, each body dangles from a ledge in every frame with its
+every companion's quad by. A body that climbs both ways is shown both, side-on and then with its
+back to us, by giving it a count of climbs that picks each (`climbs_away`). `--colony COLONY.json`
+and `--cast NAME@COLONY.json` climb with a real colony's companions, read from a file that is only
+read, and `--animate` writes the same climbs moving as a GIF at the simulation's own twenty
+pictures a second. Under the climbs, each body dangles from a ledge in every frame with its
 hang at none, half and all of its weight, looking along the ledge so its glance down shows. The
 gesture sheet gives the mantle a row of its own for every body, frame by frame beside the watching
 loop's, and `formiga-tools ambient-sheet` draws its three frames over the ledge where the world has

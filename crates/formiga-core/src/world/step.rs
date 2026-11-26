@@ -259,6 +259,14 @@ impl World {
                 face_toward(&mut creature.state, held, going);
             }
             creature.state.position = step.position;
+            // On the wall it is turned the way this climb is made, which the art draws it by.
+            if let Some(turn) = self
+                .window_journeys
+                .get(&creature.id)
+                .and_then(WindowJourney::wall_turn)
+            {
+                creature.state.presence.turn = turn;
+            }
             if step.action == ActionKind::ClimbWindow
                 && matches!(
                     self.window_journeys.get(&creature.id),

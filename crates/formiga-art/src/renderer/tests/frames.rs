@@ -1175,12 +1175,17 @@ fn a_squeeze_is_drawn_pinched_with_its_face_in() {
             .filter(|clip| clip.face_in_frame())
             .collect::<Vec<_>>(),
         vec![
+            BodyClip::Action(ActionKind::ClimbWindow),
             squeeze,
+            BodyClip::Gesture(Gesture::Mantle),
             BodyClip::Gesture(Gesture::Stride),
             BodyClip::Gesture(Gesture::Dash),
             BodyClip::Gesture(Gesture::Depart),
+            BodyClip::Gesture(Gesture::Scale),
+            BodyClip::Gesture(Gesture::Crest),
         ],
-        "only a squeeze and the walks turned side-on or away draw their own faces"
+        "only a squeeze, the walks turned side-on or away, and a climb with its mantle, turned \
+         to the wall either way, draw their own faces"
     );
     let spec = AnimationSpec::for_clip(squeeze);
     assert_eq!((spec.frames, spec.playback), (2, PlaybackMode::Loop));

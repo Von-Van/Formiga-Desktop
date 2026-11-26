@@ -435,12 +435,19 @@ fn clips_that_hold_nothing_of_their_own_draw_as_they_did() {
     let mut digest = Sha256::new();
     for (_, genome) in holding_subjects() {
         for clip in BodyClip::baked() {
-            // The walks turned side-on and away came after this digest was taken; leaving them
-            // out keeps it saying what it did about every clip there was before them.
+            // The walks turned side-on and away, and the climb seen from behind with its mantle,
+            // came after this digest was taken; leaving them out keeps it saying what it did
+            // about every clip there was before them.
             if matches!(
                 clip,
                 BodyClip::Action(ActionKind::Eat | ActionKind::SoloPlay | ActionKind::Drink)
-                    | BodyClip::Gesture(Gesture::Stride | Gesture::Dash | Gesture::Depart)
+                    | BodyClip::Gesture(
+                        Gesture::Stride
+                            | Gesture::Dash
+                            | Gesture::Depart
+                            | Gesture::Scale
+                            | Gesture::Crest
+                    )
             ) {
                 continue;
             }
@@ -457,7 +464,7 @@ fn clips_that_hold_nothing_of_their_own_draw_as_they_did() {
         .map(|byte| format!("{byte:02x}"))
         .collect();
     assert_eq!(
-        hex, "ed1aab4ec6a597f2e01351dbcba28a6108fe04f79d1587ac27dfd52ed791ef88",
+        hex, "5df6c84c9f3bb9b9f01c24387a70e6c909b7f7d6551288e468d865e64ac8b713",
         "a clip that holds nothing of its own drew differently"
     );
 }
