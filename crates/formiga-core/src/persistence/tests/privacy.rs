@@ -5,7 +5,7 @@ use super::*;
 /// Every field name a version-17 colony file is allowed to use, gathered from a colony that
 /// has one of everything. The list is long on purpose: an observation that reached the save
 /// would have to bring a name with it, and this is what notices.
-const SAVED_FIELDS: [&str; 335] = [
+const SAVED_FIELDS: [&str; 341] = [
     "Battle",
     "Decoration",
     "Friendship",
@@ -131,6 +131,7 @@ const SAVED_FIELDS: [&str; 335] = [
     "finder_name",
     "finished_at_utc",
     "first_at",
+    "first_met_utc",
     "foot_size",
     "forelimbs",
     "formed_at_utc",
@@ -170,14 +171,17 @@ const SAVED_FIELDS: [&str; 335] = [
     "journal",
     "journal_seen_until",
     "keeper",
+    "keeps_colony_house",
     "keepsake",
     "keepsakes",
     "kept",
     "kept_at_utc",
     "key",
     "kind",
+    "known",
     "last_disappeared_utc",
     "last_kind",
+    "last_seen_utc",
     "launch_at_login",
     "leaning",
     "ledge_seconds",
@@ -187,6 +191,7 @@ const SAVED_FIELDS: [&str; 335] = [
     "length",
     "limbs",
     "lineups",
+    "lodges_with",
     "logical_size",
     "longest_sleep_seconds",
     "marking",
@@ -328,6 +333,7 @@ const SAVED_FIELDS: [&str; 335] = [
     "visible",
     "visited_at_utc",
     "visitors",
+    "visits",
     "width",
     "window_climbs",
     "window_key",
@@ -593,6 +599,30 @@ fn a_colony_written_mid_visit_holds_the_guest_but_never_the_visit() {
             },
         });
     }
+    // Everyone the colony has met, up to the limit, each with friends among the residents.
+    let friend = world.save.creatures[0].id;
+    for index in 0..crate::MAX_KNOWN_VISITORS as u8 {
+        let origin = crate::CreatureOrigin {
+            design: None,
+            source_colony_seed: [200 - index; 32],
+            source_generation: index % 4,
+        };
+        world.save.visitors.remember_visit(
+            &format!("Known {index}"),
+            origin,
+            crate::VisitorSource::Wanderer,
+            now,
+            &[friend],
+        );
+    }
+    // A companion lodging in another's house, and the colony house handed on.
+    let mut lodger = world.save.creatures[0].clone();
+    lodger.id = friend.wrapping_add(1);
+    lodger.colony_order = 1;
+    lodger.name = "Lodger".into();
+    lodger.lodges_with = Some(friend);
+    world.save.creatures.push(lodger);
+    world.save.creatures[0].keeps_colony_house = true;
     // Favorites kept to invite again, up to the limit.
     for index in 0..crate::MAX_FAVORITE_VISITORS as u8 {
         let origin = crate::CreatureOrigin {
@@ -642,6 +672,14 @@ fn a_colony_written_mid_visit_holds_the_guest_but_never_the_visit() {
         stay: 4.5,
         planned: Some(crate::Point { x: 660.0, y: 846.0 }),
         met: vec![7],
+        friends: vec![7],
+        farewells: vec![crate::ResidentAnswer {
+            creature_id: 7,
+            after: 0.2,
+            hold: 2.6,
+            gesture: Some(crate::Gesture::Reach),
+            bubble: Some(crate::BubbleIcon::Heart),
+        }],
     };
     let expected = world.save.visitors.guest.clone().expect("a friend is here");
     world
@@ -667,6 +705,15 @@ fn a_colony_written_mid_visit_holds_the_guest_but_never_the_visit() {
     }
     assert!(names.contains("guest"), "the sweep is reading the file");
     assert!(names.contains("Visit"), "the visit is in the journal");
+    for kept in ["known", "first_met_utc", "last_seen_utc", "visits"] {
+        assert!(names.contains(kept), "the file should hold {kept:?}");
+    }
+    assert!(names.contains("lodges_with") && names.contains("keeps_colony_house"));
+    assert_eq!(
+        loaded_known_len(&value),
+        crate::MAX_KNOWN_VISITORS,
+        "the roster is kept whole, and no longer"
+    );
 
     // Reopening finds the friend still staying, waiting for the next gathering rather than
     // halfway through the visit it was in the middle of.
@@ -686,4 +733,8 @@ fn a_colony_written_mid_visit_holds_the_guest_but_never_the_visit() {
     assert!(world.save.visitors.on_stage().is_none());
     assert!(world.save.visitors.guest.is_some());
     let _ = fs::remove_dir_all(directory);
+}
+
+fn loaded_known_len(value: &serde_json::Value) -> usize {
+    value["visitors"]["known"].as_array().map_or(0, Vec::len)
 }

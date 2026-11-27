@@ -173,6 +173,12 @@ pub struct VisitProgress {
     /// The residents this guest has already been over to greet, so it meets somebody new each
     /// time it stops. At most one entry per colony member.
     pub met: Vec<CreatureId>,
+    /// The residents a guest who has been here before got on with last time, read as it says
+    /// hello: it goes over to them first, and they are gladder to see it than anyone.
+    pub friends: Vec<CreatureId>,
+    /// How the residents it met wave it off: one entry per resident at most, timed from the start
+    /// of the goodbye.
+    pub farewells: Vec<ResidentAnswer>,
 }
 
 /// A guest at the colony houses. A visitor is a whole creature so it draws, animates, and reads

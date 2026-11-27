@@ -6,6 +6,14 @@ use crate::tuning::VISITS;
 /// for the walk round, since a guest only ever goes over to somebody it has not met yet.
 const MAX_VISIT_ANSWERS: usize = 2 * MAX_COLONY_CREATURES;
 
+/// How much longer, in seconds, a resident holds its answer to a guest it got on with last time,
+/// and stays to talk when that guest comes over.
+const REUNION_HOLD_SECS: f32 = 1.6;
+
+/// The chance, in fifths, that a gathering a wanderer is due at brings back one the colony has
+/// met before rather than somebody new, when it has met any.
+const RETURN_FIFTHS: u8 = 2;
+
 /// How far beside a garden patch, an ornament or a belonging a guest stands to look at it, in
 /// creature frames: the same step a resident's errand to a belonging stops short by, and a
 /// little more, since a patch is wider than a belonging.
@@ -197,6 +205,7 @@ impl World {
 
         let mut hello = false;
         let mut met = None;
+        let mut farewell = false;
         match guest.visit.phase {
             VisitPhase::Waiting => {
                 guest.on_stage = false;
@@ -258,6 +267,7 @@ impl World {
                 if remaining <= VISITS.departure_lead_secs {
                     // A tour that has run long simply stops touring.
                     enter(guest, VisitPhase::Farewell, ActionKind::Greet);
+                    farewell = true;
                 } else if guest.visit.stops.len() > 1 {
                     met = tour(
                         guest,
@@ -342,6 +352,10 @@ impl World {
         if hello {
             self.say_hello(now, stage.spot);
         }
+        if farewell {
+            self.plan_farewells();
+        }
+        self.wave_goodbye(standing);
         // One resident has just been walked over to and greeted: it answers in its own time.
         if let Some(creature_id) = met {
             self.answer_the_greeting(creature_id);
@@ -378,7 +392,10 @@ impl World {
         if !wanderer_due(self.save.colony_seed, ordinal) {
             return;
         }
-        if let Some(creature) = self.generate_wanderer(ordinal, now) {
+        if let Some(creature) = self
+            .returning_wanderer(ordinal, now)
+            .or_else(|| self.generate_wanderer(ordinal, now))
+        {
             self.save.visitors.guest = Some(Visitor::new(creature, VisitorSource::Wanderer, None));
         }
     }
@@ -473,6 +490,28 @@ impl World {
     /// in its own time.
     fn say_hello(&mut self, now: OffsetDateTime, spot: Point) {
         let answers = self.plan_answers(spot);
+        let friends: Vec<CreatureId> = self
+            .save
+            .visitors
+            .known_guest()
+            .map(|known| {
+                known
+                    .friends
+                    .iter()
+                    .copied()
+                    .filter(|id| self.save.creatures.iter().any(|c| c.id == *id))
+                    .collect()
+            })
+            .unwrap_or_default();
+        // Back among friends, a guest says so with a heart rather than a hello.
+        let icon = if answers
+            .iter()
+            .any(|answer| friends.contains(&answer.creature_id))
+        {
+            BubbleIcon::Heart
+        } else {
+            BubbleIcon::Hello
+        };
         let Some(guest) = &mut self.save.visitors.guest else {
             return;
         };
@@ -480,8 +519,9 @@ impl World {
         guest.visit.greeted = true;
         guest.visit.since_hello = 0.0;
         guest.visit.answers = answers;
+        guest.visit.friends = friends;
         guest.creature.state.attention = pose(spot, None);
-        self.show_bubble(guest_id, BubbleIcon::Hello);
+        self.show_bubble(guest_id, icon);
         // A day-long stay is one visit, written down the first time the friend says hello.
         if invited {
             self.sign_guest_book(now);
@@ -553,7 +593,14 @@ impl World {
     fn answer_of(&self, creature: &Creature, index: usize, reduce_motion: bool) -> ResidentAnswer {
         let answer = resident_answer(creature, index, reduce_motion);
         let last_visit = self.save.visitors.earlier_visits().map(|(_, at)| at);
-        if last_visit.is_some_and(|at| creature.born_at_utc <= at) {
+        let friend = self
+            .save
+            .visitors
+            .known_guest()
+            .is_some_and(|known| known.friends.contains(&creature.id));
+        if friend {
+            reunion(answer, reduce_motion)
+        } else if last_visit.is_some_and(|at| creature.born_at_utc <= at) {
             recognised(answer, reduce_motion)
         } else {
             answer
@@ -617,6 +664,7 @@ impl World {
             guest.creature.origin,
             guest.source,
         );
+        let met = guest.visit.met.clone();
         // A guest the book already knows is written down as coming back, and which visit this is.
         // The book only keeps its last two dozen, so a visitor it has forgotten is new again.
         let before = self.save.visitors.visits_of(&origin);
@@ -626,6 +674,9 @@ impl World {
             origin,
             source,
         });
+        self.save
+            .visitors
+            .remember_visit(&name, origin, source, now, &met);
         let moment = if before == 0 {
             JournalMoment::Visit(name)
         } else {
@@ -636,6 +687,14 @@ impl World {
 
     /// The guest is off the desktop, wherever the visit had got to.
     pub(super) fn close_visit(&mut self) {
+        // Whoever it went over to this time is remembered as a friend, if the colony remembers
+        // the guest at all — a day-long stay signs at its first hello, before it has met anyone.
+        if let Some(guest) = &self.save.visitors.guest
+            && guest.signed
+        {
+            let (origin, met) = (guest.creature.origin, guest.visit.met.clone());
+            self.save.visitors.remember_friends(&origin, &met);
+        }
         if let Some(guest) = &mut self.save.visitors.guest {
             guest.on_stage = false;
             guest.visit = VisitProgress::default();
@@ -653,6 +712,124 @@ impl World {
             .map(|creature| creature.name.clone())
             .collect();
         default_creature_name(seed, generation, &taken)
+    }
+
+    /// Somebody the colony has met before, coming back of its own accord: now and then, at a
+    /// gathering a wanderer is due at, one of the wanderers it remembers, picked from the colony's
+    /// seed and the ordinal of the gathering. It is rebuilt from its origin alone, so it is
+    /// exactly who it was — the same look, size, temperament and habits — under the name it went
+    /// by, unless a resident answers to that name now.
+    fn returning_wanderer(&self, ordinal: u32, now: OffsetDateTime) -> Option<Creature> {
+        let roll =
+            SeedStream::new(self.save.colony_seed).bytes("visitor-return-v1", u64::from(ordinal));
+        if roll[0] % 5 >= RETURN_FIFTHS {
+            return None;
+        }
+        let candidates: Vec<&KnownVisitor> = self
+            .save
+            .visitors
+            .known
+            .iter()
+            .filter(|known| known.source == VisitorSource::Wanderer)
+            .collect();
+        let known = *candidates.get(usize::from(roll[1]) % candidates.len().max(1))?;
+        let mut creature = rebuild_visitor(known.origin, now);
+        if self
+            .save
+            .creatures
+            .iter()
+            .any(|member| member.id == creature.id)
+        {
+            return None;
+        }
+        let taken = self
+            .save
+            .creatures
+            .iter()
+            .any(|member| member.name == known.name);
+        creature.name = if taken {
+            self.guest_name(
+                known.origin.source_colony_seed,
+                known.origin.source_generation,
+            )
+        } else {
+            known.name.clone()
+        };
+        Some(creature)
+    }
+
+    /// The residents who met the guest this visit, and any friend of its from before who is
+    /// here, wave it off as it says goodbye: in turn, a friend with a heart.
+    fn plan_farewells(&mut self) {
+        let reduce_motion = self.save.settings.reduce_motion;
+        let Some(guest) = &self.save.visitors.guest else {
+            return;
+        };
+        let mut waving: Vec<CreatureId> = guest.visit.met.clone();
+        for friend in &guest.visit.friends {
+            if !waving.contains(friend) {
+                waving.push(*friend);
+            }
+        }
+        let farewells: Vec<ResidentAnswer> =
+            waving
+                .iter()
+                .filter(|id| {
+                    self.save.creatures.iter().any(|creature| {
+                        creature.id == **id && creature.state.arrival_delay_secs <= 0.0
+                    }) && !self.in_village_moment(**id)
+                })
+                .take(MAX_COLONY_CREATURES)
+                .enumerate()
+                .map(|(index, id)| {
+                    let friend = guest.visit.friends.contains(id);
+                    ResidentAnswer {
+                        creature_id: *id,
+                        after: 0.2 + index as f32 * 0.45,
+                        hold: VISITS.farewell_secs,
+                        gesture: Some(Gesture::Reach).filter(|_| !reduce_motion),
+                        bubble: friend.then_some(BubbleIcon::Heart),
+                    }
+                })
+                .collect();
+        if let Some(guest) = &mut self.save.visitors.guest {
+            guest.visit.farewells = farewells;
+        }
+    }
+
+    /// Residents wave the guest off, each in its turn, looking at wherever it is saying goodbye.
+    fn wave_goodbye(&mut self, spot: Point) {
+        let Some(guest) = &self.save.visitors.guest else {
+            return;
+        };
+        if guest.visit.phase != VisitPhase::Farewell {
+            return;
+        }
+        let since = guest.visit.elapsed;
+        let farewells = guest.visit.farewells.clone();
+        for answer in farewells {
+            if since < answer.after || since >= answer.after + answer.hold {
+                continue;
+            }
+            if self.in_village_moment(answer.creature_id) {
+                continue;
+            }
+            let Some(creature) = creature_mut(&mut self.save.creatures, answer.creature_id) else {
+                continue;
+            };
+            creature.state.facing_right = spot.x >= creature.state.position.x;
+            creature.state.attention = Some(AttentionPose {
+                target: spot,
+                emotion: AttentionEmotion::Enjoying,
+                hanging: 0.0,
+                gesture: answer.gesture,
+            });
+            if let Some(icon) = answer.bubble
+                && since < answer.after + 0.06
+            {
+                self.show_bubble(answer.creature_id, icon);
+            }
+        }
     }
 
     /// Someone new, built from the colony's own seed and the ordinal of this gathering, so one
@@ -1054,6 +1231,31 @@ pub(super) fn recognised(answer: ResidentAnswer, reduce_motion: bool) -> Residen
     }
 }
 
+/// A resident's answer to a guest it got on with last time: it bounces where it stands rather
+/// than only waving, says so with a heart, turns a little sooner and holds it a little longer,
+/// whatever its temperament makes of strangers.
+pub(super) fn reunion(answer: ResidentAnswer, reduce_motion: bool) -> ResidentAnswer {
+    ResidentAnswer {
+        after: answer.after * 0.5,
+        hold: answer.hold + REUNION_HOLD_SECS,
+        gesture: Some(Gesture::Bop).filter(|_| !reduce_motion),
+        bubble: Some(BubbleIcon::Heart),
+        ..answer
+    }
+}
+
+/// A visitor exactly as it was, from the origin the colony remembers it by: its look, size,
+/// temperament and habits all come from that alone. Ready to walk in, with no name yet.
+pub(super) fn rebuild_visitor(origin: CreatureOrigin, now: OffsetDateTime) -> Creature {
+    let mut creature = generate_source_creature(
+        SharedCreatureSeed::from(origin),
+        now,
+        &DesktopSnapshot::default(),
+    );
+    creature.state.arrival_delay_secs = 0.0;
+    creature
+}
+
 /// Walk the guest on round the village, or hold it at the stop it has reached. Returns the one
 /// resident it has just gone over to greet, on the tick the greeting starts, so the colony can
 /// answer it in its own time.
@@ -1147,18 +1349,28 @@ fn arrive(
 ) -> Option<CreatureId> {
     guest.visit.stay = VISITS.tour_stay_secs;
     guest.creature.state.velocity = Point::default();
-    // The nearest resident this guest has not been over to yet, if it can see one from here.
-    // Meeting somebody new is the whole point of walking over, so it wins every time.
+    // The nearest resident this guest has not been over to yet, if it can see one from here —
+    // a friend from an earlier visit before anybody else. Meeting somebody is the whole point of
+    // walking over, so it wins every time.
+    let friends = &guest.visit.friends;
     let met = residents
         .iter()
         .flatten()
         .filter(|(creature_id, _)| !guest.visit.met.contains(creature_id))
         .filter(|(_, point)| point.distance(stop.at) <= VISITS.notice_distance)
-        .min_by(|a, b| a.1.distance(stop.at).total_cmp(&b.1.distance(stop.at)))
+        .min_by(|a, b| {
+            (!friends.contains(&a.0))
+                .cmp(&!friends.contains(&b.0))
+                .then(a.1.distance(stop.at).total_cmp(&b.1.distance(stop.at)))
+        })
         .map(|(creature_id, _)| *creature_id);
     if let Some(creature_id) = met
         && guest.visit.met.len() < MAX_COLONY_CREATURES
     {
+        // An old friend is stayed with a little longer.
+        if friends.contains(&creature_id) {
+            guest.visit.stay += REUNION_HOLD_SECS;
+        }
         guest.visit.met.push(creature_id);
         guest.visit.moment = TourMoment::Greeting(creature_id);
         return Some(creature_id);
