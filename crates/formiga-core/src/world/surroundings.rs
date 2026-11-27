@@ -47,9 +47,20 @@ struct NudgeUnderway {
 #[derive(Clone, Debug)]
 pub(super) struct Surroundings {
     next_in: f32,
-    cooldowns: BTreeMap<CreatureId, f32>,
+    pub(super) cooldowns: BTreeMap<CreatureId, f32>,
     last: Option<Doing>,
     nudge: Option<NudgeUnderway>,
+    /// Visible seconds out on the desktop until a friend may next react to another's climb or
+    /// fall: one budget for both, so reacting stays occasional.
+    reaction_in: f32,
+    /// Who was in the air at the last tick, so a fall is noticed as it starts.
+    airborne: BTreeSet<CreatureId>,
+    /// A friend who flinched at a fall and looks over once the faller is down.
+    watching: Option<FallWatch>,
+    /// Seconds until the next look for a pair in the right place for a nudge, and visible seconds
+    /// out on the desktop until a nudge may come again.
+    nudge_look_in: f32,
+    nudge_rest: f32,
     rng: ChaCha12Rng,
     /// How many of each have begun, for the simulated-week counts and the tests.
     #[cfg(test)]
@@ -64,6 +75,11 @@ impl Surroundings {
             cooldowns: BTreeMap::new(),
             last: None,
             nudge: None,
+            reaction_in: rng.random_range(SURROUNDINGS.reaction_gap_secs) * 0.25,
+            airborne: BTreeSet::new(),
+            watching: None,
+            nudge_look_in: NUDGE_LOOK_SECS,
+            nudge_rest: 0.0,
             rng,
             #[cfg(test)]
             begun: BTreeMap::new(),
@@ -76,9 +92,22 @@ impl Surroundings {
     }
 
     #[cfg(test)]
+    pub(super) fn react_now(&mut self) {
+        self.reaction_in = 0.0;
+    }
+
+    #[cfg(test)]
     pub(super) fn nudging(&self) -> Option<(CreatureId, CreatureId)> {
         self.nudge.map(|n| (n.nudger, n.friend))
     }
+}
+
+/// A friend watching another come down: who, and how long it has been watching.
+#[derive(Clone, Copy, Debug)]
+struct FallWatch {
+    faller: CreatureId,
+    watcher: CreatureId,
+    since: f32,
 }
 
 /// Somebody who could do something about where it is: what, how much it would want to, where it
@@ -86,6 +115,8 @@ impl Surroundings {
 #[derive(Clone, Copy)]
 struct Candidate(CreatureId, Doing, f32, Option<Point>, Option<CreatureId>);
 
+/// How often to look for a pair in the right place for a nudge, in seconds.
+const NUDGE_LOOK_SECS: f32 = 2.0;
 /// How long the nudger's paw takes to meet the friend.
 const PUSH_SECS: f32 = 0.55;
 /// How long a nudged friend has to come down before it is let go of without having its say.
@@ -95,6 +126,43 @@ impl World {
     /// Lets go of everything here: the colony is being settled.
     pub(super) fn clear_surroundings(&mut self) {
         self.surroundings.nudge = None;
+        self.surroundings.watching = None;
+    }
+
+    /// Lets go of whatever here has to do with one companion: it is going away somewhere — into
+    /// a house open in Formiga Home — so its ledge sit or peek, and a nudge or a watch it is part
+    /// of, end now rather than wait for the next tick to notice.
+    pub(super) fn let_go_of_surroundings(&mut self, id: CreatureId) {
+        if self
+            .surroundings
+            .nudge
+            .is_some_and(|n| n.nudger == id || n.friend == id)
+        {
+            self.surroundings.nudge = None;
+        }
+        if self
+            .surroundings
+            .watching
+            .is_some_and(|w| w.faller == id || w.watcher == id)
+        {
+            self.surroundings.watching = None;
+        }
+        if let Some(creature) = creature_mut(&mut self.save.creatures, id)
+            && creature.state.beat.is_some_and(|beat| {
+                matches!(
+                    beat.kind,
+                    BeatKind::PointAt
+                        | BeatKind::PeekRound
+                        | BeatKind::LedgeSit
+                        | BeatKind::Nudge
+                        | BeatKind::Relieved
+                        | BeatKind::Amused
+                        | BeatKind::Delight
+                )
+            })
+        {
+            creature.state.beat = None;
+        }
     }
 
     /// Whether anything new about the desktop may begin: out on it, visible, unpaused, motion
@@ -130,9 +198,14 @@ impl World {
         }
         let lively = self.surroundings_lively();
         self.advance_nudge(dt, desktop, lively);
+        if lively {
+            self.surroundings.reaction_in = (self.surroundings.reaction_in - dt).max(0.0);
+        }
+        self.watch_falls(dt, desktop, lively);
         if !lively {
             return;
         }
+        self.look_for_a_nudge(dt, desktop);
         self.surroundings.next_in -= dt;
         if self.surroundings.next_in > 0.0 {
             return;
@@ -197,12 +270,17 @@ impl World {
                         None,
                     ));
                 }
-                if drop_below(
-                    creature,
-                    creature.state.position.x,
-                    desktop,
-                    &self.save.settings,
-                ) >= SURROUNDINGS.ledge_sit_drop
+                // The original legless blob has nothing to hang over the edge: lowered, it only
+                // looks sunk into the window, so it does not sit this way.
+                let legless = creature.appearance.design.is_none()
+                    && creature.appearance.family == BodyFamily::Blob;
+                if !legless
+                    && drop_below(
+                        creature,
+                        creature.state.position.x,
+                        desktop,
+                        &self.save.settings,
+                    ) >= SURROUNDINGS.ledge_sit_drop
                 {
                     let calm = 1.0 - p.activity
                         + if has(&[Trait::Mellow, Trait::Easygoing, Trait::Sleepy, Trait::Lazy]) {
@@ -225,11 +303,14 @@ impl World {
                         } else {
                             0.0
                         };
-                    if playful >= 0.55 {
+                    if playful >= SURROUNDINGS.nudge_playfulness
+                        && self.surroundings.nudge_rest <= 0.0
+                    {
+                        // A pair in the right place is rare, so when there is one it is likely.
                         options.push(Candidate(
                             creature.id,
                             Doing::Nudge,
-                            playful,
+                            1.0 + playful * 2.0,
                             Some(Point {
                                 x: direction,
                                 y: 0.0,
@@ -301,22 +382,92 @@ impl World {
                 let (Some(friend), Some(direction)) = (friend, look) else {
                     return false;
                 };
-                let at_friend = self.save.creatures.iter().find(|c| c.id == friend);
-                let look = at_friend.map(|c| c.state.position);
-                self.hold_in_beat(id, BeatKind::Nudge, 1.4, look);
-                self.surroundings.cooldowns.insert(friend, cooldown);
-                self.surroundings.nudge = Some(NudgeUnderway {
-                    nudger: id,
-                    friend,
-                    push_in: PUSH_SECS,
-                    direction: direction.x,
-                    pushed: None,
-                });
-                // It is not going to startle at its own push.
-                self.reacted_to_toss.insert((id, friend));
+                self.start_nudge(id, friend, direction.x, cooldown);
             }
         }
         true
+    }
+
+    /// A playful companion puts out a paw to a friend at the end of the ledge.
+    fn start_nudge(&mut self, id: CreatureId, friend: CreatureId, direction: f32, cooldown: f32) {
+        let look = self
+            .save
+            .creatures
+            .iter()
+            .find(|c| c.id == friend)
+            .map(|c| c.state.position);
+        self.hold_in_beat(id, BeatKind::Nudge, 1.4, look);
+        self.surroundings.cooldowns.insert(friend, cooldown);
+        self.surroundings.nudge = Some(NudgeUnderway {
+            nudger: id,
+            friend,
+            push_in: PUSH_SECS,
+            direction,
+            pushed: None,
+        });
+        self.surroundings.nudge_rest = self
+            .surroundings
+            .rng
+            .random_range(SURROUNDINGS.nudge_rest_secs);
+        // It is not going to startle at its own push.
+        self.reacted_to_toss.insert((id, friend));
+    }
+
+    /// A playful pair in just the right place on a ledge does not last long, so it is looked for
+    /// every couple of seconds rather than only when something is due — and once a nudge has
+    /// happened, not again for hours.
+    fn look_for_a_nudge(&mut self, dt: f32, desktop: &DesktopSnapshot) {
+        self.surroundings.nudge_rest = (self.surroundings.nudge_rest - dt).max(0.0);
+        self.surroundings.nudge_look_in -= dt;
+        if self.surroundings.nudge_look_in > 0.0 {
+            return;
+        }
+        self.surroundings.nudge_look_in = NUDGE_LOOK_SECS;
+        if self.surroundings.nudge_rest > 0.0
+            || self.surroundings.nudge.is_some()
+            || !self.attention.settled()
+        {
+            return;
+        }
+        let found = self.save.creatures.iter().find_map(|creature| {
+            if creature.state.surface.kind != SurfaceKind::WindowLedge
+                || !self.free_to_notice(creature)
+            {
+                return None;
+            }
+            let traits = creature.traits();
+            let playful = creature.personality.playfulness
+                + if traits
+                    .iter()
+                    .any(|t| matches!(t, Trait::Mischievous | Trait::Playful | Trait::Silly))
+                {
+                    0.8
+                } else {
+                    0.0
+                };
+            if playful < SURROUNDINGS.nudge_playfulness {
+                return None;
+            }
+            self.friend_to_nudge(creature, desktop)
+                .map(|(friend, direction)| (creature.id, friend, direction))
+        });
+        let Some((id, friend, direction)) = found else {
+            return;
+        };
+        if !self.surroundings.rng.random_bool(SURROUNDINGS.nudge_chance) {
+            return;
+        }
+        let cooldown = self
+            .surroundings
+            .rng
+            .random_range(SURROUNDINGS.cooldown_secs);
+        self.surroundings.cooldowns.insert(id, cooldown);
+        self.surroundings.last = Some(Doing::Nudge);
+        #[cfg(test)]
+        {
+            *self.surroundings.begun.entry("nudge").or_default() += 1;
+        }
+        self.start_nudge(id, friend, direction, cooldown);
     }
 
     /// Holds a companion in a beat, turned toward `look` if it names a place.
@@ -435,14 +586,12 @@ impl World {
             .find(|m| m.id == creature.state.surface.monitor_id)?;
         let regions = accessible_regions(&self.save.settings.habitat, monitor);
         self.save.creatures.iter().find_map(|friend| {
-            let free = match only {
-                Some(id) => {
-                    friend.id == id
-                        && matches!(friend.state.action, ActionKind::Idle | ActionKind::Perch)
-                        && beats::free_for_a_beat(self, friend)
-                }
-                None => self.free_to_notice(friend),
-            };
+            // Being nudged is not something the friend does, so its own while to itself after
+            // the last thing it did is not asked about: only that it is standing or sat, free.
+            let free = only.is_none_or(|id| friend.id == id)
+                && matches!(friend.state.action, ActionKind::Idle | ActionKind::Perch)
+                && !self.house_visit.contains(&friend.id)
+                && beats::free_for_a_beat(self, friend);
             if friend.id == creature.id || friend.state.surface.window_key != Some(key) || !free {
                 return None;
             }
@@ -657,13 +806,18 @@ impl World {
         let Some(id) = cheerer else {
             return;
         };
-        if !self
-            .surroundings
-            .rng
-            .random_bool(SURROUNDINGS.cheer_climb_chance)
+        if self.surroundings.reaction_in > 0.0
+            || !self
+                .surroundings
+                .rng
+                .random_bool(SURROUNDINGS.cheer_climb_chance)
         {
             return;
         }
+        self.surroundings.reaction_in = self
+            .surroundings
+            .rng
+            .random_range(SURROUNDINGS.reaction_gap_secs);
         let cooldown = self
             .surroundings
             .rng
@@ -675,5 +829,140 @@ impl World {
         {
             *self.surroundings.begun.entry("cheer").or_default() += 1;
         }
+    }
+}
+
+impl World {
+    /// Somebody nearby starts to fall — tipped off a ledge, thrown, tumbling — and a fond friend
+    /// free for it flinches with a gasp as it drops, then, once it is down, looks over at it: glad
+    /// it is all right, or, for a playful one, finding it funny. Shares one budget with cheering a
+    /// climb, so a colony reacts to one now and then, not to every one.
+    fn watch_falls(&mut self, dt: f32, desktop: &DesktopSnapshot, lively: bool) {
+        let in_air: BTreeSet<CreatureId> = self
+            .save
+            .creatures
+            .iter()
+            .filter(|c| c.state.action == ActionKind::Tossed || self.tosses.contains_key(&c.id))
+            .map(|c| c.id)
+            .collect();
+        let started: Vec<CreatureId> = in_air
+            .difference(&self.surroundings.airborne)
+            .copied()
+            .collect();
+        self.surroundings.airborne = in_air;
+        if let Some(mut watch) = self.surroundings.watching {
+            watch.since += dt;
+            self.surroundings.watching = Some(watch);
+            let faller = self.save.creatures.iter().find(|c| c.id == watch.faller);
+            let down = faller.is_some_and(|c| {
+                !self.surroundings.airborne.contains(&c.id) && c.state.action != ActionKind::Landing
+            });
+            if !lively || faller.is_none() || watch.since > 8.0 {
+                self.surroundings.watching = None;
+            } else if down {
+                self.surroundings.watching = None;
+                self.look_over_after_a_fall(watch);
+            }
+        }
+        if !lively || self.surroundings.watching.is_some() || self.surroundings.reaction_in > 0.0 {
+            return;
+        }
+        let nudger = self.surroundings.nudge.map(|n| n.nudger);
+        for faller in started {
+            let Some(down) = self.save.creatures.iter().find(|c| c.id == faller) else {
+                continue;
+            };
+            let at = down.state.position;
+            let monitor = down.state.surface.monitor_id;
+            let reach =
+                spacing::creature_frame_width(down, self.save.settings.display_scale, desktop)
+                    * 6.0;
+            let watcher = self
+                .save
+                .creatures
+                .iter()
+                .filter(|c| {
+                    c.id != faller
+                        && nudger != Some(c.id)
+                        && c.state.surface.monitor_id == monitor
+                        && c.state.position.distance(at) <= reach
+                        && self.free_to_notice(c)
+                })
+                .filter(|c| {
+                    relationship_between(&self.save.relationships, faller, c.id)
+                        .is_some_and(|bond| bond.affinity >= SURROUNDINGS.nudge_affinity)
+                })
+                .min_by(|a, b| {
+                    a.state
+                        .position
+                        .distance(at)
+                        .total_cmp(&b.state.position.distance(at))
+                })
+                .map(|c| c.id);
+            let Some(watcher) = watcher else {
+                continue;
+            };
+            if !self
+                .surroundings
+                .rng
+                .random_bool(SURROUNDINGS.watch_fall_chance)
+            {
+                continue;
+            }
+            self.surroundings.reaction_in = self
+                .surroundings
+                .rng
+                .random_range(SURROUNDINGS.reaction_gap_secs);
+            let cooldown = self
+                .surroundings
+                .rng
+                .random_range(SURROUNDINGS.cooldown_secs);
+            self.surroundings.cooldowns.insert(watcher, cooldown);
+            self.hold_in_beat(watcher, BeatKind::Startle, 0.9, Some(at));
+            self.surroundings.watching = Some(FallWatch {
+                faller,
+                watcher,
+                since: 0.0,
+            });
+            #[cfg(test)]
+            {
+                *self.surroundings.begun.entry("fall").or_default() += 1;
+            }
+            return;
+        }
+    }
+
+    /// The faller is down: its watcher looks over at it, by temperament glad or amused.
+    fn look_over_after_a_fall(&mut self, watch: FallWatch) {
+        let Some(faller) = self.save.creatures.iter().find(|c| c.id == watch.faller) else {
+            return;
+        };
+        let at = faller.state.position;
+        let Some(watcher) = self.save.creatures.iter().find(|c| c.id == watch.watcher) else {
+            return;
+        };
+        // Still in its flinch is as good as free: the look over follows straight on from it.
+        let mut probe = watcher.clone();
+        if probe
+            .state
+            .beat
+            .is_some_and(|beat| beat.kind == BeatKind::Startle)
+        {
+            probe.state.beat = None;
+        }
+        if !beats::free_for_a_beat(self, &probe) {
+            return;
+        }
+        let traits = watcher.traits();
+        let has = |any: &[Trait]| traits.iter().any(|t| any.contains(t));
+        let amused = has(&[Trait::Mischievous, Trait::Silly, Trait::Playful])
+            || watcher.personality.playfulness >= 0.75;
+        let (kind, bubble) = if amused {
+            (BeatKind::Amused, BubbleIcon::Music)
+        } else {
+            (BeatKind::Relieved, BubbleIcon::Heart)
+        };
+        self.hold_in_beat(watch.watcher, kind, 1.8, Some(at));
+        self.show_bubble(watch.watcher, bubble);
     }
 }

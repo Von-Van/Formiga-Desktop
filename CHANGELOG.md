@@ -55,10 +55,11 @@ contract is unchanged.
 - Companions notice the desktop around them. Now and then one points at a window beside it and
   has a good look, peers round the end of the ledge it is on, or sits on a window's top with its
   legs over the front; a playful one gives a friend standing at the end of a low ledge a little
-  push off it, and the friend lands, has its say and is laughed with; and a friend below cheers
-  somebody up onto a window. They use poses companions already had, come every minute or two at
-  most and never the same twice running, wait for anything bigger to finish, and stay away with
-  reduced motion.
+  push off it, once or twice a week, and the friend lands, has its say and is laughed with; a
+  friend below cheers somebody up onto a window; and a friend nearby flinches as somebody falls and
+  looks over once it is down, relieved or amused. They use poses companions already had, come a
+  handful of times an hour between the whole colony and never the same twice running, wait for
+  anything bigger to finish, and stay away with reduced motion.
 - Guests join in with the village. Residents come over to a guest standing about, the way they call
   on one another, and it stops, turns to them and keeps them company while they stay; a guest
   looks on while somebody works in a garden or on a house; and a returning guest heads for a

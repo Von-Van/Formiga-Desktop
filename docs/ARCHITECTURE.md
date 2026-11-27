@@ -3092,9 +3092,11 @@ where they were. The overlay keeps its shadow on the ground, shrinking with the 
 attention scene, a journey or climb, a toss, a wonder, a habit, a tow, or any action that is not
 one of its own ordinary ones (`shows_magic`) — and eases back once it is free, so nothing ever
 hangs, climbs or lands in the air. Being picked up or thrown, falling asleep, going indoors or into
-a house open in Formiga Home, the village coming out for a visit home, a ritual, quiet mode, hiding,
-pausing, and `clear_runtime_plans` (a trip, Gather, a quiet spell, the village appearing) end it
-outright. With reduced motion a spell is the still kind: a shimmer of three lights that stay where
+a house open in Formiga Home (at once, from `go_indoors`), the village coming out for a visit home, a
+ritual, quiet mode, hiding, pausing, and `clear_runtime_plans` (a trip to Formiga Hill or Battle
+through `prepare_for_trip`, Gather, a quiet spell, the village appearing) end it outright. Formiga
+Farm never takes a companion away — it goes on living on the desktop while its look is worked on —
+so a spell simply carries on through a new look arriving. With reduced motion a spell is the still kind: a shimmer of three lights that stay where
 they are, no lift, no hurry and no pose, and one already under way turns still the moment motion is
 reduced.
 
@@ -3944,16 +3946,14 @@ retains stationary looks and expressions. No game writes a journal entry.
 ### Noticing the desktop
 
 `world/surroundings.rs` gives companions a handful of small, occasional things to do about the
-windows and ledges around them. Every `SURROUNDINGS.interval_secs` (two and a half to five and a half
+windows and ledges around them. Every `SURROUNDINGS.interval_secs` (three and a half to seven
 visible minutes) out on the desktop, while no attention scene is live and no colony cooldown is
 running (`AttentionRuntime::settled`), one companion that happens to be in the right place, free for
 a beat and not on its own cooldown (four to eight minutes after its last one) does one, weighed by
 who it is; the kind done last time is left out, so it never does the same twice running. When
-nobody is in the right place it looks again thirty to sixty seconds later. In colonies of four on
-a desktop of three windows that comes to about ten an hour of desktop time between them: three
-ledge sits, three cheers, two or three peers round an end, and one or two pointings. Each is a beat
-(`world/beats.rs`), so it holds the companion where it stands, uses poses the atlas already has,
-and lets go when it is over or when anything bigger comes along:
+nobody is in the right place it looks again thirty to sixty seconds later. Each is a beat
+(`world/beats.rs`), so it holds the companion where it stands, uses poses and faces the atlas
+already has, and lets go when it is over or when anything bigger comes along:
 
 - **Pointing at a window** (`BeatKind::PointAt`): a window standing beside it at its own height,
   its side 0.3 to 1.6 frames away. A paw out toward it (Reach), then a long look (Watch), turned to
@@ -3964,27 +3964,47 @@ and lets go when it is over or when anything bigger comes along:
 - **Sitting with its legs over the front** (`LedgeSit`): on any window top with at least
   `ledge_sit_drop` of clear air below, seven to fourteen seconds sat as on any window (the `Perch`
   clip) but drawn `ledge_sink` art pixels lower (`Beat::ledge_sink`, through `drawn_lift`), so its
-  feet hang over the window's face, looking down at the desk. Calm companions are likelier. The
-  ledge going ends it.
+  feet hang over the window's face, looking down at the desk. No clip shows legs hanging better, so
+  every body uses this one, except the original legless blob, which only looked sunk into the
+  window and does not sit this way. Calm companions are likelier. The ledge going ends it.
 - **A nudge off a ledge** (`Nudge`): a playful companion on a window top with a friend it is fond of
-  (`nudge_affinity`, and not avoiding it) within 2.2 frames, nearer the end and within 1.6 frames
-  of it, where the drop beyond the end is 36 to 170 points onto somewhere inside the habitat. It
-  winds up and puts out a paw; 0.55 seconds in, if both are still where they were and free, the
-  friend tips off in the arc a tumble takes (`TossState`, never counted as a toss by the person),
-  landing on whatever its path crosses, the floor at worst. Once it is down and over the landing it
-  stands a moment and has its say — a grump huffs, a shy one blushes behind its paws, anyone else
-  bounces with glee — and the nudger laughs. Anything that takes either of them first, a hand
-  included, lets the nudge go before the push. The nudger never startles at its own push
-  (`reacted_to_toss`); other friends who see a friend fall react as they do to any toss.
+  (`nudge_affinity`, and not avoiding it) within three frames, nearer the end and within 2.4 frames
+  of it, where the drop beyond the end is 30 to 200 points onto somewhere inside the habitat; the
+  friend only has to be standing or sat and free, whatever it last did itself. Such a pair does not
+  last long, so besides the ordinary turn it is looked for every two seconds
+  (`look_for_a_nudge`), happening a quarter of the times it is found, and after one the colony goes
+  five to ten hours of desktop time (`nudge_rest_secs`) before another. The nudger winds up and puts
+  out a paw; 0.55 seconds in, if both are still where they were and free, the friend tips off in the
+  arc a tumble takes (`TossState`, never counted as a toss by the person), landing on whatever its
+  path crosses, the floor at worst. Once it is down and over the landing it stands a moment and has
+  its say — a grump huffs, a shy one blushes behind its paws, anyone else bounces with glee — and
+  the nudger laughs. Anything that takes either of them first, a hand included, lets the nudge go
+  before the push. The nudger never startles at its own push (`reacted_to_toss`).
 - **Cheering a climb**: when somebody gets up onto a window (`antics::Cue::Climbed`, the cue a
   show-off's strut answers), a fond friend on the ground below within five frames, free and off its
-  cooldown, cheers it three times in ten with a Heart.
+  cooldown, cheers it half the time with a Heart.
+- **Watching a fall** (`watch_falls`): when somebody nearby starts to fall — tipped off a ledge,
+  thrown, tumbling — the nearest fond friend within six frames that is free for it flinches (the
+  Startle beat, a gasp) seven times in ten, turned to it, and once it is down looks over at it: a
+  playful one amused (`Amused`, a look and then a little bop, with a Music bubble), anyone else
+  relieved (`Relieved`, paws together and then a long fond look, with a Heart). A friend close enough
+  to run over to a thrown friend (`react_to_tossed_friend`) does that instead, as it always has.
+
+Cheering a climb and watching a fall share one budget (`reaction_gap_secs`): after either, the
+colony goes 45 to 75 minutes of desktop time before the next, so friends react now and then rather
+than to every climb. Over twenty-four hours of desktop time in colonies of four, all fond of one
+another, on a desktop of three windows (`week_of_surroundings`, run by hand), that came to between
+seven and eight an hour per colony: about 2.8 ledge sits, 2.6 peers round an end, 1.3 pointings and
+one cheer or flinch an hour, and a nudge once or twice in a week of ordinary use.
 
 Reduced motion, quiet mode, hiding, pausing, a ritual and a visit home hold all of it back, and
-`clear_runtime_plans` lets a nudge go. Nothing here is saved, counted or written down, and every
-choice comes from a `surroundings` stream of its own, so none of it shifts any other choice the
-colony makes. The tick costs one countdown while nothing is due. `formiga-tools magic-sheet` draws
-each of them, with the window it is about, on every sheet body.
+`clear_runtime_plans` lets a nudge or a watch go — which covers a trip to Formiga Hill or into
+Formiga Battle, since both settle the colony with `prepare_for_trip` before the world is held still.
+A companion going into a house open in Formiga Home lets go of its own beat, nudge or watch at once
+(`let_go_of_surroundings`, from `go_indoors`). Nothing here is saved, counted or written down, and
+every choice comes from a `surroundings` stream of its own, so none of it shifts any other choice
+the colony makes. The tick costs a few countdowns while nothing is due. `formiga-tools magic-sheet`
+draws each of them, with the window it is about, on every sheet body.
 
 ## Colony history and the Today page (save v23)
 

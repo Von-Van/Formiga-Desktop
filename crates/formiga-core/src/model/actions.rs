@@ -465,6 +465,11 @@ pub enum BeatKind {
     LedgeSit,
     /// A paw put out to give a friend at the end of a ledge a little push.
     Nudge,
+    /// Looking over, paws gathered, at a friend who has just come down from a fall: glad it is
+    /// all right.
+    Relieved,
+    /// Looking over at a friend who has just come down from a fall, and finding it funny.
+    Amused,
 }
 
 /// Small things the village shows in someone's hands or on the ground.

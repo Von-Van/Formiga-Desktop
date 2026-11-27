@@ -511,21 +511,38 @@ pub struct Surroundings {
     pub nudge_drop: Range<f32>,
     /// How fond two companions have to be of each other for one to nudge the other.
     pub nudge_affinity: u8,
+    /// How playful the nudger has to be, its traits counted in.
+    pub nudge_playfulness: f32,
+    /// The chance, each time a playful pair is found in the right place for a nudge, that it
+    /// happens; and how long the colony goes after one, in visible seconds out on the desktop,
+    /// before another.
+    pub nudge_chance: f64,
+    pub nudge_rest_secs: Range<f32>,
     /// The chance a bonded friend on the ground nearby cheers somebody up onto a window.
     pub cheer_climb_chance: f64,
+    /// The chance a fond friend nearby flinches as somebody falls, and looks over once it is down.
+    pub watch_fall_chance: f64,
+    /// How long the colony goes, in visible seconds out on the desktop, between one friend's
+    /// reaction to another's climb or fall and the next: one budget for both.
+    pub reaction_gap_secs: Range<f32>,
 }
 
 pub const SURROUNDINGS: Surroundings = Surroundings {
-    interval_secs: 150.0..330.0,
+    interval_secs: 210.0..420.0,
     retry_secs: 30.0..60.0,
     cooldown_secs: 240.0..480.0,
     near_edge_frames: 1.6,
     ledge_sit_secs: 7.0..14.0,
     ledge_sink: 4.0,
     ledge_sit_drop: 60.0,
-    nudge_reach_frames: 2.2,
-    nudge_edge_frames: 1.6,
-    nudge_drop: 36.0..170.0,
-    nudge_affinity: 80,
-    cheer_climb_chance: 0.3,
+    nudge_reach_frames: 3.0,
+    nudge_edge_frames: 2.4,
+    nudge_drop: 30.0..200.0,
+    nudge_affinity: 64,
+    nudge_playfulness: 0.45,
+    nudge_chance: 0.25,
+    nudge_rest_secs: 18_000.0..36_000.0,
+    cheer_climb_chance: 0.5,
+    watch_fall_chance: 0.7,
+    reaction_gap_secs: 2_700.0..4_500.0,
 };

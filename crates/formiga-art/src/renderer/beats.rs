@@ -70,6 +70,12 @@ pub(super) fn beat_pose(beat: Beat) -> Option<(BodyClip, f32)> {
         BeatKind::Nudge if p < 0.25 => Gesture::Crouch,
         BeatKind::Nudge if p < 0.6 => return gesture(Gesture::Reach, at(0.25)),
         BeatKind::Nudge => return gesture(Gesture::Cheer, at(0.6)),
+        // Paws together for a moment, then a long look over: it is all right.
+        BeatKind::Relieved if p < 0.35 => Gesture::Worry,
+        BeatKind::Relieved => return gesture(Gesture::Watch, at(0.35)),
+        // A look over, and a little bounce at the funny side of it.
+        BeatKind::Amused if p < 0.4 => Gesture::Watch,
+        BeatKind::Amused => return gesture(Gesture::Bop, at(0.4)),
     };
     gesture(pose, beat.elapsed)
 }
@@ -109,6 +115,10 @@ pub(super) fn beat_expression(beat: Beat) -> ExpressionKind {
         BeatKind::PointAt | BeatKind::PeekRound => ExpressionKind::Curious,
         BeatKind::Nudge if p < 0.6 => ExpressionKind::Smug,
         BeatKind::Nudge => ExpressionKind::Joy,
+        BeatKind::Relieved if p < 0.35 => ExpressionKind::Worried,
+        BeatKind::Relieved => ExpressionKind::Affectionate,
+        BeatKind::Amused if p < 0.4 => ExpressionKind::Curious,
+        BeatKind::Amused => ExpressionKind::Joy,
         _ => ExpressionKind::Content,
     }
 }
