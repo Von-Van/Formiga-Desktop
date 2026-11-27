@@ -685,9 +685,34 @@ fn studio_restyles_a_companion_and_lets_go_of_it_off_the_page() {
     );
     if let Some(path) = std::env::var_os("FORMIGA_UI_REVIEW_DIR").map(std::path::PathBuf::from) {
         std::fs::create_dir_all(&path).unwrap();
-        h.picture()
-            .save(path.join("Studio-940-cream-100-restyle.png"))
-            .unwrap();
+        for width in [940.0, 760.0] {
+            for theme in [ThemeChoice::Light, ThemeChoice::Dark] {
+                for text_scale in [100, 150] {
+                    let mut r = Harness::new(SettingsTab::Studio);
+                    r.screen = egui::vec2(width, 2600.0);
+                    configure_style(
+                        &r.context,
+                        AppearancePreferences {
+                            theme,
+                            text_scale,
+                            ..AppearancePreferences::default()
+                        },
+                    );
+                    r.click("Restyle a companion");
+                    r.click("Choose a companion");
+                    r.click(&name);
+                    r.frame(Vec::new());
+                    let shade = if theme == ThemeChoice::Dark {
+                        "charcoal"
+                    } else {
+                        "cream"
+                    };
+                    r.picture()
+                        .save(path.join(format!("Studio-{width}-{shade}-{text_scale}-restyle.png")))
+                        .unwrap();
+                }
+            }
+        }
     }
     h.tab = SettingsTab::Colony;
     h.frame(Vec::new());

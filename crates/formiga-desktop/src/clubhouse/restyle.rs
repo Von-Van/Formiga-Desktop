@@ -120,6 +120,43 @@ impl RestyleState {
             return;
         };
         self.preview(ui, creature, &draft);
+        // What to do with the look sits with the picture of it, above the long list of choices.
+        let changed = Some(&draft) != self.started.as_ref();
+        ui.horizontal_wrapped(|ui| {
+            let keep = ui
+                .add_enabled(changed, egui::Button::new("Keep this look").fill(mint()))
+                .on_disabled_hover_text("Nothing has changed yet.");
+            if keep.clicked() {
+                let kept = draft.normalized();
+                outcome.restyle = Some((creature.id, kept.clone()));
+                self.started = Some(kept.clone());
+                draft = kept;
+            }
+            if ui
+                .add_enabled(changed, egui::Button::new("Put back"))
+                .on_disabled_hover_text("Nothing has changed yet.")
+                .clicked()
+                && let Some(started) = &self.started
+            {
+                draft = started.clone();
+            }
+        });
+        ui.small("Kept looks can be undone from the footer, like any change to the colony.");
+        // Anatomy is new in this release: a Formiga Hill or Home built before it cannot draw it.
+        let has_anatomy = |design: &Design| {
+            design
+                .form
+                .recipe()
+                .is_some_and(|recipe| recipe.details.has_anatomy())
+        };
+        if has_anatomy(&draft) {
+            ui.small(
+                "Antlers, ear tufts, a ruff, a brush and a plume need Formiga Hill and Formiga \
+                 Home from this release or later. An older one will say this companion is too \
+                 new to visit.",
+            );
+        }
+        ui.add_space(8.0);
         let swatches = colony_swatches(save);
         match &mut draft.form {
             Form::Companion { recipe } => {
@@ -142,26 +179,6 @@ impl RestyleState {
             }
         }
         face_controls(ui, &mut draft);
-        let changed = Some(&draft) != self.started.as_ref();
-        ui.add_space(6.0);
-        ui.horizontal_wrapped(|ui| {
-            if ui
-                .add_enabled(changed, egui::Button::new("Keep this look").fill(mint()))
-                .clicked()
-            {
-                let kept = draft.normalized();
-                outcome.restyle = Some((creature.id, kept.clone()));
-                self.started = Some(kept.clone());
-                draft = kept;
-            }
-            if ui
-                .add_enabled(changed, egui::Button::new("Put back"))
-                .clicked()
-                && let Some(started) = &self.started
-            {
-                draft = started.clone();
-            }
-        });
         self.draft = Some(draft);
     }
 
@@ -229,7 +246,8 @@ impl RestyleState {
                 .show(ui, |ui| {
                     ui.add(
                         egui::Image::new(texture)
-                            .fit_to_exact_size(egui::vec2(48.0 * VIEWS as f32 * 2.0, 96.0)),
+                            .fit_to_exact_size(egui::vec2(48.0 * VIEWS as f32 * 2.0, 96.0))
+                            .alt_text("The new look facing you, side-on, from behind and waving"),
                     );
                 });
         }
@@ -294,14 +312,15 @@ fn color(ui: &mut Ui, label: &str, value: &mut [u8; 3], swatches: &[[u8; 3]]) {
             let button = egui::Button::new("")
                 .fill(fill)
                 .min_size(egui::vec2(14.0, 14.0));
-            if ui
-                .add(button)
-                .on_hover_text(format!(
-                    "#{:02x}{:02x}{:02x}",
-                    swatch[0], swatch[1], swatch[2]
-                ))
-                .clicked()
-            {
+            let name = format!(
+                "{label} #{:02x}{:02x}{:02x}, as someone in the colony wears it",
+                swatch[0], swatch[1], swatch[2]
+            );
+            let response = ui.add(button);
+            response.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name.clone())
+            });
+            if response.on_hover_text(name.clone()).clicked() {
                 *value = *swatch;
             }
         }
@@ -460,8 +479,8 @@ fn finish_controls(ui: &mut Ui, r: &mut CreatureDesign, swatches: &[[u8; 3]]) {
         color(ui, "Coat", &mut r.coat, swatches);
         color(ui, "Accent", &mut r.accent, swatches);
         let mut candy = r.classic.coat > 0;
-        ui.label("Candy coat");
-        if ui.checkbox(&mut candy, "").changed() {
+        ui.label("Coat style");
+        if ui.checkbox(&mut candy, "Candy colours").changed() {
             r.classic.coat = u8::from(candy);
         }
         ui.end_row();

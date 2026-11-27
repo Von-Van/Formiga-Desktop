@@ -378,8 +378,9 @@ run and walk away; `can_turn` alone still decides the climbs, so the fox climbs 
 as it always has and `formiga_core::climbs_turned` is unchanged. `fox::draw_turned` draws the fox's
 own picture side-on — `SIDE_HEAD` outlined all round over `SIDE_BODY`, its pointed white muzzle,
 one eye and blush, the brush out behind curling up to its white tip, the far foot in shade and the
-forepaw folded on the white bib — and from behind, the sketch's own body in its coat with the dark
-backs of its ears and the brush standing up the middle of its back. It is moved by the same stride
+forepaw folded on the white bib — and from behind, the sketch's own body in its coat under pointed
+ears with dark backs, its brush out past its side and curling up to a white tip as it does
+side-on. It is moved by the same stride
 every turned body is: feet forward and back or up in turn, the body sinking onto a planted foot,
 the head carried ahead and the ears laid back in a run, the brush a frame late. Its colours are the
 sketch's own, so it is the same fox.
@@ -4310,11 +4311,16 @@ only its face. A part a body cannot carry (`Anatomy::fits`) is shown but not off
 
 The working copy and a preview of it — standing facing the screen, side-on, turned away, and
 waving — are made only once a companion is chosen, drawn again only when the copy changes, and let
-go of as soon as another page is shown or the notebook lets go of its images. "Keep this look"
-sends `SettingsOutcome::restyle`; the app refuses a design `Design::validate` does not pass, and
-otherwise gives it to the companion with the Farm contract's `apply_design`, which changes its look
-and nothing else, inside `World::edit` as `ColonyEdit::Restyled`, so the footer can take it back. No
-journal line is written: the new-look line belongs to Formiga Farm.
+go of as soon as another page is shown or the notebook lets go of its images. "Keep this look" and
+"Put back" sit under the preview, above the choices. "Keep this look" sends
+`SettingsOutcome::restyle`, and `restyle::keep_look` refuses a design `Design::validate` does not
+pass, and otherwise gives it to the companion with the Farm contract's `apply_design`, which changes
+its look and nothing else, inside `World::edit` as `ColonyEdit::Restyled`. `World::edit` keeps an
+undo point for a change of look as it does for a change of who lives here, and undoing a restyle
+puts back each companion's appearance and recipe exactly and nothing else they have done since. No
+journal line is written: the new-look line belongs to Formiga Farm. While the copy carries anatomy
+the section says that a Formiga Hill or Home from before this release cannot host the companion,
+which is what travel version 7 makes such a Hill or Home say.
 
 ## Sculpted forms (save v29)
 
