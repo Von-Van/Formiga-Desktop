@@ -1,4 +1,4 @@
-# Formiga · v0.68.23
+# Formiga · v0.69.0
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -95,7 +95,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.68.23-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.69.0-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -107,18 +107,23 @@ that, the menu-bar or tray icon offers Show/Hide, Pause, Gather Creatures, Check
 About, Settings, and Quit. Formiga never installs an update on its own: when one is available it verifies
 the download's SHA-256 and hands the installer to your operating system.
 
-## New in 0.68.23
+## New in 0.69.0
 
-The village can stay on the desktop: choose it under Where the village lives, and the houses stay
-out among your windows instead of coming and going. Wonders the colony has found can be put out
-from the journal and moved about or put away again. Visitors no longer wait at the edge of the
-village: after hello they wander in, nap on the cushion, snack on the blanket, sit on the bench and
-stop on doorsteps like the residents do. A grump you pet now huffs at your hand instead of leaning
-into it, and a burst of clicks counts as one pet. Houses no longer vanish one by one as companions
-board the train for Hill or Battle. Meals and games play out whole, Pause holds everything still,
-talk bubbles reach the right friend and stay readable, and clicks go to the companion you see in
-front. Formiga Hill, Home and Battle 0.68.23 come out alongside; for a Battle friend match, both of
-you need Desktop 0.68.23. Once this release has opened your colony, an older Formiga can't open it.
+Companions move like themselves now. They turn to the way they are going: side-on along a window
+top or the floor, a foot planted while the other comes forward, and with their back to you walking
+up a path into the village. They run leaning into it, a hop has its crouch, leap and landing, and a
+tossed companion balls up and tumbles. Climbing a window is redrawn: a companion goes up its side
+facing the wall, or turns its back to you and goes hand over hand up its face, then flops or pulls
+itself over the top. Everyone stands on a small shadow, what a companion holds stays in the paw or
+the mouth holding it, sitters and sleepers breathe, and faces change behind a blink. The village is
+lived in: residents call on one another, sit together, play chase and walk side by side, several
+things go on at once, and about half of a bigger village is out of doors. Newcomers walk in, and
+passengers look out of the train windows. The notebook reads less like a settings window: a
+companion's page opens on the companion and writes about it, Your colony opens on everyone
+together, and the Journal reads as a diary with pictures taped in. Formiga Hill and Home 0.69.0
+come out alongside. Battle stays at 0.68.23 and works with this release, but it pairs friends only
+on the same Desktop version, so for a friend match both of you need Desktop 0.69.0. Colonies are
+saved as before, so an older Formiga can still open yours.
 
 Everything earlier releases brought is described in [the release notes](docs/RELEASE_NOTES.md),
 and every change is itemised in [the changelog](CHANGELOG.md).

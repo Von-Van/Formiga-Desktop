@@ -2,7 +2,13 @@
 
 All notable changes are documented here.
 
-## [Unreleased]
+## [0.69.0] - 2026-11-27
+
+The animation pass, a lived-in village and a notebook that reads as a notebook, released together
+with Formiga Hill and Home 0.69.0. Save version 34, travel version 6, household version 12 and
+Battle contract version 5 are unchanged, so an older Formiga still opens a colony this release has
+saved. Formiga Battle stays at 0.68.23 and works with this release; Battle pairs friends only on
+the same Desktop version, so a friend match needs both sides on 0.69.0.
 
 ### Added
 
@@ -393,6 +399,11 @@ All notable changes are documented here.
   house open elsewhere.
 - Today's tally no longer runs off the edge of its card on a day with a long count in it, such as
   "1 shared moment" beside "2 new keepsakes": it goes to one count a row when two don't fit.
+
+### Security
+
+- `url` is updated from 2.5.8 to 2.5.9 for RUSTSEC-2026-0592, a stack overflow in `Url::origin()`
+  on nested `blob:` URLs. It comes in through `webbrowser`, which egui uses to open links.
 
 ## [0.68.23] - 2026-11-12
 
