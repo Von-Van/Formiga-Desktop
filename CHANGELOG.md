@@ -400,6 +400,11 @@ the same Desktop version, so a friend match needs both sides on 0.69.0.
 - Today's tally no longer runs off the edge of its card on a day with a long count in it, such as
   "1 shared moment" beside "2 new keepsakes": it goes to one count a row when two don't fit.
 
+### Security
+
+- `url` is updated from 2.5.8 to 2.5.9 for RUSTSEC-2026-0592, a stack overflow in `Url::origin()`
+  on nested `blob:` URLs. It comes in through `webbrowser`, which egui uses to open links.
+
 ## [0.68.23] - 2026-11-12
 
 The village on the desktop, wonders put out, visitors among the houses and a run of fixes, released
