@@ -4027,3 +4027,84 @@ fn a_picked_house_is_taken_down_only_once_confirmed() {
     h.frame(Vec::new());
     assert!(!shown(&h, "Keep it"), "not while a house is open");
 }
+
+/// The housing controls on a picked house, drawn for review in every theme, at both text sizes
+/// and at both window widths: who lives there with somewhere to move each to, the swap, the way
+/// to take the house down, and the question it asks first. Nothing it draws is cut off.
+#[test]
+fn the_housing_controls_render_for_review_in_every_appearance() {
+    use crate::clubhouse::arrange::Picked;
+    let output = std::env::var_os("FORMIGA_UI_REVIEW_DIR").map(std::path::PathBuf::from);
+    if let Some(path) = &output {
+        std::fs::create_dir_all(path).unwrap();
+    }
+    for theme in [ThemeChoice::Light, ThemeChoice::Dark] {
+        for text_scale in [100, 150] {
+            for width in [940.0, 760.0] {
+                let mut h = Harness::new(SettingsTab::Home);
+                configure_style(
+                    &h.context,
+                    AppearancePreferences {
+                        theme,
+                        text_scale,
+                        sprite_outline: false,
+                    },
+                );
+                let owners: Vec<CreatureId> =
+                    formiga_core::house_owners(&h.save.creatures, &h.save.home.cottage_order)
+                        .as_slice()
+                        .to_vec();
+                assert!(owners.len() >= 2, "the review colony has cottages");
+                // Somebody lodging with the house picked out, so it has a household to list.
+                if let Some(lodger) = owners.get(2).copied() {
+                    for creature in &mut h.save.creatures {
+                        if creature.id == lodger {
+                            creature.lodges_with = Some(owners[1]);
+                        }
+                    }
+                }
+                let keeper = owners[1];
+                h.clubhouse.home.arrange.picked = Some(Picked::House(keeper));
+                h.screen = egui::vec2(width, 2600.0);
+                h.frame(Vec::new());
+                h.frame(Vec::new());
+                assert!(shown(&h, "Who lives here:"));
+                let tag = format!(
+                    "{}-{}-{text_scale}",
+                    width as u32,
+                    if theme == ThemeChoice::Dark {
+                        "charcoal"
+                    } else {
+                        "cream"
+                    }
+                );
+                let save = |h: &mut Harness, state: &str| {
+                    // Drawn into a picture only when one is asked for: the check needs only the frame.
+                    if let Some(path) = &output {
+                        h.picture()
+                            .save(path.join(format!("Home-housing-{state}-{tag}.png")))
+                            .unwrap();
+                    } else {
+                        h.frame(Vec::new());
+                    }
+                    assert!(h.cut.is_empty(), "{state} {tag}: cut off {:?}", h.cut);
+                };
+                save(&mut h, "picked");
+                h.click("Move to…");
+                h.frame(Vec::new());
+                save(&mut h, "move-menu");
+                h.frame(vec![egui::Event::Key {
+                    key: egui::Key::Escape,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: Default::default(),
+                }]);
+                h.click("Take down this house…");
+                h.frame(Vec::new());
+                assert!(shown(&h, "Keep it"));
+                save(&mut h, "confirm");
+            }
+        }
+    }
+}

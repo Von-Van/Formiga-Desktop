@@ -924,7 +924,7 @@ impl HomeState {
                         }
                     });
             });
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label("Stands");
                 let chosen = save.home.house_depth(keeper.id);
                 let standing = save.home.house_depth_list(&save.creatures)[slot];
@@ -943,8 +943,19 @@ impl HomeState {
             });
             ui.add_space(6.0);
             ui.small("What it wears, one thing in each place:");
+            // Two places to a row where they fit side by side, and one where they do not: a
+            // narrow window, or large text.
+            let label = DecorationSlot::ALL
+                .into_iter()
+                .map(|place| super::text_width(ui, place.label()))
+                .fold(0.0, f32::max);
+            let pairs_per_row = if ui.available_width() >= 2.0 * (label + 130.0 + 36.0) {
+                2
+            } else {
+                1
+            };
             egui::Grid::new(("house-decorations", keeper.id))
-                .num_columns(4)
+                .num_columns(2 * pairs_per_row)
                 .spacing([10.0, 6.0])
                 .show(ui, |ui| {
                     for (index, place) in DecorationSlot::ALL.into_iter().enumerate() {
@@ -978,7 +989,7 @@ impl HomeState {
                                     }
                                 }
                             });
-                        if index % 2 == 1 {
+                        if index % pairs_per_row == pairs_per_row - 1 {
                             ui.end_row();
                         }
                     }
@@ -1052,13 +1063,18 @@ impl HomeState {
                             })
                             .response
                             .on_hover_text(if *resident == keeper.id {
-                                "Moves in with another household, bringing everyone who lives                                  here; this house comes down."
+                                "Moves in with another household, bringing everyone who lives \
+                                 here; this house comes down."
                             } else {
                                 "Moves in with another household."
                             })
                     })
                     .response
-                    .on_disabled_hover_text(busy);
+                    .on_disabled_hover_text(if free {
+                        "There is no other house to move to."
+                    } else {
+                        busy
+                    });
                     ui.end_row();
                 }
             });
@@ -1067,12 +1083,13 @@ impl HomeState {
             self.arrange.take_down_asked = None;
             return;
         }
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Swap households with");
+        ui.add_space(4.0);
+        ui.small("Swap households with another house:");
+        ui.horizontal(|ui| {
             ui.add_enabled_ui(free, |ui| {
                 egui::ComboBox::from_id_salt(("swap-household", keeper.id))
                     .width(170.0)
-                    .selected_text("another house…")
+                    .selected_text("Swap with…")
                     .show_ui(ui, |ui| {
                         for host in &others {
                             if ui.selectable_label(false, house_of(*host)).clicked() {
@@ -1100,10 +1117,15 @@ impl HomeState {
                 .iter()
                 .filter_map(|id| name_of(save, *id))
                 .collect();
+            let moving = match names.as_slice() {
+                [] => String::new(),
+                [one] => (*one).to_owned(),
+                [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+            };
             ui.label(format!(
-                "Take down {}'s house? {} will move into {destination}. Nobody leaves, and                  you can undo it.",
+                "Take down {}'s house? {moving} will move into {destination}. Nobody leaves, \
+                 and you can undo it.",
                 keeper.name,
-                names.join(" and "),
             ));
             ui.horizontal(|ui| {
                 if ui.button("Take down house").clicked() {
