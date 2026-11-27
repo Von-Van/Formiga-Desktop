@@ -69,6 +69,13 @@ pub fn can_turn(genome: &AppearanceGenome) -> bool {
     }
 }
 
+/// Whether anything draws this body walking and running turned, side-on along the ground and
+/// away up a path: every body that [`can_turn`], and the Echo Fox, which walks turned but climbs
+/// facing the screen as it always has.
+pub fn walks_turned(genome: &AppearanceGenome) -> bool {
+    genome.echo_fox || can_turn(genome)
+}
+
 /// One frame of a turned walk or run, or of standing still: how far each foot is from where it
 /// stands and how high off the ground, and what the body does over them. Side-on the two feet
 /// are the near and the far one, and go forward and back; turned away they are the right and the
@@ -483,6 +490,18 @@ impl CreatureRenderer {
         facing_right: bool,
         face: FaceRenderState,
     ) -> Option<Canvas> {
+        Self::render_dressed_turned_frame(genome, None, view, step, facing_right, face)
+    }
+
+    /// [`Self::render_turned_frame`] wearing `dress`, placed on the body the way it is turned.
+    pub fn render_dressed_turned_frame(
+        genome: &AppearanceGenome,
+        dress: Option<crate::AccessoryArt>,
+        view: View,
+        step: Option<u8>,
+        facing_right: bool,
+        face: FaceRenderState,
+    ) -> Option<Canvas> {
         if view == View::Front {
             let (clip, frame) = match step {
                 Some(step) => {
@@ -491,8 +510,9 @@ impl CreatureRenderer {
                 }
                 None => (ActionKind::Idle, 0),
             };
-            return Some(Self::render_composited_frame(
+            return Some(Self::render_dressed_composited_frame(
                 genome,
+                dress,
                 clip,
                 frame,
                 facing_right,
@@ -500,11 +520,20 @@ impl CreatureRenderer {
                 face,
             ));
         }
-        if !can_turn(genome) {
+        if !walks_turned(genome) {
             return None;
         }
         let stride = Stride::of(view, step.map(|step| (Gait::Walk, step)));
-        let (mut canvas, _) = draw_turned(genome, view, stride, face);
+        let (mut canvas, figure) = draw_turned(genome, view, stride, face);
+        if let Some(dress) = dress {
+            super::super::accessories::draw_accessory_seen(
+                &mut canvas,
+                dress,
+                figure,
+                genome.logical_size,
+                view,
+            );
+        }
         if !facing_right {
             canvas.mirror_horizontal();
         }
@@ -542,8 +571,23 @@ fn draw_turned(
     stride: Stride,
     face: FaceRenderState,
 ) -> (Canvas, Figure) {
-    let palette = crate::palette_for(genome);
     let mut canvas = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+    if genome.echo_fox {
+        let step = super::super::fox::Step {
+            near_x: stride.near_x,
+            near_lift: stride.near_lift,
+            far_x: stride.far_x,
+            far_lift: stride.far_lift,
+            bob: stride.bob,
+            lean: stride.lean,
+            tail: stride.tail,
+            ears_back: stride.ears_back,
+            sway: stride.sway,
+        };
+        let figure = super::super::fox::draw_turned(&mut canvas, view, step, face);
+        return (canvas, figure);
+    }
+    let palette = crate::palette_for(genome);
     let (mass, figure) = match genome.design.map(CreatureDesign::bounded) {
         Some(design) => recipe_turned(&mut canvas, design, palette, genome, view, stride),
         None => blob_turned(&mut canvas, genome, palette, view, stride),

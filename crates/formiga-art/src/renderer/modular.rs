@@ -6,7 +6,7 @@ mod turned;
 pub(super) use turned::{
     TURNED_FACE, climbing_face, clinging_body, clings, turned_body, turned_clip, turned_footfall,
 };
-pub use turned::{TURNED_STRIDE_FRAMES, View, can_turn};
+pub use turned::{TURNED_STRIDE_FRAMES, View, can_turn, walks_turned};
 
 /// The largest a body is drawn, against the average: a companion of the greatest stature.
 const MAX_SIZE: f32 = formiga_core::STATURE_MAX as f32 / 100.0 + 0.01;
