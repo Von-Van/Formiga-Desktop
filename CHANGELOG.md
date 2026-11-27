@@ -55,6 +55,12 @@ Save version 35. Travel, household and Battle contract versions are unchanged.
   somebody up onto a window. They use poses companions already had, come every minute or two at
   most and never the same twice running, wait for anything bigger to finish, and stay away with
   reduced motion.
+- Guests join in with the village. Residents come over to a guest standing about, the way they call
+  on one another, and it stops, turns to them and keeps them company while they stay; a guest
+  looks on while somebody works in a garden or on a house; and a returning guest heads for a
+  friend's doorstep first. Neither is ever done in somebody's face.
+- `formiga-tools village-watch` counts face-cover episodes, and `--visitor` watches a village with a
+  friend staying, reporting where the guest spends its visit.
 
 ### Changed
 

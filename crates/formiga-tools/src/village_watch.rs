@@ -21,6 +21,8 @@ struct Options {
     seeds: u8,
     residents: Vec<usize>,
     furnished: bool,
+    /// A friend invited over before the watch begins, staying the whole while.
+    visitor: bool,
 }
 
 fn options(args: &[String]) -> Result<Options> {
@@ -29,6 +31,7 @@ fn options(args: &[String]) -> Result<Options> {
         seeds: 4,
         residents: vec![1, 3, 6],
         furnished: true,
+        visitor: false,
     };
     let mut args = args.iter();
     while let Some(arg) = args.next() {
@@ -46,6 +49,7 @@ fn options(args: &[String]) -> Result<Options> {
                     .collect::<Result<_, _>>()?;
             }
             "--bare" => options.furnished = false,
+            "--visitor" => options.visitor = true,
             other => bail!("unknown argument {other}"),
         }
     }
@@ -128,6 +132,16 @@ struct Tally {
     walked: [u64; 3],
     turns: u64,
     tick_nanos: u128,
+    /// Face-cover episodes, the guest counted, that lasted a second or more, and the longest.
+    cover_episodes: u64,
+    worst_cover: f32,
+    /// Seconds a guest spent visiting (after its hello, before its goodbye), standing at the
+    /// spot it walked in to, standing beside a resident, and how many residents it went over to.
+    guest_visiting: f32,
+    guest_at_edge: f32,
+    guest_with_residents: f32,
+    guest_met: u64,
+    guest_visits: u64,
 }
 
 fn name(seen: Seen) -> String {
@@ -196,6 +210,23 @@ fn watch(seed: u8, residents: usize, options: &Options, tally: &mut Tally) {
     let mut last_stop: BTreeMap<CreatureId, Point> = BTreeMap::new();
     let mut standing: BTreeMap<CreatureId, f32> = BTreeMap::new();
     let mut drawn: BTreeMap<CreatureId, usize> = BTreeMap::new();
+    let mut cover: BTreeMap<(CreatureId, CreatureId), f32> = BTreeMap::new();
+    if options.visitor {
+        let friend = [seed.wrapping_mul(53).wrapping_add(29); 32];
+        let shared = SharedCreatureSeed {
+            source_colony_seed: friend,
+            source_generation: 0,
+            design: Some(CreatureDesign::generated(friend, 0, None)),
+        };
+        world
+            .invite_visitor(shared, start, &desktop)
+            .expect("nobody is visiting yet");
+        tally.guest_visits += 1;
+    }
+    let clear =
+        CREATURE_FRAME_WIDTH * REST_CLEAR_RATIO * f32::from(world.save.settings.display_scale)
+            / desktop.monitors[0].scale_factor.max(1.0);
+    let mut guest_met = 0;
     for tick in 0..warmup + total {
         let now = start + Duration::milliseconds((tick as f32 * DT * 1000.0) as i64);
         world.save.home.active_since_utc = Some(now - Duration::minutes(5));
@@ -276,6 +307,50 @@ fn watch(seed: u8, residents: usize, options: &Options, tally: &mut Tally) {
             }
         }
         tally.busy[up_to_something.min(2)] += 1;
+        let covered = world.covered_faces_with_guest(&desktop);
+        let ended: Vec<_> = cover
+            .keys()
+            .copied()
+            .filter(|pair| !covered.contains(pair))
+            .collect();
+        for pair in ended {
+            if cover.remove(&pair).is_some_and(|run| run >= 1.0) {
+                tally.cover_episodes += 1;
+            }
+        }
+        for pair in covered {
+            let run = cover.entry(pair).or_default();
+            *run += DT;
+            tally.worst_cover = tally.worst_cover.max(*run);
+        }
+        if let Some(guest) = world.save.visitors.guest.as_ref()
+            && guest.on_stage
+            && guest.visit.phase == VisitPhase::Visiting
+        {
+            let at = &guest.creature.state;
+            tally.guest_visiting += DT;
+            guest_met = guest_met.max(guest.visit.met.len());
+            let settled = at.action != ActionKind::Traverse && at.velocity.x.abs() < 1.0;
+            let spot = home_guest_position(
+                &world.save.home,
+                &colony_cottages(&world.save.creatures),
+                &desktop.monitors,
+                &world.save.settings.habitat,
+                world.save.settings.display_scale,
+            )
+            .map(|(_, spot)| spot);
+            if settled && spot.is_some_and(|spot| (at.position.x - spot.x).abs() < clear) {
+                tally.guest_at_edge += DT;
+            }
+            let beside = world.save.creatures.iter().any(|creature| {
+                !creature.state.indoors
+                    && (creature.state.position.x - at.position.x).abs() <= frame * 1.5
+                    && (creature.state.depth - at.depth).abs() < 3.0
+            });
+            if settled && beside {
+                tally.guest_with_residents += DT;
+            }
+        }
         let out: Vec<&Creature> = world
             .save
             .creatures
@@ -294,6 +369,12 @@ fn watch(seed: u8, residents: usize, options: &Options, tally: &mut Tally) {
                     tally.together_ticks += 1;
                 }
             }
+        }
+    }
+    tally.guest_met += guest_met as u64;
+    for run in cover.into_values() {
+        if run >= 1.0 {
+            tally.cover_episodes += 1;
         }
     }
     for stood in standing.into_values() {
@@ -391,6 +472,21 @@ pub fn run(args: &[String]) -> Result<()> {
                 .collect::<Vec<_>>()
                 .join(", ")
         );
+        println!(
+            "face-cover episodes of a second or more: {:.1} per hour; longest {:.1} s",
+            tally.cover_episodes as f64 / (frames * f64::from(DT) / 3600.0).max(1e-9),
+            tally.worst_cover
+        );
+        if tally.guest_visits > 0 {
+            let visiting = f64::from(tally.guest_visiting).max(1e-9);
+            println!(
+                "guest: visiting {:.0} s a watch; at the spot it walked in to {:.0}%, beside a resident {:.0}%; went over to {:.1} residents a visit",
+                visiting / tally.guest_visits as f64,
+                100.0 * f64::from(tally.guest_at_edge) / visiting,
+                100.0 * f64::from(tally.guest_with_residents) / visiting,
+                tally.guest_met as f64 / tally.guest_visits as f64
+            );
+        }
         println!(
             "tick: {:.1} us (debug builds are several times slower than release)",
             tally.tick_nanos as f64 / frames / 1000.0

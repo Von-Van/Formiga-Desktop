@@ -2635,7 +2635,7 @@ answers first where it has something to say: a guardian watches the newcomer und
 bubble, a shy one or a wallflower peeks out from behind its paws and blushes, a vain or
 attention-seeking one or a show-off struts under a Sparkle, and a grumpy or irritable one or a grump
 huffs under a Grumble; the bubble shows once, as the answer starts. Everyone resting at the village
-answers. Nobody leaves the village to follow the guest, and no bond, tendency or memory counter
+answers. Nobody leaves the village to follow the guest (a resident may go over to it within the village; see "A guest in among the village"), and no bond, tendency or memory counter
 changes for having had one: against a control gathering with no visitor, the bonds, sociability,
 trust and the pet, visit, play and sleep counters are asserted to match. Since residents make room
 for a guest out in the village, their own finds and moments can fall on other ticks.
@@ -2704,6 +2704,31 @@ is among those answering. On its walk round it goes over to a friend before anyo
 little longer. As it says goodbye, everyone it went over to, and any friend of its who is here,
 waves it off in turn, a friend under a heart; reduced motion keeps every bubble and drops every
 gesture.
+
+### A guest in among the village
+
+A guest takes part in what the residents do, not only in its own walk round. While it stands about
+at a stop (`TourMoment::Resting` or `Looking`), it is somebody a resident may go over to: the
+village's own company (`world/village_company.rs`) offers it among a resident's friends — the only
+one, while a guest is out, as residents keep their company for the guest — weighted by how well the
+two got on (a friend from an earlier visit most, a resident who was here last time next, a stranger
+least), only while nobody else stands within a frame and a half of it, and only ever to say hello and stay a while. The resident's `Call` runs exactly as it does
+for another resident: a look across, the walk over to stand beside it face-clear, the hello and the
+company kept. The guest answers by stopping where it is (`TourMoment::Company`), turning to the
+caller and keeping it company for as long as the caller's plan lasts, forty seconds at most, and
+counts the caller as met, so it is remembered as a friend and waves it goodbye. Each resident goes
+over once a visit at most.
+
+A guest that arrives at a stop beside somebody at work — a garden, a chore on a house — looks on
+(`TourMoment::Watching`), with the residents' own watching gesture. And a returning guest heads for
+a friend's doorstep first, when that door is set back up a path, and greets the friend there first
+if it is home.
+
+Neither keeping company nor looking on is ever done in anybody's face: a guest drawn over a face,
+or with its own face covered, for a second while doing either moves on, and its caller with it.
+`World::covered_faces_with_guest` gives the pairs whose faces are covered with the guest counted,
+which `formiga-tools village-watch` reads — `--visitor` invites a friend for the whole watch and
+reports how a visit is spent: at the spot it walked in to, beside residents, and how many it met.
 
 ## Keeping faces clear
 

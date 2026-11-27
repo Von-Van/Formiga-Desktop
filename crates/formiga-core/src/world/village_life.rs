@@ -998,6 +998,8 @@ pub(super) struct Friend {
     pub(super) at: Point,
     /// How close the two are, from nothing to as close as it gets.
     pub(super) bond: f32,
+    /// The guest, who is only ever gone over to to say hello and keep company.
+    pub(super) guest: bool,
 }
 
 /// A resident at work in a garden or on its house.
@@ -1417,6 +1419,7 @@ pub(super) fn choose(
                 None
             };
             let purpose = match (pick, walk) {
+                _ if friend.guest => Purpose::Hello,
                 (9, _) => Purpose::Play,
                 (10, Some(_)) => Purpose::Walk,
                 _ => Purpose::Hello,
