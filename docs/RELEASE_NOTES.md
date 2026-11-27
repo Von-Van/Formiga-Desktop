@@ -4,6 +4,25 @@ What each release brought, written for the people using Formiga. Each section is
 note the README carried while that release was current. [CHANGELOG.md](../CHANGELOG.md) is the
 itemised record, with the fixes, compatibility notes, and measurements behind each one.
 
+## New in 0.69.1
+
+Companions are more themselves, and the colony is more yours to arrange. New companions can
+have antlers, ear tufts, a fur ruff, a brushy tail tip or a plume of a tail, and in the Creature
+studio you can restyle anyone who already lives with you: body, parts, colours, markings and face,
+with the companion in view the whole time you change it, and Undo to take it back. What a
+companion wears now follows it when it turns, and the Echo Fox walks and runs side-on and walks
+away with its back to you like everyone else. On the Home page, pick a house to see who lives in
+it: move a companion to another house, swap two households, or take a house down, and nobody
+leaves or forgets anything. Visitors come back: the colony remembers the ones it has met, a
+returning wanderer looks and behaves as it did, old friends greet it with a heart, residents come
+over to keep it company, and everyone waves it off. Once every few days a meal turns out to be a
+glowing star fruit, and whoever eats it floats, bounces, zooms about or twinkles for a minute or
+two. Companions notice the desktop: they point at a window, peer round the end of a ledge, sit on
+a window's top, cheer a friend's climb, flinch when one falls, and now and then give a friend a
+playful push off a low ledge. Formiga Hill and Home 0.69.0 keep working with every colony as it
+is today; a companion with one of the new parts needs a Hill and Home from this release to visit.
+Once this release has opened your colony, an older Formiga can't open it.
+
 ## New in 0.69.0
 
 Companions move like themselves now. They turn to the way they are going: side-on along a window

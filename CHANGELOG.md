@@ -2,7 +2,7 @@
 
 All notable changes are documented here.
 
-## [Unreleased]
+## [0.69.1] - 2026-11-27
 
 Save version 35 (who lives where, and the visitors the colony knows). Trips are written as travel
 version 7 and houses as household version 13, neither adding a field: a colony with no companion
@@ -12,6 +12,14 @@ generated or restyled, asks for travel reader 7: an older Hill or Home says it i
 than reading it wrongly. Share codes are version 6 only for a companion with anatomy; every other
 companion is still written as version 5, 4, 3 or 2, which older builds import. The Battle
 contract is unchanged.
+
+Measured on an Apple M5 against 0.69.0, on copies of one six-companion colony (a minute to settle,
+two minutes sampled, the builds alternated): the application is 21.41 MB against 21.08 MB; process
+CPU read 1.91% and 1.60% against 2.81% and 2.03%, which is the spread between runs of one build
+rather than a difference between the two; resident memory 76 MiB against 80.5 MiB. `tick-bench`
+is unchanged: a full colony on a busy desktop ticks in 8.75 µs against 8.95 µs. Existing
+companions' atlases are byte for byte the size they were, and an Echo Fox's grows by one row,
+1.90 MB to 1.99 MB.
 
 ### Added
 

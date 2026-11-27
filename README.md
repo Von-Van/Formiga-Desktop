@@ -1,4 +1,4 @@
-# Formiga · v0.69.0
+# Formiga · v0.69.1
 
 <p align="center"><img src="packaging/shared/Formiga.png" width="128" alt="Formiga mascot app icon"></p>
 
@@ -95,7 +95,7 @@ your computer. No terminal or development tools are required.
 - **Windows 10/11** — download the `.msi` and run it. It adds normal Desktop and Start-menu
   shortcuts.
 
-Downloads are named after their release, for example `Formiga-0.69.0-macOS-universal.dmg`. Each one
+Downloads are named after their release, for example `Formiga-0.69.1-macOS-universal.dmg`. Each one
 ships with a matching `.sha256` file, so keep the original filename if you want to verify it.
 
 These builds are not code-signed yet, so the first launch needs one extra step: on macOS,
@@ -107,23 +107,24 @@ that, the menu-bar or tray icon offers Show/Hide, Pause, Gather Creatures, Check
 About, Settings, and Quit. Formiga never installs an update on its own: when one is available it verifies
 the download's SHA-256 and hands the installer to your operating system.
 
-## New in 0.69.0
+## New in 0.69.1
 
-Companions move like themselves now. They turn to the way they are going: side-on along a window
-top or the floor, a foot planted while the other comes forward, and with their back to you walking
-up a path into the village. They run leaning into it, a hop has its crouch, leap and landing, and a
-tossed companion balls up and tumbles. Climbing a window is redrawn: a companion goes up its side
-facing the wall, or turns its back to you and goes hand over hand up its face, then flops or pulls
-itself over the top. Everyone stands on a small shadow, what a companion holds stays in the paw or
-the mouth holding it, sitters and sleepers breathe, and faces change behind a blink. The village is
-lived in: residents call on one another, sit together, play chase and walk side by side, several
-things go on at once, and about half of a bigger village is out of doors. Newcomers walk in, and
-passengers look out of the train windows. The notebook reads less like a settings window: a
-companion's page opens on the companion and writes about it, Your colony opens on everyone
-together, and the Journal reads as a diary with pictures taped in. Formiga Hill and Home 0.69.0
-come out alongside. Battle stays at 0.68.23 and works with this release, but it pairs friends only
-on the same Desktop version, so for a friend match both of you need Desktop 0.69.0. Colonies are
-saved as before, so an older Formiga can still open yours.
+Companions are more themselves, and the colony is more yours to arrange. New companions can
+have antlers, ear tufts, a fur ruff, a brushy tail tip or a plume of a tail, and in the Creature
+studio you can restyle anyone who already lives with you: body, parts, colours, markings and face,
+with the companion in view the whole time you change it, and Undo to take it back. What a
+companion wears now follows it when it turns, and the Echo Fox walks and runs side-on and walks
+away with its back to you like everyone else. On the Home page, pick a house to see who lives in
+it: move a companion to another house, swap two households, or take a house down, and nobody
+leaves or forgets anything. Visitors come back: the colony remembers the ones it has met, a
+returning wanderer looks and behaves as it did, old friends greet it with a heart, residents come
+over to keep it company, and everyone waves it off. Once every few days a meal turns out to be a
+glowing star fruit, and whoever eats it floats, bounces, zooms about or twinkles for a minute or
+two. Companions notice the desktop: they point at a window, peer round the end of a ledge, sit on
+a window's top, cheer a friend's climb, flinch when one falls, and now and then give a friend a
+playful push off a low ledge. Formiga Hill and Home 0.69.0 keep working with every colony as it
+is today; a companion with one of the new parts needs a Hill and Home from this release to visit.
+Once this release has opened your colony, an older Formiga can't open it.
 
 Everything earlier releases brought is described in [the release notes](docs/RELEASE_NOTES.md),
 and every change is itemised in [the changelog](CHANGELOG.md).
