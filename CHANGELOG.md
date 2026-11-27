@@ -10,7 +10,10 @@ All notable changes are documented here.
   brushy tail tip and a plume of a tail, each only on the bodies it fits and drawn facing the
   screen, side-on and from behind. New companions draw them from a stream of their own
   (`Edition::Anatomy`), so every existing seed, recipe and code resolves as before; a recipe
-  carrying them shares as a version 6 code and travels to Formiga Hill as travel version 7.
+  carrying them shares as a version 6 code and travels to Formiga Hill as travel version 7, and a
+  house opened in Formiga Home writes its residents in it as household version 13. Neither adds a
+  field; an older Hill or Home still hosts every companion without anatomy. Save version 34 is
+  unchanged.
 - Restyle a companion in the Creature studio: body, proportions, parts, colours, markings and face,
   the companion half of what Formiga Farm offers, kept as one change the footer can undo. Making a
   creature stays in Farm.

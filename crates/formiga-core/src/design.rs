@@ -2067,7 +2067,7 @@ mod tests {
             }
             any += 1;
             assert_eq!(anatomical.edition(), Edition::Anatomy);
-            assert_eq!(detailed.edition() == Edition::Anatomy, false);
+            assert_ne!(detailed.edition(), Edition::Anatomy);
             for (n, part) in Anatomy::ALL.into_iter().enumerate() {
                 if part.is_on(&a) {
                     parts[n] += 1;

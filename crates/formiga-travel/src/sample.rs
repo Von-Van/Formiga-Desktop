@@ -44,7 +44,9 @@ pub fn desktop() -> DesktopSnapshot {
 /// The sample colony; `seed` picks one of many such colonies, each with one of everything.
 pub fn colony(seed: u8) -> SaveFile {
     let desktop = desktop();
-    let mut world = World::new([seed; 32], MADE, &desktop);
+    // Drawn by the generator that was newest when these samples were first written, so every
+    // fixture made from them is written as it was.
+    let mut world = World::new_by([seed; 32], MADE, &desktop, Edition::Details);
     let source = |n: u8| [seed.wrapping_mul(31).wrapping_add(n); 32];
     let modular = CreatureDesign::modular(source(2), 0, None);
     // Not every recipe drawn today happens to have details, so find one that does.
