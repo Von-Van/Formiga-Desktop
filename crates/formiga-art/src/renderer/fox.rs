@@ -342,10 +342,11 @@ pub(super) fn draw(c: &mut Canvas, pose: Pose, clip: BodyClip, frame: u8) -> Fig
 /// The fox's head side-on, facing right: the far ear behind the near one, its muzzle pointed and
 /// white under the eye, outlined all round so it sits over the body as the head of the sketch
 /// does. The eye is drawn on it.
-const SIDE_HEAD: [&str; 13] = [
-    "............K....K............",
-    "...........KDK..KWK...........",
-    "...........KDDKKWWDK..........",
+const SIDE_HEAD: [&str; 14] = [
+    "...........K......K...........",
+    "...........KK....KWK..........",
+    "..........KDDK..KWWDK.........",
+    "..........KDDKKKWWDDK.........",
     "..........KOOOOOOOOOKK........",
     ".........KOOOOOOOOOOOOK.......",
     "........KOOOOOOOOOOOOOOK......",
@@ -359,10 +360,22 @@ const SIDE_HEAD: [&str; 13] = [
 ];
 
 /// The last row of its ears.
-const SIDE_EAR_ROWS: usize = 3;
+const SIDE_EAR_ROWS: usize = 4;
+
+/// The head's first row is drawn a row above the sketch's, its ears standing that much taller.
+const SIDE_HEAD_TOP: i32 = -1;
 
 /// Where the eye is on the head side-on: the top of a short upright dash.
 const SIDE_EYE: (i32, i32) = (20, 6);
+
+/// The fox's ears from behind: pointed, as they are seen from the front, their backs dark.
+const BACK_EARS: [&str; 5] = [
+    ".........K.............K",
+    "........KDK...........KDK",
+    "........KDDK.........KDDK",
+    "........KDDDK.......KDDDK",
+    "........KDDDKKKKKKKKKDDDK",
+];
 
 /// The fox's body side-on under the head, from row 10, with the white bib down its chest.
 const SIDE_BODY: [&str; 11] = [
@@ -406,11 +419,21 @@ const SIDE_ORIGIN: (i32, i32) = (9, 19);
 
 /// The brush from behind: standing up the middle of the back toward whoever is looking, its
 /// white tip on top.
-const BACK_TAIL: [&str; 10] = [
-    "..KKK..", ".KWWWK.", "KWWWWWK", "KOWWWOK", "KOOOOOK", "KOOOOOK", ".KOOOK.", ".KOOOK.",
-    "..KOK..", "...K...",
+const BACK_TAIL: [&str; 12] = [
+    "...KKK...",
+    "..KWWWK..",
+    ".KWWWWWK.",
+    ".KWWWWWK.",
+    "KOWWWWWOK",
+    "KOOOWOOOK",
+    "KOOOOOOOK",
+    "KOOOOOOOK",
+    ".KOOOOOK.",
+    ".KOOOOOK.",
+    "..KOOOK..",
+    "...KOK...",
 ];
-const BACK_TAIL_ROW: i32 = 12;
+const BACK_TAIL_ROW: i32 = 9;
 
 /// A heel from behind, and the sole of a foot that is up.
 const HEEL: [&str; 2] = ["KOOOK", ".KKK."];
@@ -493,12 +516,17 @@ fn fox_side_on(c: &mut Canvas, step: Step, face: FaceRenderState) -> Figure {
     // The head over the top of the body, its ears laid back into it in a run.
     if ears_down > 0 {
         for (y, pixels) in SIDE_HEAD.iter().enumerate().take(SIDE_EAR_ROWS) {
-            row(c, ox + lean, oy + sink + y as i32 + ears_down, pixels);
+            row(
+                c,
+                ox + lean,
+                oy + sink + SIDE_HEAD_TOP + y as i32 + ears_down,
+                pixels,
+            );
         }
     }
     let first = if ears_down > 0 { SIDE_EAR_ROWS } else { 0 };
     for (y, pixels) in SIDE_HEAD.iter().enumerate().skip(first) {
-        row(c, ox + lean, oy + sink + y as i32, pixels);
+        row(c, ox + lean, oy + sink + SIDE_HEAD_TOP + y as i32, pixels);
     }
     // The eye: a short dash, lying down when it is shut, and a blush under it.
     let eye = PixelPoint {
@@ -572,21 +600,18 @@ fn fox_from_behind(c: &mut Canvas, step: Step) -> Figure {
     }
     // The back of it: the body and head in its coat, the ears showing their dark backs.
     let ears_down = step.ears_back.clamp(0, 1);
-    for (y, pixels) in BODY.iter().enumerate() {
-        let back: String = pixels
-            .chars()
-            .map(|key| match key {
-                'W' if y < EAR_ROWS + 1 => 'D',
-                'W' => 'O',
-                other => other,
-            })
-            .collect();
-        let dy = if y < EAR_ROWS { ears_down } else { 0 };
-        let p = at(0, y as i32 + dy);
+    for (y, pixels) in BACK_EARS.iter().enumerate() {
+        let p = at(0, y as i32 - 1 + ears_down);
+        row(c, p.x, p.y, pixels);
+    }
+    for (y, pixels) in BODY.iter().enumerate().skip(EAR_ROWS + 1) {
+        let back = pixels.replace('W', "O");
+        let p = at(0, y as i32);
         row(c, p.x, p.y, &back);
     }
     // The brush up the middle of the back, swinging across behind it.
-    let tail = at(13 + step.tail.clamp(-1, 1), BACK_TAIL_ROW);
+    // Out past its side and curling up, as it is side-on, its white tip uppermost.
+    let tail = at(21 + step.tail.clamp(-1, 1), BACK_TAIL_ROW);
     for (dy, pixels) in BACK_TAIL.iter().enumerate() {
         row(c, tail.x, tail.y + dy as i32, pixels);
     }

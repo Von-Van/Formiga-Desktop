@@ -1234,13 +1234,13 @@ fn recipe_turned(
             }
         }
         if (1..=3).contains(&d.details.horns) {
-            // Antlers branch, so the far one stands well clear of the near one.
+            // Side-on the near antler hides the far one, which would only thicken it into a clump.
             let pair = if d.details.horns == 3 {
-                [(5, false), (0, true)]
+                &[(1, true)][..]
             } else {
-                [(4, false), (1, true)]
+                &[(4, false), (1, true)][..]
             };
-            for (dx, near) in pair {
+            for &(dx, near) in pair {
                 let root = PixelPoint {
                     x: ear_cx + dx,
                     y: ear_top,
@@ -1374,7 +1374,14 @@ fn recipe_turned(
         }
         // A ruff stands out under the chin, round the front of the neck.
         if d.details.belly == 2 && !blob {
-            ruff(c, d, p, hx - 1, hy + head - 2, head - 2, 1);
+            ruff(
+                c,
+                d,
+                p,
+                (hx - 1, hy + head - 2, head - 2),
+                1,
+                feet_reach(d, floor),
+            );
         }
         head_oval(c, hx);
         if let Some((mx, half)) = muzzle {
@@ -1556,7 +1563,14 @@ fn recipe_turned(
     }
     // A ruff shows round the back of the neck, under the head.
     if d.details.belly == 2 && !blob {
-        ruff(c, d, p, x, hy + head - 2, head - 1, -1);
+        ruff(
+            c,
+            d,
+            p,
+            (x, hy + head - 2, head - 1),
+            -1,
+            feet_reach(d, floor),
+        );
     }
     head_oval(c, x);
     if k.coat == 0 {
