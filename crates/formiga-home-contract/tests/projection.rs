@@ -353,3 +353,64 @@ fn a_snapshot_offers_only_what_desktop_takes_back() {
     );
     assert_eq!(offered(&HomeCapability::ALL), HomeCapability::ALL);
 }
+
+/// A companion lodging in another's house goes in with that household, and the contract holds
+/// the snapshot as ever; a little one living away from its big version stays out on the desktop
+/// rather than going in without it, so the snapshot never carries a little one alone.
+#[test]
+fn lodgers_go_in_with_the_household_they_live_with() {
+    let mut save = sample::colony();
+    let owners = house_owners(&save.creatures, &save.home.cottage_order);
+    let (founder, other) = (owners.as_slice()[0], owners.as_slice()[1]);
+    let mini = save
+        .creatures
+        .iter()
+        .find(|creature| creature.role == CreatureRole::Mini { parent_id: founder })
+        .map(|creature| creature.id)
+        .expect("the founder's little one");
+    for creature in &mut save.creatures {
+        // The other keeper lodges with the founder, and the founder's little one in the house
+        // that is left.
+        if creature.id == other {
+            creature.lodges_with = Some(founder);
+        }
+    }
+    let third = house_owners(&save.creatures, &save.home.cottage_order)
+        .as_slice()
+        .get(1)
+        .copied();
+    let snapshot = project_household(
+        &save,
+        founder,
+        &[],
+        &HomeCapability::ALL,
+        session(),
+        sample::MADE + Duration::days(2),
+        "test",
+    )
+    .unwrap();
+    let ids: BTreeSet<_> = snapshot.residents.iter().map(|r| r.id.0).collect();
+    assert!(ids.contains(&other), "the lodger goes in");
+    assert!(ids.contains(&mini));
+    if let Some(third) = third {
+        for creature in &mut save.creatures {
+            if creature.id == mini {
+                creature.lodges_with = Some(third);
+            }
+        }
+        let snapshot = project_household(
+            &save,
+            third,
+            &[],
+            &HomeCapability::ALL,
+            session(),
+            sample::MADE + Duration::days(2),
+            "test",
+        )
+        .unwrap();
+        assert!(
+            snapshot.residents.iter().all(|r| r.id.0 != mini),
+            "a little one does not go in without its big version"
+        );
+    }
+}
