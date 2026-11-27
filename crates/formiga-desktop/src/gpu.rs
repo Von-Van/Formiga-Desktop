@@ -32,6 +32,7 @@ use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
 mod atlas;
+mod magic;
 mod occlusion;
 mod resources;
 mod shadow;
@@ -147,6 +148,9 @@ struct CreatureDraw {
     depth: f32,
     /// Drawn at its set-back size (see [`OverlayRenderer::shows_set_back`]).
     set_back: bool,
+    /// How many vertices of little lights about it under a magic spell close its stretch, drawn
+    /// from the shadow sheet.
+    glints: usize,
 }
 
 /// The ground the village stands on, both layers by day and after dark, for the way the village
@@ -1032,6 +1036,9 @@ impl OverlayRenderer {
             if let Some((quad, _)) = carried {
                 vertices.extend_from_slice(&quad);
             }
+            let glints_start = vertices.len();
+            self.glint_vertices(creature, save.settings.display_scale, &mut vertices);
+            let glints = vertices.len() - glints_start;
             creature_draws.push(CreatureDraw {
                 id: creature.id,
                 start,
@@ -1043,6 +1050,7 @@ impl OverlayRenderer {
                 among_houses,
                 depth: creature.state.depth,
                 set_back: self.shows_set_back(creature),
+                glints,
             });
         }
         // Among the houses, back to front; everybody at the front after them, in colony order.
@@ -1057,7 +1065,10 @@ impl OverlayRenderer {
         if prop_vertex_count > 0 || creature_draws.iter().any(|draw| draw.held > 0) {
             self.ensure_colony_object_atlas(save.colony_seed);
         }
-        if creature_draws.iter().any(|draw| draw.shadow) {
+        if creature_draws
+            .iter()
+            .any(|draw| draw.shadow || draw.glints > 0)
+        {
             self.ensure_shadow_sheet();
         }
         if creature_draws
@@ -1264,13 +1275,21 @@ impl OverlayRenderer {
                             if let Some(sheet) = &self.held_sheet {
                                 draw(pass, &sheet.bind_group, next, 6);
                             }
+                            next += 6;
                         }
                         Some(CarriedSheet::Finds) => {
                             if let Some(trinkets) = &self.trinkets {
                                 draw(pass, &trinkets.bind_group, next, 6);
                             }
+                            next += 6;
                         }
                         None => {}
+                    }
+                    // A spell's little lights, over everything else of it.
+                    if creature.glints > 0
+                        && let Some(sheet) = &self.shadow_sheet
+                    {
+                        draw(pass, &sheet.bind_group, next, creature.glints);
                     }
                 }
             };
@@ -1505,7 +1524,11 @@ impl OverlayRenderer {
     ) {
         // Creature scale is expressed in physical pixels. Applying the monitor scale factor a
         // second time made a 3x creature twice the intended size on Retina displays.
-        let (local_x, contact_y) = self.drawn_contact(creature, display_scale);
+        let (local_x, ground_y) = self.drawn_contact(creature, display_scale);
+        // Floating or bouncing under a spell, or sat with its legs over a ledge, it is drawn that
+        // far up from where it stands; its shadow stays on the ground.
+        let contact_y =
+            ground_y - self.snap(creature.state.drawn_lift() * f32::from(display_scale));
         // Placed the way the climb sheet places it, from the one shared rule.
         let drawn = FramePlacement::for_creature(creature, sprite.resting_baseline).frame_rect(
             local_x,
@@ -1554,7 +1577,7 @@ impl OverlayRenderer {
                 creature,
                 self.placed(creature),
                 sprite.silhouette[slot as usize].1,
-                (local_x, contact_y),
+                (local_x, ground_y),
                 frame_top,
                 display_scale,
             )

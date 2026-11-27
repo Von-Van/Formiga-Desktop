@@ -40,6 +40,10 @@ const BOWL: Rgba = Rgba::new(120, 168, 206, 255);
 const BOWL_LIGHT: Rgba = Rgba::new(196, 224, 242, 255);
 const SOUP: Rgba = Rgba::new(222, 96, 60, 255);
 const PORRIDGE: Rgba = Rgba::new(236, 222, 190, 255);
+const STAR: Rgba = Rgba::new(248, 200, 64, 255);
+const STAR_LIGHT: Rgba = Rgba::new(255, 240, 158, 255);
+const STAR_DEEP: Rgba = Rgba::new(212, 140, 36, 255);
+const GLEAM: Rgba = Rgba::new(255, 255, 246, 255);
 
 /// Where a food's middle sits in its cell, below the cell's middle. A bowl sits low so the steam
 /// off it fits; everything else sits in the middle.
@@ -331,8 +335,53 @@ pub(super) fn draw_food(canvas: &mut Canvas, food: Food, x: i32, y: i32, bites: 
                 }
             }
         }
+        // A magic fruit: a fat gold star, point up, lit from inside and gleaming.
+        Food::Starfruit => {
+            star(t, x, y, 6.6, 3.4, EDGE);
+            star(t, x, y, 5.4, 2.6, STAR);
+            star(t, x, y - 1, 2.9, 1.5, STAR_LIGHT);
+            for (dx, dy) in [(-3, 2), (3, 2), (0, 3)] {
+                t.set(x + dx, y + dy, STAR_DEEP);
+            }
+            t.set(x - 1, y - 3, GLEAM);
+            t.set(x - 2, y - 1, GLEAM);
+            if bites > 0 {
+                bite(t, x + 5, y - 1, bites + 1);
+            }
+        }
     }
     blit_transparent(canvas, &tile, 0, 0);
+}
+
+/// Fills a five-pointed star, one point straight up, with points `outer` and the hollows between
+/// them `inner` art pixels from its middle at `x`, `y`.
+fn star(canvas: &mut Canvas, x: i32, y: i32, outer: f32, inner: f32, fill: Rgba) {
+    use std::f32::consts::{PI, TAU};
+    let corners: Vec<(f32, f32)> = (0..10)
+        .map(|i| {
+            let radius = if i % 2 == 0 { outer } else { inner };
+            let angle = -PI / 2.0 + i as f32 * TAU / 10.0;
+            (angle.cos() * radius, angle.sin() * radius)
+        })
+        .collect();
+    let reach = outer.ceil() as i32 + 1;
+    for dy in -reach..=reach {
+        for dx in -reach..=reach {
+            let (px, py) = (dx as f32, dy as f32);
+            // Even-odd crossing test against the star's ten edges.
+            let mut inside = false;
+            for i in 0..corners.len() {
+                let (ax, ay) = corners[i];
+                let (bx, by) = corners[(i + 1) % corners.len()];
+                if (ay > py) != (by > py) && px < ax + (py - ay) / (by - ay) * (bx - ax) {
+                    inside = !inside;
+                }
+            }
+            if inside {
+                canvas.set(x + dx, y + dy, fill);
+            }
+        }
+    }
 }
 
 /// The bowl soup and porridge come in, with nothing left in it: the same blue bowl, its inside

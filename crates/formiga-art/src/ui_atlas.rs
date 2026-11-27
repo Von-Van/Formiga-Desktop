@@ -607,7 +607,12 @@ pub const SHADOW_MAX_WIDTH: u32 = crate::FRAME_SIZE;
 /// drawn under every companion all the time and the UI atlas is only held while a bubble or a
 /// menu is up.
 pub const SHADOW_SHEET_WIDTH: u32 = SHADOW_MAX_WIDTH;
-pub const SHADOW_SHEET_HEIGHT: u32 = SHADOW_MAX_WIDTH * (2 + 3);
+pub const SHADOW_SHEET_HEIGHT: u32 = SHADOW_MAX_WIDTH * (2 + 3) + GLINT_CELL;
+/// One magic glint's cell on the shadow sheet, in art pixels square: three sizes of little gold
+/// light side by side under the shadows, drawn about a companion under a spell
+/// (`formiga_core::magic`). They live on this sheet because it is always held while anybody is
+/// drawn, so a spell needs no texture of its own.
+pub const GLINT_CELL: u32 = 7;
 /// How high above the ground, in art pixels, a companion's shadow has shrunk to nothing.
 pub const SHADOW_FADE_HEIGHT: f32 = 48.0;
 /// How far its feet can come up off the ground, in art pixels, before its shadow starts to
@@ -740,7 +745,43 @@ impl ContactShadow {
                 draw_shadow(&mut canvas, cell, ground);
             }
         }
+        for size in 0..3 {
+            let cell = glint_cell(size);
+            stamp(
+                &mut canvas,
+                cell.x as i32,
+                cell.y as i32,
+                GLINTS[usize::from(size)],
+                &[('g', GLINT_EDGE), ('y', GLINT_GOLD), ('w', GLINT_CORE)],
+            );
+        }
         canvas
+    }
+}
+
+const GLINT_EDGE: Rgba = Rgba::new(226, 160, 52, 210);
+const GLINT_GOLD: Rgba = Rgba::new(255, 218, 104, 255);
+const GLINT_CORE: Rgba = Rgba::new(255, 255, 238, 255);
+/// A speck, a small star and a bright one, each centred in its cell.
+const GLINTS: [&[&str]; 3] = [
+    &[
+        ".......", ".......", "...g...", "..gwg..", "...g...", ".......", ".......",
+    ],
+    &[
+        ".......", "...g...", "...y...", ".gywyg.", "...y...", "...g...", ".......",
+    ],
+    &[
+        "...g...", "...y...", "..ywy..", "gywwwyg", "..ywy..", "...y...", "...g...",
+    ],
+];
+
+/// Where a magic glint of `size` (0 a speck, 1 small, 2 bright) lies on the shadow sheet.
+pub fn glint_cell(size: u8) -> SpriteRect {
+    SpriteRect {
+        x: u32::from(size.min(2)) * GLINT_CELL,
+        y: SHADOW_MAX_WIDTH * (2 + 3),
+        width: GLINT_CELL,
+        height: GLINT_CELL,
     }
 }
 

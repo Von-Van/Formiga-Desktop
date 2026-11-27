@@ -51,9 +51,36 @@ pub enum Food {
     Acorn,
     Soup,
     Porridge,
+    /// A magic fruit, glowing gold: never chosen for an ordinary meal, and never anybody's
+    /// favourite, so it is not one of [`Food::ALL`]. Only `world/magic.rs` puts it in a
+    /// companion's paws.
+    Starfruit,
 }
 
 impl Food {
+    /// Every food the held sheet draws: the everyday ones, then the magic fruit.
+    pub const DRAWN: [Self; 19] = [
+        Self::Berries,
+        Self::Seeds,
+        Self::Peas,
+        Self::Strawberry,
+        Self::Biscuit,
+        Self::Cherries,
+        Self::MushroomCap,
+        Self::Apple,
+        Self::PumpkinSlice,
+        Self::MelonWedge,
+        Self::CakeSlice,
+        Self::Carrot,
+        Self::PeaPod,
+        Self::Breadstick,
+        Self::Walnut,
+        Self::Acorn,
+        Self::Soup,
+        Self::Porridge,
+        Self::Starfruit,
+    ];
+
     pub const ALL: [Self; 18] = [
         Self::Berries,
         Self::Seeds,
@@ -82,7 +109,11 @@ impl Food {
     pub const fn size(self) -> FoodSize {
         match self {
             Self::Berries | Self::Seeds | Self::Peas => FoodSize::Tiny,
-            Self::Strawberry | Self::Biscuit | Self::Cherries | Self::MushroomCap => FoodSize::Hand,
+            Self::Strawberry
+            | Self::Biscuit
+            | Self::Cherries
+            | Self::MushroomCap
+            | Self::Starfruit => FoodSize::Hand,
             Self::Apple | Self::PumpkinSlice | Self::MelonWedge | Self::CakeSlice => FoodSize::Big,
             Self::Carrot | Self::PeaPod | Self::Breadstick => FoodSize::Long,
             Self::Walnut | Self::Acorn => FoodSize::Shelled,
@@ -110,6 +141,7 @@ impl Food {
             Self::Acorn => "an acorn",
             Self::Soup => "a bowl of soup",
             Self::Porridge => "a bowl of porridge",
+            Self::Starfruit => "a glowing star fruit",
         }
     }
 

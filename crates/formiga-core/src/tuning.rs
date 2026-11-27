@@ -431,3 +431,101 @@ pub const TODAY_NOTES: TodayNotes = TodayNotes {
     plays: 3,
     most: 4,
 };
+
+/// Magic fruit, and what eating one does (`magic.rs`, `world/magic.rs`).
+pub struct Magic {
+    /// How long the colony is out on the desktop, visible and unpaused, between one magic fruit
+    /// and the next, in seconds: a few days of an ordinary colony's time out.
+    pub ripe_after_secs: Range<f32>,
+    /// How soon another is ready when one was found but not finished: dropped, or left for
+    /// something else.
+    pub retry_secs: Range<f32>,
+    /// How much of the meal has to have been eaten for the fruit to work.
+    pub eaten_enough: f32,
+    /// How long a spell lasts before it starts to wear off, in seconds.
+    pub length_secs: Range<f32>,
+    /// How long it takes to come on, and to wear off.
+    pub come_on_secs: f32,
+    pub wear_off_secs: f32,
+    /// How long the burst of lights lasts as it comes on.
+    pub burst_secs: f32,
+    /// How quickly a spell comes back after something else has had the companion's body, and
+    /// goes when something does, as a share of all of it per second.
+    pub settle_per_sec: f32,
+    /// Floating: how high, in art pixels, how far it bobs either way, and how long a bob takes.
+    pub float_height: f32,
+    pub float_bob: f32,
+    pub float_bob_secs: f32,
+    /// Bouncing: how high a hop goes in art pixels, how long one is in the air standing still,
+    /// and how often it hops on the spot.
+    pub bounce_height: f32,
+    pub bounce_air_secs: f32,
+    pub bounce_rest_secs: f32,
+    /// Zoomies: how much quicker it walks.
+    pub zoomies_pace: f32,
+    /// Shimmering: how many times a second its lights go round it.
+    pub shimmer_turns_per_sec: f32,
+}
+
+pub const MAGIC: Magic = Magic {
+    ripe_after_secs: 28_800.0..64_800.0,
+    retry_secs: 1_800.0..3_600.0,
+    eaten_enough: 0.6,
+    length_secs: 60.0..110.0,
+    come_on_secs: 0.8,
+    wear_off_secs: 1.2,
+    burst_secs: 0.9,
+    settle_per_sec: 2.5,
+    float_height: 9.0,
+    float_bob: 2.5,
+    float_bob_secs: 1.8,
+    bounce_height: 7.0,
+    bounce_air_secs: 0.45,
+    bounce_rest_secs: 1.3,
+    zoomies_pace: 1.7,
+    shimmer_turns_per_sec: 0.18,
+};
+
+/// Little things companions do about the windows and ledges around them, and with each other up
+/// there (`world/surroundings.rs`).
+pub struct Surroundings {
+    /// How long between one of these somewhere in the colony and the next, in visible seconds out
+    /// on the desktop.
+    pub interval_secs: Range<f32>,
+    /// How soon to look again when nobody was in the right place for one.
+    pub retry_secs: Range<f32>,
+    /// How long a companion has to itself after one before it does another.
+    pub cooldown_secs: Range<f32>,
+    /// How near a window's side has to be, in frames, to point at it or peek round it.
+    pub near_edge_frames: f32,
+    /// How long sitting on a ledge with its legs over lasts.
+    pub ledge_sit_secs: Range<f32>,
+    /// How far its legs hang down over the edge, in art pixels.
+    pub ledge_sink: f32,
+    /// The clear drop a ledge needs to be worth sitting on with its legs over, in points.
+    pub ledge_sit_drop: f32,
+    /// A nudge off a ledge: how near the friend has to be, in frames, how near the end of the
+    /// ledge, in frames, and the drop beneath that end, in points, that is fun rather than far.
+    pub nudge_reach_frames: f32,
+    pub nudge_edge_frames: f32,
+    pub nudge_drop: Range<f32>,
+    /// How fond two companions have to be of each other for one to nudge the other.
+    pub nudge_affinity: u8,
+    /// The chance a bonded friend on the ground nearby cheers somebody up onto a window.
+    pub cheer_climb_chance: f64,
+}
+
+pub const SURROUNDINGS: Surroundings = Surroundings {
+    interval_secs: 150.0..330.0,
+    retry_secs: 30.0..60.0,
+    cooldown_secs: 240.0..480.0,
+    near_edge_frames: 1.6,
+    ledge_sit_secs: 7.0..14.0,
+    ledge_sink: 4.0,
+    ledge_sit_drop: 60.0,
+    nudge_reach_frames: 2.2,
+    nudge_edge_frames: 1.6,
+    nudge_drop: 36.0..170.0,
+    nudge_affinity: 80,
+    cheer_climb_chance: 0.3,
+};

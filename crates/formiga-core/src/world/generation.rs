@@ -380,6 +380,7 @@ fn generate_creature(
             presence: Presence::default(),
             meal: None,
             play: None,
+            magic: None,
         },
     }
 }

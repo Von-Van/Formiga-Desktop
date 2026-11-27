@@ -370,6 +370,7 @@ fn dish(food: formiga_core::meals::Food) -> &'static str {
         Food::Acorn => "an acorn",
         Food::Soup => "soup",
         Food::Porridge => "porridge",
+        Food::Starfruit => "a star fruit",
     }
 }
 
@@ -1677,7 +1678,7 @@ mod tests {
         assert_eq!(doing_now(&creature), "Taking a quiet moment");
         creature.state.surface.window_key = Some(3);
         assert_eq!(doing_now(&creature), "Up on a window");
-        for food in formiga_core::meals::Food::ALL {
+        for food in formiga_core::meals::Food::DRAWN {
             assert!(
                 dish(food).len() <= 14,
                 "{food:?} is short enough for a column"

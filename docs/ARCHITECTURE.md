@@ -233,9 +233,9 @@ they are not part of validation.
 belong to none of the themes. Everything else lives in a child module named after what it is about —
 `world/antics.rs`, `arrivals.rs`, `battle.rs`, `beats.rs`, `bonds.rs`, `bubbles.rs`, `colony.rs`,
 `discovery.rs`, `echo_fox.rs`, `experience.rs`, `generation.rs`, `habits.rs`, `home.rs`,
-`house_visits.rs`, `interaction.rs`, `journeys.rs`, `moments.rs`, `movement.rs`, `new_looks.rs`,
-`objects.rs`, `offers.rs`, `rides.rs`, `rituals.rs`, `routine.rs`, `spacing.rs`, `step.rs`,
-`surfaces.rs`, `tows.rs`, `trips.rs`, `undo.rs`, `village_life.rs`, `visitors.rs`, `wonders.rs`, and
+`house_visits.rs`, `interaction.rs`, `journeys.rs`, `magic.rs`, `moments.rs`, `movement.rs`,
+`new_looks.rs`, `objects.rs`, `offers.rs`, `rides.rs`, `rituals.rs`, `routine.rs`, `spacing.rs`,
+`step.rs`, `surfaces.rs`, `surroundings.rs`, `tows.rs`, `trips.rs`, `undo.rs`, `village_life.rs`, `visitors.rs`, `wonders.rs`, and
 the `attention/` family. Each module adds methods to the one `World` type rather than owning state
 of its own, so there is still a single simulation object and a single tick.
 
@@ -258,17 +258,17 @@ counts the roofs climbed, carries out the asides and has the neighbours wave bac
 
 The values that decide how a feature feels — how often something happens, how long it lasts, how
 far a companion goes for it, how likely it is — live in `tuning.rs`, one struct per feature:
-`WONDERS`, `FINDS`, `ROAMING`, `VILLAGE_LIFE`, `VISITS`, `OFFERS`, `OBSERVATIONS`, `UNDO` and
-`TODAY_NOTES`. Retuning a feature is a change to that file alone. Limits the save or memory depend
+`WONDERS`, `FINDS`, `ROAMING`, `VILLAGE_LIFE`, `VISITS`, `OFFERS`, `OBSERVATIONS`, `UNDO`,
+`TODAY_NOTES`, `MAGIC` and `SURROUNDINGS`. Retuning a feature is a change to that file alone. Limits the save or memory depend
 on stay beside the data they bound, and the shape of an animation stays with the motion it draws.
 Gathering them there was behaviour-preserving: six colonies of three simulated hours each produced
 the same saves, byte for byte, before and after.
 
 Tests live in `world/tests/`, one file per theme — `ambient`, `antics`, `arrivals`, `bonds`,
 `bubbles`, `colony_management`, `companion`, `discovery`, `echo_fox`, `edges`, `experience`,
-`habits`, `hangouts`, `home`, `house_visits`, `interaction`, `journeys`, `misc`, `moments`,
-`new_looks`, `objects_and_decorations`, `offers`, `perches`, `rituals`, `spacing`,
-`topology_and_attention`, `tows`, `trips`, `undo`, `village`, `village_life`, `visitors`, `wonders`
+`habits`, `hangouts`, `home`, `house_visits`, `interaction`, `journeys`, `magic`, `misc`,
+`moments`, `new_looks`, `objects_and_decorations`, `offers`, `perches`, `rituals`, `spacing`,
+`surroundings`, `topology_and_attention`, `tows`, `trips`, `undo`, `village`, `village_life`, `visitors`, `wonders`
 — with the shared desktop fixtures and colony builders in `world/tests/mod.rs`. The split into modules was
 behaviour-preserving: a differential harness ran five seeds for 18,000 ticks each against 0.57.1
 and compared the event streams and serialized saves byte for byte.
@@ -2907,6 +2907,62 @@ the pointer, and its window follows the pointer whole, so the next click anywher
 it and sets it down there; a right click leaves it where it was. Profile turns the notebook to the
 journal.
 
+## Magic fruit
+
+Now and then what a companion sits down to eat out on the desktop is a star fruit, glowing gold,
+and once it has eaten it something odd happens to it for a minute or two. `formiga-core::magic` is
+the pure half — the four `MagicKind`s, a `Spell`'s clock, and everything drawn from it — and
+`world/magic.rs` the runtime: `MagicFruit` on `World` (when the next one is ripe, and who is eating
+one), and `CreatureState::magic`, the spell itself. Nothing about either is saved, counted or
+written down; a relaunch, like `forget_runtime`, finds everybody as they were, and every choice
+comes from a `magic-fruit` stream of its own.
+
+A fruit ripens after `MAGIC.ripe_after_secs`, eight to eighteen hours of the colony out on the
+desktop, visible, unpaused, not in quiet mode and in no ritual — a clock that only runs while
+somebody could see it happen, so in an ordinary colony that comes and goes from its village, once
+every few days. The next companion to start a meal out there then finds its food is
+`Food::Starfruit` (the meal is laid out again for it from the same point, `Meal::plan`), with a
+Surprise bubble. The star fruit is drawn on the held sheet after the everyday foods
+(`Food::DRAWN`); it is not one of `Food::ALL`, so no meal chooses it and it is nobody's favourite.
+If the companion gets through `MAGIC.eaten_enough` of it and nothing took it away — a hand, a
+toss, sleep — the spell comes over it as the meal ends; otherwise another ripens within the hour.
+
+Which spell leans on who it is (`magic::leanings`): a calm one tends to float, a playful one to
+bounce, a lively one to get the zoomies, and a vain or shy one to shimmer. It comes on with a ring
+of lights bursting outward and a moment of delight (`BeatKind::Delight`, the Cheer gesture), a
+show-off's strut, or a shy one's blush behind its paws, and lasts `MAGIC.length_secs`.
+
+- **Float** draws it nine art pixels up, bobbing two and a half either way every 1.8 seconds, with
+  gold dust falling from its feet.
+- **Bounce** turns every two walking frames into a hop and, standing, hops on the spot every 1.3
+  seconds, with a puff of lights each time it comes down.
+- **Zoomies** is the one that changes what the simulation does: every walk it takes is
+  `MAGIC.zoomies_pace` quicker (`execute_action`), trailing sparks.
+- **Shimmer** turns four twinkling lights slowly round it.
+
+A spell is drawn, never walked: `Spell::lift` is how far above its feet the companion is drawn,
+worked out at the end of every tick (`carry_magic`, after the meals), and
+`CreatureState::drawn_lift` adds it to `drawn_position`, so the overlay's quad and the click proxy
+both rise with it while its contact point, its surface and everything the simulation decides stay
+where they were. The overlay keeps its shadow on the ground, shrinking with the lift as a hop's does.
+`strength` goes to nothing at once whenever something else wants the companion's body — an
+attention scene, a journey or climb, a toss, a wonder, a habit, a tow, or any action that is not
+one of its own ordinary ones (`shows_magic`) — and eases back once it is free, so nothing ever
+hangs, climbs or lands in the air. Being picked up or thrown, falling asleep, going indoors or into
+a house open in Formiga Home, the village coming out for a visit home, a ritual, quiet mode, hiding,
+pausing, and `clear_runtime_plans` (a trip, Gather, a quiet spell, the village appearing) end it
+outright. With reduced motion a spell is the still kind: a shimmer of three lights that stay where
+they are, no lift, no hurry and no pose, and one already under way turns still the moment motion is
+reduced.
+
+The lights are `Spell::glints`, at most four, in art pixels from the contact point. They are three
+little stars on the contact shadows' own sheet (`glint_cell`, under the shadows), which the overlay
+holds whenever anybody is drawn, so `gpu/magic.rs` adds a few quads at the end of the companion's
+own stretch of the frame and nothing else; with nobody under a spell they cost nothing. While a
+spell moves the colony is ticked and drawn at 20 Hz (`world_has_spatial_motion`).
+`formiga-tools magic-sheet` draws the star fruit, every spell at a few points and the still kind on
+every sheet body, placed, lifted and lit by the same rules.
+
 ## Exact offline seed sharing
 
 `CreatureOrigin` remains separate from mutable colony order. Its 256-bit source seed and original
@@ -3741,6 +3797,51 @@ seconds for a copied gesture to twenty for hide and seek, with a staring contest
 between 3.5 and seven depending on how steady the pair is; every scene is then followed by a
 45-second play cooldown, and interruption never claims a completed interaction. Reduced motion
 retains stationary looks and expressions. No game writes a journal entry.
+
+### Noticing the desktop
+
+`world/surroundings.rs` gives companions a handful of small, occasional things to do about the
+windows and ledges around them. Every `SURROUNDINGS.interval_secs` (two and a half to five and a half
+visible minutes) out on the desktop, while no attention scene is live and no colony cooldown is
+running (`AttentionRuntime::settled`), one companion that happens to be in the right place, free for
+a beat and not on its own cooldown (four to eight minutes after its last one) does one, weighed by
+who it is; the kind done last time is left out, so it never does the same twice running. When
+nobody is in the right place it looks again thirty to sixty seconds later. In colonies of four on
+a desktop of three windows that comes to about ten an hour of desktop time between them: three
+ledge sits, three cheers, two or three peers round an end, and one or two pointings. Each is a beat
+(`world/beats.rs`), so it holds the companion where it stands, uses poses the atlas already has,
+and lets go when it is over or when anything bigger comes along:
+
+- **Pointing at a window** (`BeatKind::PointAt`): a window standing beside it at its own height,
+  its side 0.3 to 1.6 frames away. A paw out toward it (Reach), then a long look (Watch), turned to
+  it; now and then a Question bubble. The curious and the nosy are likelier.
+- **Peering round the end of a ledge** (`PeekRound`): within a frame of the end of the window it
+  is on, with air beside it. Down low, then leaning out to look down past the end. The curious and
+  the shy or wary are likelier.
+- **Sitting with its legs over the front** (`LedgeSit`): on any window top with at least
+  `ledge_sit_drop` of clear air below, seven to fourteen seconds sat as on any window (the `Perch`
+  clip) but drawn `ledge_sink` art pixels lower (`Beat::ledge_sink`, through `drawn_lift`), so its
+  feet hang over the window's face, looking down at the desk. Calm companions are likelier. The
+  ledge going ends it.
+- **A nudge off a ledge** (`Nudge`): a playful companion on a window top with a friend it is fond of
+  (`nudge_affinity`, and not avoiding it) within 2.2 frames, nearer the end and within 1.6 frames
+  of it, where the drop beyond the end is 36 to 170 points onto somewhere inside the habitat. It
+  winds up and puts out a paw; 0.55 seconds in, if both are still where they were and free, the
+  friend tips off in the arc a tumble takes (`TossState`, never counted as a toss by the person),
+  landing on whatever its path crosses, the floor at worst. Once it is down and over the landing it
+  stands a moment and has its say — a grump huffs, a shy one blushes behind its paws, anyone else
+  bounces with glee — and the nudger laughs. Anything that takes either of them first, a hand
+  included, lets the nudge go before the push. The nudger never startles at its own push
+  (`reacted_to_toss`); other friends who see a friend fall react as they do to any toss.
+- **Cheering a climb**: when somebody gets up onto a window (`antics::Cue::Climbed`, the cue a
+  show-off's strut answers), a fond friend on the ground below within five frames, free and off its
+  cooldown, cheers it three times in ten with a Heart.
+
+Reduced motion, quiet mode, hiding, pausing, a ritual and a visit home hold all of it back, and
+`clear_runtime_plans` lets a nudge go. Nothing here is saved, counted or written down, and every
+choice comes from a `surroundings` stream of its own, so none of it shifts any other choice the
+colony makes. The tick costs one countdown while nothing is due. `formiga-tools magic-sheet` draws
+each of them, with the window it is about, on every sheet body.
 
 ## Colony history and the Today page (save v23)
 
