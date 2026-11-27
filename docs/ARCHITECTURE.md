@@ -2103,10 +2103,16 @@ companion's housing fields beside the home):
 - `move_into_house(resident, keeper)` moves a mini or a lodger by itself; a companion that keeps a
   house brings its household and its house comes down, into the house chosen.
 - `give_own_house(resident)` gives a full-size lodger its house back, in the place in the row it
-  had, or at the end, with the minis who lived with it.
+  had, with the minis who lived with it. `ColonyHome::arrange_cottages` keeps that place: a
+  written row lists a full-size companion whose house is down after the house it stood behind,
+  and carries it along when the houses left standing are rearranged around it.
 - `swap_households(a, b)` exchanges the people of two houses: each house's drawn type is written
   down for its new keeper where it would otherwise change, depths and decorations change keys, and
   the row is written out in full with the two swapped, so every house stands where it stood.
+
+Taking a change back follows the same rule as making one: `undo_last_edit` refuses
+(`UndoError::HouseOpen`) while a house is open in Formiga Home whenever it would move anybody
+between houses, and keeps the undo point for when the household is home.
 
 Nothing else is touched: no companion is removed, replaced or regenerated, and its memories, bonds,
 tallies, belongings, wear and progress stay as they were — a property test runs long random runs

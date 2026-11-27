@@ -386,3 +386,88 @@ fn plans_in_flight_resolve_when_a_house_comes_down() {
         );
     }
 }
+
+/// The keepers' names along the row, the colony house first.
+fn row(world: &World) -> Vec<String> {
+    arrangement(world)
+        .into_iter()
+        .map(|house| house[0].clone())
+        .collect()
+}
+
+/// A house taken down and put up again stands where it stood in a row that had been rearranged,
+/// whichever house it was, and however the houses left standing were shuffled in between.
+#[test]
+fn a_house_put_up_again_stands_where_it_stood_in_a_rearranged_row() {
+    for taken in 1..=3 {
+        let (mut world, _, _) = crowded_colony(40 + taken as u8);
+        let ids: Vec<CreatureId> = world.save.creatures.iter().map(|c| c.id).collect();
+        let creatures = world.save.creatures.clone();
+        world
+            .save
+            .home
+            .arrange_cottages(vec![ids[3], ids[1], ids[2]], &creatures);
+        assert_eq!(row(&world), ["C0", "C3", "C1", "C2"]);
+        world.take_down_house(ids[taken]).unwrap();
+        assert_eq!(row(&world).len(), 3);
+        world.give_own_house(ids[taken]).unwrap();
+        assert_eq!(row(&world), ["C0", "C3", "C1", "C2"], "C{taken} put up");
+        assert_everyone_housed(&world, "put up again");
+    }
+
+    // The houses left standing rearranged while one is down: it comes back after the house it
+    // stood behind.
+    let (mut world, _, _) = crowded_colony(44);
+    let ids: Vec<CreatureId> = world.save.creatures.iter().map(|c| c.id).collect();
+    let creatures = world.save.creatures.clone();
+    world
+        .save
+        .home
+        .arrange_cottages(vec![ids[3], ids[1], ids[2]], &creatures);
+    world.take_down_house(ids[1]).unwrap();
+    let creatures = world.save.creatures.clone();
+    world
+        .save
+        .home
+        .arrange_cottages(vec![ids[2], ids[3]], &creatures);
+    assert_eq!(row(&world), ["C0", "C2", "C3"]);
+    world.give_own_house(ids[1]).unwrap();
+    assert_eq!(row(&world), ["C0", "C2", "C3", "C1"]);
+
+    // A row nobody arranged is still not written down, a house down or not.
+    let (mut world, _, _) = crowded_colony(45);
+    let ids: Vec<CreatureId> = world.save.creatures.iter().map(|c| c.id).collect();
+    world.take_down_house(ids[2]).unwrap();
+    assert!(world.save.home.cottage_order.is_empty());
+    world.give_own_house(ids[2]).unwrap();
+    assert!(world.save.home.cottage_order.is_empty());
+    assert_eq!(row(&world), ["C0", "C1", "C2", "C3"]);
+}
+
+/// Taking back a change to who lives where waits while a house is open in Formiga Home, and is
+/// still there to take back once the household is home.
+#[test]
+fn a_rehousing_is_not_undone_while_a_house_is_open() {
+    let (mut world, desktop, _) = crowded_colony(131);
+    let ids: Vec<CreatureId> = world.save.creatures.iter().map(|c| c.id).collect();
+    let before = arrangement(&world);
+    world
+        .edit(ColonyEdit::MovedIn { name: "C3".into() }, |w| {
+            w.move_into_house(ids[3], ids[1])
+        })
+        .unwrap();
+    let moved = arrangement(&world);
+    assert_ne!(moved, before);
+    let went = world.begin_house_visit(&[ids[1], ids[3], ids[5]], &desktop);
+    assert!(!went.is_empty());
+    assert_eq!(world.undo_last_edit(), Err(UndoError::HouseOpen));
+    assert_eq!(arrangement(&world), moved);
+    assert!(world.last_edit().is_some());
+    world.end_house_visit();
+    assert!(matches!(
+        world.undo_last_edit(),
+        Ok(ColonyEdit::MovedIn { .. })
+    ));
+    assert_eq!(arrangement(&world), before);
+    assert_everyone_housed(&world, "undone at home");
+}

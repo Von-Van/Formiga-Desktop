@@ -100,6 +100,8 @@ pub enum UndoError {
     NothingToUndo,
     #[error("there is no room to bring everyone back")]
     NoRoom,
+    #[error("a house is open in Formiga Home; bring its household back first")]
+    HouseOpen,
 }
 
 /// The colony as it stood just before the last change, and what that change brought in.
@@ -203,6 +205,23 @@ impl World {
                 }
             }
             return Ok(point.edit);
+        }
+        // Taking a change back never moves anybody between houses while a house is open in
+        // Formiga Home, any more than making one does: the household indoors is the one that
+        // went in. The change stays to be taken back once it is home.
+        let rehouses = self.save.creatures.iter().any(|creature| {
+            point
+                .housing
+                .iter()
+                .any(|(id, lodges_with, keeps_colony_house)| {
+                    *id == creature.id
+                        && (*lodges_with, *keeps_colony_house)
+                            != (creature.lodges_with, creature.keeps_colony_house)
+                })
+        });
+        if rehouses && !self.house_visit.is_empty() {
+            self.undo_history.push_back(point);
+            return Err(UndoError::HouseOpen);
         }
         if point.edit.is_about_companions() {
             if let Err(error) = self.restore_companions(&point) {

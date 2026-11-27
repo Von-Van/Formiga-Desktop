@@ -44,7 +44,7 @@ companions' atlases are byte for byte the size they were, and an Echo Fox's grow
   emptiest and nearest first, or else shares the emptiest. Nobody leaves the colony or forgets
   anything — memories, bonds, belongings, what it wears and what it has done all stay — and a
   house put up again comes back where it stood, built and decorated as it was. Every change can
-  be undone, and none is offered while a house is open in Formiga Home.
+  be undone, and none is offered, or taken back, while a house is open in Formiga Home.
 - Visitors come back. The colony remembers up to twelve visitors it has met as themselves — the
   name, the origin that recreates them exactly, how often and when they came, and up to three
   residents they got on with — and now and then a wanderer it has met turns up again instead of
