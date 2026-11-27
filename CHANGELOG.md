@@ -2,7 +2,13 @@
 
 All notable changes are documented here.
 
-## [Unreleased]
+## [0.69.0] - 2026-11-27
+
+The animation pass, a lived-in village and a notebook that reads as a notebook, released together
+with Formiga Hill and Home 0.69.0. Save version 34, travel version 6, household version 12 and
+Battle contract version 5 are unchanged, so an older Formiga still opens a colony this release has
+saved. Formiga Battle stays at 0.68.23 and works with this release; Battle pairs friends only on
+the same Desktop version, so a friend match needs both sides on 0.69.0.
 
 ### Added
 
