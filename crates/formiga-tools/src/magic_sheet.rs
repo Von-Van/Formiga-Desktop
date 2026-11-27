@@ -189,6 +189,18 @@ fn shots(subject: &Creature) -> Vec<Shot> {
     );
     glee.friend = Some((tumbling, 30, 18));
     shots.push(glee);
+    // A friend's fall: the flinch as it drops, then a look over, glad or amused.
+    let fallen = Point { x: 30.0, y: 0.0 };
+    for (kind, length, at) in [
+        (BeatKind::Startle, 0.9, 0.3),
+        (BeatKind::Relieved, 1.8, 1.2),
+        (BeatKind::Amused, 1.8, 1.2),
+    ] {
+        shots.push(plain(
+            beat(subject, kind, length, at, Some(fallen)),
+            Window::None,
+        ));
+    }
     shots
 }
 

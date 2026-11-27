@@ -89,6 +89,9 @@ impl World {
         self.home_roam.remove(&id);
         self.pending_home_greetings.remove(&id);
         self.forget_tows_of(id);
+        // A spell, a ledge sit or a nudge does not go into the house with it.
+        self.let_go_of_surroundings(id);
+        self.save.creatures[index].state.magic = None;
         self.bubbles.retain(|bubble| bubble.creature_id != id);
         let creature = &mut self.save.creatures[index];
         if let Some((ground_y, surface)) = off_a_wonder {

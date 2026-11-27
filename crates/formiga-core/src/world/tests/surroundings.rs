@@ -366,7 +366,7 @@ fn week_of_surroundings() {
     desktop
         .windows
         .push(window(11, 1000.0, 300.0, 380.0, 240.0));
-    let hours = 6;
+    let hours = 12;
     let mut counts: BTreeMap<&'static str, u32> = BTreeMap::new();
     let mut desktop_secs = 0.0_f64;
     let (mut spells, mut finds, mut waits) = (0_u32, 0_u32, Vec::new());
@@ -375,6 +375,23 @@ fn week_of_surroundings() {
         let mut world = World::new([200 + seed; 32], start, &desktop);
         for extra in 0..3_u8 {
             let _ = world.add_designed_adult([seed * 7 + extra + 1; 32], None, start, &desktop);
+        }
+        // A colony that has lived together a while: everybody fond of everybody, below the
+        // closeness at which a friend's fall sends another running over.
+        let ids: Vec<CreatureId> = world.save.creatures.iter().map(|c| c.id).collect();
+        world.save.relationships.clear();
+        for (i, a) in ids.iter().enumerate() {
+            for b in &ids[i + 1..] {
+                let (a, b) = canonical_creature_pair(*a, *b).unwrap();
+                world.save.relationships.push(CreatureRelationship {
+                    a,
+                    b,
+                    affinity: 100,
+                    familiarity: 160,
+                    playfulness: 160,
+                    avoidance: 0,
+                });
+            }
         }
         let mut now = start;
         let mut ripe_since: Option<f64> = None;
@@ -424,3 +441,182 @@ fn week_of_surroundings() {
         hours * 4
     );
 }
+
+/// Throws companion `index` up and to the right from where it stands, as a hand would.
+fn throw(world: &mut World, desktop: &DesktopSnapshot, index: usize) {
+    let id = world.save.creatures[index].id;
+    let at = world.save.creatures[index].state.position;
+    let up = Point {
+        x: at.x + 20.0,
+        y: at.y - 200.0,
+    };
+    let fling = Point {
+        x: 200.0,
+        y: -300.0,
+    };
+    world.handle_command(
+        WorldCommand::BeginInteraction {
+            creature_id: id,
+            cursor: at,
+        },
+        desktop,
+    );
+    world.handle_command(
+        WorldCommand::UpdateInteraction {
+            cursor: up,
+            velocity: fling,
+        },
+        desktop,
+    );
+    world.handle_command(
+        WorldCommand::EndInteraction {
+            cursor: up,
+            velocity: fling,
+        },
+        desktop,
+    );
+}
+
+#[test]
+fn a_fond_friend_flinches_at_a_fall_and_looks_over_once_it_is_down() {
+    let desktop = desktop();
+    let mut reacted = 0;
+    for seed in 0..6_u8 {
+        let mut world = settled(170 + seed, &desktop);
+        // Fond, but not so close that the fall sends it running over instead.
+        befriend(&mut world, 100);
+        stand(&mut world, 0, 500.0, None);
+        stand(&mut world, 1, 620.0, None);
+        world.surroundings.react_now();
+        throw(&mut world, &desktop, 0);
+        let mut flinched = false;
+        let mut looked_over = None;
+        for _ in 0..200 {
+            run(&mut world, &desktop, 0.05);
+            flinched |= beat_of(&world, 1) == Some(BeatKind::Startle);
+            if let Some(kind @ (BeatKind::Relieved | BeatKind::Amused)) = beat_of(&world, 1) {
+                looked_over = Some(kind);
+                // Only once the faller is down.
+                assert_ne!(world.save.creatures[0].state.action, ActionKind::Tossed);
+                let look = world.save.creatures[1].state.beat.unwrap().look.unwrap();
+                assert!((look.x - world.save.creatures[0].state.position.x).abs() < 60.0);
+            }
+        }
+        if flinched {
+            reacted += 1;
+            assert!(
+                looked_over.is_some(),
+                "it looked over once its friend was down"
+            );
+        }
+    }
+    assert!(reacted >= 3, "{reacted} of 6");
+}
+
+#[test]
+fn reactions_to_climbs_and_falls_share_one_budget() {
+    let desktop = desktop();
+    let mut world = settled(180, &desktop);
+    befriend(&mut world, 100);
+    stand(&mut world, 0, 500.0, None);
+    stand(&mut world, 1, 620.0, None);
+    world.surroundings.react_now();
+    let mut flinches = 0;
+    for _ in 0..4 {
+        throw(&mut world, &desktop, 0);
+        for _ in 0..120 {
+            run(&mut world, &desktop, 0.05);
+        }
+        flinches = world.surroundings.begun.get("fall").copied().unwrap_or(0);
+        world.surroundings.cooldowns.clear();
+        stand(&mut world, 0, 500.0, None);
+        stand(&mut world, 1, 620.0, None);
+    }
+    assert!(
+        flinches <= 1,
+        "one reaction until the budget comes round again"
+    );
+    // A climb cheer is held back by the same budget.
+    let climber = world.save.creatures[0].id;
+    world.cheer_a_climb(climber);
+    assert!(!world.surroundings.begun.contains_key("cheer"));
+}
+
+/// A spell, a ledge sit and a nudge in hand, on a low ledge: everything a session could cut short.
+fn mid_everything(seed: u8) -> (World, DesktopSnapshot) {
+    let mut desktop = desktop();
+    let low = window(3, 400.0, 720.0, 500.0, 120.0);
+    desktop.windows.push(low.clone());
+    for attempt in 0..16_u8 {
+        let mut world = nudge_scene(seed.wrapping_add(attempt * 13), &desktop, &low);
+        world.surroundings.due_now();
+        run(&mut world, &desktop, 0.1);
+        if world.surroundings.nudging().is_some() {
+            let id = world.save.creatures[1].id;
+            world.cast_spell(id, crate::magic::MagicKind::Float, 60.0, 0.0);
+            return (world, desktop);
+        }
+    }
+    panic!("no nudge started on the fixture");
+}
+
+fn nothing_left(world: &World, who: &str) {
+    assert!(
+        world.surroundings.nudging().is_none(),
+        "{who}: nudge let go"
+    );
+    for creature in &world.save.creatures {
+        assert!(creature.state.magic.is_none(), "{who}: spell ended");
+        assert!(
+            !creature.state.beat.is_some_and(|beat| matches!(
+                beat.kind,
+                BeatKind::Nudge | BeatKind::LedgeSit | BeatKind::PeekRound | BeatKind::PointAt
+            )),
+            "{who}: beat let go"
+        );
+        assert_eq!(creature.state.drawn_lift(), 0.0, "{who}: drawn on its feet");
+    }
+}
+
+#[test]
+fn a_trip_to_hill_or_battle_ends_every_spell_and_surroundings_beat() {
+    // Hill (`app/hill.rs`) and Battle (`app/battle.rs`) both settle the colony with
+    // `prepare_for_trip` before the world is held still for the trip.
+    let (mut world, _) = mid_everything(190);
+    let now = world.save.maximum_seen_utc;
+    world.prepare_for_trip(now);
+    nothing_left(&world, "trip");
+}
+
+#[test]
+fn going_into_a_house_in_formiga_home_ends_its_spell_and_beats_at_once() {
+    let (mut world, desktop) = mid_everything(200);
+    let friend = world.save.creatures[1].id;
+    let nudger = world.save.creatures[0].id;
+    let went = world.begin_house_visit(&[friend, nudger], &desktop);
+    assert_eq!(went.len(), 2);
+    nothing_left(&world, "house visit");
+    world.end_house_visit();
+    run(&mut world, &desktop, 2.0);
+    assert!(world.save.creatures.iter().all(|c| c.state.magic.is_none()));
+}
+
+#[test]
+fn a_new_look_from_formiga_farm_leaves_the_companion_on_the_desktop_mid_spell() {
+    // Farm never takes a companion away (`app/farm.rs`: it "goes on living on the desktop the
+    // whole time"); only its new look arrives, through `apply_creature_design`. A spell or beat
+    // carries on through it, and the companion is drawn where it stands.
+    let (mut world, desktop) = mid_everything(210);
+    let design = CreatureDesign::modular([77; 32], 0, None);
+    apply_creature_design(&mut world.save.creatures[1], Some(design));
+    for _ in 0..200 {
+        run(&mut world, &desktop, 0.05);
+        let state = &world.save.creatures[1].state;
+        assert!(state.position.y <= FLOOR_Y + 0.5);
+        if state.action != ActionKind::Tossed {
+            assert!(state.drawn_lift() >= -SURROUNDINGS_SINK - 0.01);
+        }
+    }
+}
+
+const SURROUNDINGS_SINK: f32 = crate::tuning::SURROUNDINGS.ledge_sink;
