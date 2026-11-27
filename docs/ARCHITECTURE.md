@@ -2684,7 +2684,7 @@ at a stop (`TourMoment::Resting` or `Looking`), it is somebody a resident may go
 village's own company (`world/village_company.rs`) offers it among a resident's friends — the only
 one, while a guest is out, as residents keep their company for the guest — weighted by how well the
 two got on (a friend from an earlier visit most, a resident who was here last time next, a stranger
-least), and only ever to say hello and stay a while. The resident's `Call` runs exactly as it does
+least), only while nobody else stands within a frame and a half of it, and only ever to say hello and stay a while. The resident's `Call` runs exactly as it does
 for another resident: a look across, the walk over to stand beside it face-clear, the hello and the
 company kept. The guest answers by stopping where it is (`TourMoment::Company`), turning to the
 caller and keeping it company for as long as the caller's plan lasts, forty seconds at most, and
