@@ -687,6 +687,43 @@ impl World {
         true
     }
 
+    /// Every pair one of whose faces another is drawn over, the guest out on its visit counted
+    /// as one of them: what the person at the desk would see covered. For the review tools.
+    pub fn covered_faces_with_guest(
+        &self,
+        desktop: &DesktopSnapshot,
+    ) -> Vec<(CreatureId, CreatureId)> {
+        let mut placed = self.placements(desktop);
+        if let Some(guest) = self.save.visitors.on_stage() {
+            let monitor_scale = desktop
+                .monitors
+                .iter()
+                .find(|monitor| monitor.id == guest.state.surface.monitor_id)
+                .map_or(1.0, |monitor| monitor.scale_factor);
+            placed.push(Placed {
+                id: guest.id,
+                position: guest.state.position,
+                monitor: guest.state.surface.monitor_id,
+                window: guest.state.surface.window_key,
+                width: frame_width(self.save.settings.display_scale, monitor_scale),
+                action: guest.state.action,
+                hanging: guest.state.attention.map_or(0.0, |pose| pose.hanging),
+                settled: guest.state.velocity.x.abs() < 1.0,
+                velocity_x: guest.state.velocity.x,
+                facing_right: guest.state.facing_right,
+            });
+        }
+        let mut covered = Vec::new();
+        for later in 1..placed.len() {
+            for earlier in 0..later {
+                if face_is_covered(&placed[earlier], &placed[later]) {
+                    covered.push((placed[earlier].id, placed[later].id));
+                }
+            }
+        }
+        covered
+    }
+
     /// Every pair, in draw order, whose earlier face is behind the later body right now. This is
     /// the same geometry the resolver acts on, so a test can measure exactly what it enforces.
     #[cfg(test)]
