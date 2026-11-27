@@ -1697,7 +1697,8 @@ impl World {
                         id: guest.id,
                         at: guest.state.position,
                         depth: guest.state.depth,
-                        part: None,
+                        // Keeping somebody company who came over to it.
+                        part: self.guest_company().map(village_company::guest_part),
                         working: false,
                         home_x: None,
                     }),
@@ -2509,7 +2510,21 @@ impl World {
                 id: onlooker.id,
                 at: onlooker.at,
                 bond: self.bond(creature.id, onlooker.id),
+                guest: false,
             })
+            // And the guest is somebody to go over to, once a visit, while it stands about.
+            .chain(
+                self.guest_free_for_company()
+                    .filter(|(guest, _)| {
+                        scene.with_visitor && !self.village_memory.met(creature.id, *guest)
+                    })
+                    .map(|(guest, at)| village_life::Friend {
+                        id: guest,
+                        at,
+                        bond: self.guest_bond(creature.id),
+                        guest: true,
+                    }),
+            )
             .collect();
         let house = scene.houses.get(&creature.id).map(|(at, half, slot)| {
             let style = scene.house_styles[(*slot).min(scene.house_styles.len() - 1)];

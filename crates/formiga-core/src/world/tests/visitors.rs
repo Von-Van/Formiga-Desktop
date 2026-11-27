@@ -1798,3 +1798,192 @@ fn the_residents_who_met_a_guest_wave_it_goodbye() {
         }
     }
 }
+
+/// What one whole visit to a village of four was like for the guest: residents who came over to
+/// keep it company, residents it looked on at while they worked, the stops it walked between,
+/// and the longest any face — the guest's or a resident's — stayed covered.
+struct VisitLife {
+    called_on_by: Vec<CreatureId>,
+    company_secs: f32,
+    watched: Vec<CreatureId>,
+    stops: usize,
+    worst_cover: f32,
+    worst_joined_cover: f32,
+}
+
+fn live_a_visit(world: &mut World, now: OffsetDateTime, desktop: &DesktopSnapshot) -> VisitLife {
+    gather(world, now, desktop);
+    let mut life = VisitLife {
+        called_on_by: Vec::new(),
+        company_secs: 0.0,
+        watched: Vec::new(),
+        stops: 0,
+        worst_cover: 0.0,
+        worst_joined_cover: 0.0,
+    };
+    let mut stops_seen = Vec::new();
+    let mut cover: BTreeMap<(CreatureId, CreatureId), f32> = BTreeMap::new();
+    let mut joined_cover: BTreeMap<(CreatureId, CreatureId), f32> = BTreeMap::new();
+    for step in 1..=18_000_i64 {
+        world.tick(now + Duration::milliseconds(step * 50), 0.05, desktop);
+        world.drain_events().for_each(drop);
+        let Some(guest) = world.save.visitors.guest.as_ref() else {
+            break;
+        };
+        if guest.visit.phase == VisitPhase::Gone {
+            break;
+        }
+        let guest_id = guest.creature.id;
+        for (id, activity) in &world.village_life {
+            if matches!(activity.plan, super::super::village_life::Plan::Call(call) if call.on == guest_id)
+                && !life.called_on_by.contains(id)
+            {
+                life.called_on_by.push(*id);
+            }
+        }
+        match guest.visit.moment {
+            TourMoment::Company(_) => life.company_secs += 0.05,
+            TourMoment::Watching(id) if !life.watched.contains(&id) => life.watched.push(id),
+            _ => {}
+        }
+        if guest.visit.phase == VisitPhase::Visiting && !stops_seen.contains(&guest.visit.stop) {
+            stops_seen.push(guest.visit.stop);
+        }
+        let covered = world.covered_faces_with_guest(desktop);
+        cover.retain(|pair, _| covered.contains(pair));
+        let still_joined = matches!(
+            world.save.visitors.guest.as_ref().map(|g| g.visit.moment),
+            Some(TourMoment::Company(_) | TourMoment::Watching(_))
+        );
+        joined_cover.retain(|pair, _| still_joined && covered.contains(pair));
+        for pair in covered {
+            let run = cover.entry(pair).or_default();
+            *run += 0.05;
+            // The guest's face, or the face of the resident it is with, while the two are
+            // keeping company or the guest looks on: what this change asks of the village.
+            let joined = matches!(
+                world.save.visitors.guest.as_ref().map(|g| g.visit.moment),
+                Some(TourMoment::Company(_) | TourMoment::Watching(_))
+            );
+            if joined && (pair.0 == guest_id || pair.1 == guest_id) {
+                let held = joined_cover.entry(pair).or_default();
+                *held += 0.05;
+                life.worst_joined_cover = life.worst_joined_cover.max(*held);
+            }
+            life.worst_cover = life.worst_cover.max(*run);
+        }
+    }
+    life.stops = stops_seen.len();
+    life
+}
+
+/// A guest takes part in what the village does rather than only touring it: across several
+/// villages, residents come over to keep it company — the way they call on one another — and
+/// it stops, turns to them and stays while they do; it still walks its tour; and no face is
+/// covered for more than a moment while it keeps company or looks on.
+#[test]
+fn residents_come_over_to_a_guest_and_it_keeps_them_company_on_its_walk_round() {
+    let desktop = desktop();
+    let mut called = 0;
+    let mut company = 0.0;
+    for (index, seed) in [[61_u8; 32], [83; 32], [97; 32], [111; 32]]
+        .into_iter()
+        .enumerate()
+    {
+        let created = datetime!(2026-06-01 10:00 UTC) + Duration::days(index as i64);
+        let mut world = village_of_four(created);
+        // A different village each time: its newest resident drawn from another seed.
+        let mut extra = World::preview_adult(seed, created, &desktop);
+        extra.colony_order = 4;
+        world.save.creatures.push(extra);
+        let mut world = World::from_save(world.save);
+        for creature in &mut world.save.creatures {
+            creature.state.arrival_delay_secs = 0.0;
+        }
+        let now = run(&mut world, created, 30.0, &desktop);
+        let life = live_a_visit(&mut world, now, &desktop);
+        assert!(
+            life.stops >= 3,
+            "seed {index}: the tour went on ({} stops)",
+            life.stops
+        );
+        // Keeping company is kept face-clear like any company in the village.
+        assert!(
+            life.worst_joined_cover <= 2.75,
+            "seed {index}: a face stayed covered for {:.1} s in company with the guest",
+            life.worst_joined_cover
+        );
+        // Residents walking past one another, which this does not change, are the village's own
+        // longest; reported for comparison rather than held here.
+        eprintln!("seed {index}: longest face-cover {:.1} s", life.worst_cover);
+        called += life.called_on_by.len();
+        company += life.company_secs;
+        // Everybody who came over was met.
+        let met = world
+            .save
+            .visitors
+            .known
+            .last()
+            .map(|known| known.friends.clone())
+            .unwrap_or_default();
+        assert!(
+            life.called_on_by.iter().all(|id| met.contains(id)) || met.len() == MAX_VISITOR_FRIENDS,
+            "seed {index}: {:?} came over, {met:?} remembered",
+            life.called_on_by
+        );
+    }
+    assert!(
+        called >= 2,
+        "residents came over to guests {called} times in four visits"
+    );
+    assert!(
+        company >= 10.0,
+        "guests kept company for {company:.0} s in four visits"
+    );
+}
+
+/// A guest who knows somebody here heads for its doorstep first, when that door is set back on
+/// a path to walk up.
+#[test]
+fn a_returning_guest_heads_for_a_friends_doorstep_first() {
+    let desktop = desktop();
+    let created = datetime!(2026-06-01 10:00 UTC);
+    let mut tried = 0;
+    let world = village_of_four(created);
+    let ids: Vec<CreatureId> = world.save.creatures.iter().map(|c| c.id).collect();
+    for friend in ids {
+        let mut world = village_of_four(created);
+        let now = run(&mut world, created, 30.0, &desktop);
+        gather(&mut world, now, &desktop);
+        let Some(guest) = world.save.visitors.guest.as_ref() else {
+            continue;
+        };
+        let origin = guest.creature.origin;
+        let name = guest.creature.name.clone();
+        world
+            .save
+            .visitors
+            .remember_visit(&name, origin, VisitorSource::Wanderer, now, &[friend]);
+        let stage = world.guest_stage(&desktop).expect("room for a guest");
+        let stops = world.plan_tour(&stage, &desktop);
+        let creature = world
+            .save
+            .creatures
+            .iter()
+            .find(|c| c.id == friend)
+            .unwrap();
+        let slot = house_slot_for(
+            creature,
+            &world.save.creatures,
+            &world.save.home.cottage_order,
+        );
+        let Some(door) = stage.paths.doorsteps().find(|door| door.slot == slot) else {
+            continue;
+        };
+        tried += 1;
+        assert!(stops.len() > 1);
+        assert_eq!(stops[1].interest, TourInterest::House, "friend {friend}");
+        assert!((stops[1].at.x - door.x).abs() < 0.01, "friend {friend}");
+    }
+    assert!(tried >= 1, "some friend's door is set back");
+}

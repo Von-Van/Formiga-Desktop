@@ -118,6 +118,17 @@ pub(super) struct LookOn {
     pub(super) stay: f32,
 }
 
+/// The guest's part in company with the resident who came over to it, as that resident reads
+/// it: a warm welcome, and company kept for as long as the resident stays.
+pub(super) fn guest_part(with: CreatureId) -> PartView {
+    PartView {
+        with,
+        step: answer::COMPANY,
+        reply: Some(Reply::Warm),
+        met: true,
+    }
+}
+
 /// Whether a call that ended on `step` came to nothing: nobody looked back, or it was a no.
 pub(super) const fn turned_down(step: u8) -> bool {
     step <= call::APPROACH || step == call::LET_DOWN
@@ -1160,6 +1171,14 @@ impl World {
         half: f32,
     ) {
         for invite in invites {
+            // The guest stops where it is on its walk round and keeps the caller company.
+            if self.is_guest(invite.to) {
+                if self.guest_answers(invite.from) {
+                    let again = self.village_life_rng.random_range(MET_AGAIN_SECS) * 4.0;
+                    self.village_memory.note_met(invite.from, invite.to, again);
+                }
+                continue;
+            }
             // Somebody out of sight behind a house is not stopped there to wait for a caller.
             if self.village_life.contains_key(&invite.to)
                 || self.behind_houses.contains(&invite.to)

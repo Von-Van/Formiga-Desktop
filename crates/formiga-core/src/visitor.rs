@@ -119,6 +119,10 @@ pub enum TourMoment {
     Looking,
     /// A moment's rest, and then on.
     Resting,
+    /// Keeping a resident company who came over to it, for as long as the resident stays.
+    Company(CreatureId),
+    /// Looking on while a resident works in its garden or on its house.
+    Watching(CreatureId),
 }
 
 /// One resident's answer to the hello: when it turns, how long it holds, and what its
@@ -179,6 +183,9 @@ pub struct VisitProgress {
     /// How the residents it met wave it off: one entry per resident at most, timed from the start
     /// of the goodbye.
     pub farewells: Vec<ResidentAnswer>,
+    /// How long, in seconds, the guest has been drawn over somebody's face, or somebody over its,
+    /// while it stood keeping company or looking on. A moment in somebody's face ends either.
+    pub crowded: f32,
 }
 
 /// A guest at the colony houses. A visitor is a whole creature so it draws, animates, and reads

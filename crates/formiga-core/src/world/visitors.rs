@@ -14,6 +14,14 @@ const REUNION_HOLD_SECS: f32 = 1.6;
 /// met before rather than somebody new, when it has met any.
 const RETURN_FIFTHS: u8 = 2;
 
+/// The longest a guest keeps a resident company who came over to it, in seconds, whatever the
+/// resident's own plan says.
+const COMPANY_LIMIT_SECS: f32 = 40.0;
+
+/// How long a guest keeping company or looking on stays drawn over a face, or with its own face
+/// covered, before it moves on: well inside the grace the village gives anybody standing still.
+const CROWDED_COMPANY_SECS: f32 = 1.0;
+
 /// How far beside a garden patch, an ornament or a belonging a guest stands to look at it, in
 /// creature frames: the same step a resident's errand to a belonging stops short by, and a
 /// little more, since a patch is wider than a belonging.
@@ -35,7 +43,7 @@ type Residents = [Option<(CreatureId, Point)>; MAX_COLONY_CREATURES];
 type Crowd = [Option<Point>; 4 * MAX_COLONY_CREATURES];
 
 /// Where a guest stands, and where it walks in from.
-struct GuestStage {
+pub(super) struct GuestStage {
     monitor_id: MonitorId,
     spot: Point,
     /// The far side of the village's own accessible region, or none when there is no room to
@@ -48,7 +56,7 @@ struct GuestStage {
     region: DesktopRect,
     /// The paths in from the front of the grass to every door, which a guest goes up and down by
     /// exactly as a resident does.
-    paths: village_paths::VillagePaths,
+    pub(super) paths: village_paths::VillagePaths,
     /// How wide a creature is drawn here, in points, and how close another may come to its face.
     frame: f32,
     clear: f32,
@@ -152,6 +160,37 @@ impl World {
         ) {
             *slot = Some(point);
         }
+        // Somebody at work in its garden or on its house, to look on at.
+        let mut workers: Residents = [None; MAX_COLONY_CREATURES];
+        for (slot, (id, activity)) in self
+            .village_life
+            .iter()
+            .filter(|(_, activity)| activity.working().is_some())
+            .take(MAX_COLONY_CREATURES)
+            .enumerate()
+        {
+            let (at, _, _) = activity.working().expect("filtered above");
+            workers[slot] = Some((*id, at));
+        }
+        // Standing still with somebody, or looking on, is never done in anybody's face: a guest
+        // drawn over a face, or with its own face covered, for more than a moment moves on.
+        let joined = self.save.visitors.guest.as_ref().is_some_and(|guest| {
+            matches!(
+                guest.visit.moment,
+                TourMoment::Company(_) | TourMoment::Watching(_)
+            )
+        });
+        let in_a_face = joined
+            && self
+                .covered_faces_with_guest(desktop)
+                .iter()
+                .any(|(a, b)| *a == guest_id || *b == guest_id);
+        // A resident keeping the guest company who has gone back to its own life ends it.
+        let calling = self.guest_company().is_none_or(|caller| {
+            self.village_life.get(&caller).is_some_and(|activity| {
+                matches!(activity.plan, village_life::Plan::Call(call) if call.on == guest_id)
+            })
+        });
         let seed = self.visit_seed();
         // The walk round is worked out once a visit, and again whenever the village has moved
         // underneath the guest. Reduced motion asks for no walking at all, so it has no tour.
@@ -172,6 +211,18 @@ impl World {
             .guest
             .as_mut()
             .expect("a guest was found above");
+        guest.visit.crowded = if in_a_face {
+            guest.visit.crowded + dt
+        } else {
+            0.0
+        };
+        if !calling || guest.visit.crowded >= CROWDED_COMPANY_SECS {
+            guest.visit.moment = TourMoment::Resting;
+            // Straight on, out of the way, when it was in somebody's face.
+            guest.visit.stay = if calling { 0.0 } else { VISITS.tour_beat_secs };
+            guest.visit.crowded = 0.0;
+            guest.creature.state.attention = None;
+        }
         if let Some(stops) = replan {
             guest.visit.stops = stops;
             guest.visit.planned = Some(stage.spot);
@@ -272,7 +323,7 @@ impl World {
                     met = tour(
                         guest,
                         &stage,
-                        (&residents, &crowd),
+                        (&residents, &crowd, &workers),
                         seed,
                         dt,
                         reduce_motion,
@@ -489,6 +540,61 @@ impl World {
         let mut creature = rebuild_visitor(known.origin, now);
         creature.name = known.name.clone();
         Some(creature)
+    }
+
+    /// The guest, and where it stands, while it is standing about on its walk round with nothing
+    /// that cannot be broken off — the moment a resident may come over to it.
+    pub(super) fn guest_free_for_company(&self) -> Option<(CreatureId, Point)> {
+        let guest = self.save.visitors.guest.as_ref()?;
+        let free = guest.on_stage
+            && guest.visit.phase == VisitPhase::Visiting
+            && matches!(
+                guest.visit.moment,
+                TourMoment::Resting | TourMoment::Looking
+            )
+            && guest.creature.state.action != ActionKind::PetReaction
+            && !self
+                .interaction
+                .as_ref()
+                .is_some_and(|interaction| interaction.creature_id == guest.creature.id);
+        free.then_some((guest.creature.id, guest.creature.state.position))
+    }
+
+    /// The resident the guest is keeping company, if it is.
+    pub(super) fn guest_company(&self) -> Option<CreatureId> {
+        match self.save.visitors.guest.as_ref()?.visit.moment {
+            TourMoment::Company(with) => Some(with),
+            _ => None,
+        }
+    }
+
+    /// How warmly a resident goes over to the guest: gladly to a friend from an earlier visit,
+    /// willingly to somebody it was here for last time, and to a stranger now and then.
+    pub(super) fn guest_bond(&self, resident: CreatureId) -> f32 {
+        match self.save.visitors.known_guest() {
+            Some(known) if known.friends.contains(&resident) => 0.9,
+            Some(_) => 0.5,
+            None => 0.25,
+        }
+    }
+
+    /// A resident has asked the guest for its company. A guest free to stop does, turns to it,
+    /// and has met it; the resident's plan carries the rest. Returns whether it stopped.
+    pub(super) fn guest_answers(&mut self, from: CreatureId) -> bool {
+        if self.guest_free_for_company().is_none() {
+            return false;
+        }
+        let Some(guest) = &mut self.save.visitors.guest else {
+            return false;
+        };
+        guest.visit.moment = TourMoment::Company(from);
+        // Held for as long as the caller keeps company, and no longer than this.
+        guest.visit.stay = COMPANY_LIMIT_SECS;
+        guest.creature.state.velocity = Point::default();
+        if !guest.visit.met.contains(&from) && guest.visit.met.len() < MAX_COLONY_CREATURES {
+            guest.visit.met.push(from);
+        }
+        true
     }
 
     /// The visitor's own seed code, to keep or to pass on.
@@ -884,7 +990,7 @@ impl World {
     }
 
     /// Where the guest stands this tick, and where it walks in from.
-    fn guest_stage(&self, desktop: &DesktopSnapshot) -> Option<GuestStage> {
+    pub(super) fn guest_stage(&self, desktop: &DesktopSnapshot) -> Option<GuestStage> {
         let policy = &self.save.settings.habitat;
         let cottages = colony_cottages(&self.save.creatures);
         let (monitor_id, spot) = home_guest_position(
@@ -942,7 +1048,7 @@ impl World {
     /// than the grass goes there without a house in front of it, off the things on the ground it
     /// has not come to use, and a face-clear step from every other stop. Who is standing where is
     /// left until the guest sets off for one, when it picks the next one out of everybody's way.
-    fn plan_tour(&self, stage: &GuestStage, desktop: &DesktopSnapshot) -> Vec<TourStop> {
+    pub(super) fn plan_tour(&self, stage: &GuestStage, desktop: &DesktopSnapshot) -> Vec<TourStop> {
         // Wherever else the guest goes, it always has the spot it walked in to to come back to.
         let mut stops = vec![TourStop {
             at: stage.spot,
@@ -1115,17 +1221,40 @@ impl World {
                             .all(|(item, at)| using(*item) || off(*at))))
         };
 
-        // One of each kind of place, in the guest's own order within each kind, then a second
-        // round for whatever kinds have more, until the tour is full.
+        // The doors of the residents a returning guest got on with last time.
+        let creatures = &self.save.creatures;
+        let friend_doors: Vec<f32> = self
+            .save
+            .visitors
+            .known_guest()
+            .map(|known| known.friends.as_slice())
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|id| creatures.iter().find(|creature| creature.id == *id))
+            .filter_map(|friend| {
+                let slot = house_slot_for(friend, creatures, &self.save.home.cottage_order);
+                stage.paths.door(slot).map(|door| on_ground(door.x).x)
+            })
+            .collect();
+        let friend_door = |stop: &TourStop| {
+            stop.interest == TourInterest::House && friend_doors.contains(&stop.at.x)
+        };
+
+        // One of each kind of place, in the guest's own order within each kind — a friend's
+        // doorstep before any other — then a second round for whatever kinds have more, until
+        // the tour is full.
         let mut kinds = [spots, doorsteps, path, gardens, keepsakes];
         for (index, kind) in kinds.iter_mut().enumerate() {
             kind.retain(fits);
             let stream = SeedStream::new(self.visit_seed());
             kind.sort_by_key(|stop| {
-                stream.bytes(
-                    "visit-tour-order-v1",
-                    ((index as u64) << 32) | stop.at.x.to_bits() as u64,
-                )[0]
+                (
+                    !friend_door(stop),
+                    stream.bytes(
+                        "visit-tour-order-v1",
+                        ((index as u64) << 32) | stop.at.x.to_bits() as u64,
+                    )[0],
+                )
             });
         }
         let mut chosen: Vec<TourStop> = Vec::with_capacity(MAX_TOUR_STOPS - 1);
@@ -1150,10 +1279,13 @@ impl World {
             }
         }
         // In the order the walk meets them, going away from the spot the guest came in at.
+        // A friend's doorstep first, though: that is who a returning guest came to see.
         chosen.sort_by(|a, b| {
-            (a.at.x - stage.spot.x)
-                .abs()
-                .total_cmp(&(b.at.x - stage.spot.x).abs())
+            (!friend_door(a)).cmp(&!friend_door(b)).then(
+                (a.at.x - stage.spot.x)
+                    .abs()
+                    .total_cmp(&(b.at.x - stage.spot.x).abs()),
+            )
         });
         stops.extend(chosen);
         stops
@@ -1276,7 +1408,7 @@ pub(super) fn rebuild_visitor(origin: CreatureOrigin, now: OffsetDateTime) -> Cr
 fn tour(
     guest: &mut Visitor,
     stage: &GuestStage,
-    (residents, crowd): (&Residents, &Crowd),
+    (residents, crowd, workers): (&Residents, &Crowd, &Residents),
     seed: [u8; 32],
     dt: f32,
     reduce_motion: bool,
@@ -1303,7 +1435,7 @@ fn tour(
         }
         place(guest, stop.at, stage);
         guest.creature.state.depth = stop.depth;
-        return arrive(guest, stop, residents, seed);
+        return arrive(guest, stop, residents, workers, seed);
     }
     place(guest, stop.at, stage);
     guest.creature.state.depth = stop.depth;
@@ -1359,6 +1491,7 @@ fn arrive(
     guest: &mut Visitor,
     stop: TourStop,
     residents: &Residents,
+    workers: &Residents,
     seed: [u8; 32],
 ) -> Option<CreatureId> {
     guest.visit.stay = VISITS.tour_stay_secs;
@@ -1388,6 +1521,17 @@ fn arrive(
         guest.visit.met.push(creature_id);
         guest.visit.moment = TourMoment::Greeting(creature_id);
         return Some(creature_id);
+    }
+    // Somebody at work nearby is looked on at, the way a resident looks on: a guest likes to
+    // see how a village does things.
+    if let Some((worker, _)) = workers
+        .iter()
+        .flatten()
+        .filter(|(_, point)| point.distance(stop.at) <= VISITS.notice_distance)
+        .min_by(|a, b| a.1.distance(stop.at).total_cmp(&b.1.distance(stop.at)))
+    {
+        guest.visit.moment = TourMoment::Watching(*worker);
+        return None;
     }
     // Otherwise a spot is always used, since that is what it came over for; anything else is
     // mostly a proper look, and now and then a breather.
@@ -1489,6 +1633,29 @@ fn hold(
                         pose(stop.look, (!reduce_motion).then_some(gesture).flatten());
                 }
             }
+        }
+        // Turned to the resident who came over, keeping it company where it stands.
+        TourMoment::Company(creature_id) => {
+            if let Some((_, target)) = residents
+                .iter()
+                .flatten()
+                .find(|(resident, _)| *resident == creature_id)
+            {
+                creature.state.facing_right = target.x >= creature.state.position.x;
+                act(creature, ActionKind::Idle);
+                creature.state.attention = pose(*target, None);
+            }
+        }
+        // Looking on at somebody's work, from where it stopped.
+        TourMoment::Watching(creature_id) => {
+            let target = residents
+                .iter()
+                .flatten()
+                .find(|(resident, _)| *resident == creature_id)
+                .map_or(stop.look, |(_, point)| *point);
+            creature.state.facing_right = target.x >= creature.state.position.x;
+            act(creature, ActionKind::InspectScreen);
+            creature.state.attention = pose(target, (!reduce_motion).then_some(Gesture::Watch));
         }
         TourMoment::Resting | TourMoment::Walking => {
             act(creature, ActionKind::Perch);

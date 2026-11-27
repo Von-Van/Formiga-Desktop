@@ -680,6 +680,7 @@ fn a_colony_written_mid_visit_holds_the_guest_but_never_the_visit() {
             gesture: Some(crate::Gesture::Reach),
             bubble: Some(crate::BubbleIcon::Heart),
         }],
+        crowded: 0.5,
     };
     let expected = world.save.visitors.guest.clone().expect("a friend is here");
     world
