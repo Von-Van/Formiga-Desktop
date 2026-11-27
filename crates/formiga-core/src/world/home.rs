@@ -2515,8 +2515,15 @@ impl World {
             // And the guest is somebody to go over to, once a visit, while it stands about.
             .chain(
                 self.guest_free_for_company()
-                    .filter(|(guest, _)| {
-                        scene.with_visitor && !self.village_memory.met(creature.id, *guest)
+                    .filter(|(guest, at)| {
+                        // Only to a guest with room beside it: company is not kept in a
+                        // neighbour's face, and a guest among others is left to them.
+                        let room = !scene.everyone.iter().any(|other| {
+                            other.id != *guest
+                                && other.id != creature.id
+                                && (other.at.x - at.x).abs() < scene.frame * 1.6
+                        });
+                        scene.with_visitor && room && !self.village_memory.met(creature.id, *guest)
                     })
                     .map(|(guest, at)| village_life::Friend {
                         id: guest,
