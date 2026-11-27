@@ -615,6 +615,50 @@ mod tests {
         panic!("no recipe with details to test");
     }
 
+    /// A version 6 code is written only for a companion with anatomy. Every other companion made
+    /// today is still written as the version 0.69.0 would have written it — 5 with details, 4, 3
+    /// or 2 without — with nothing in it out of 0.69.0's range, so a code shared with someone on an
+    /// older build still imports there.
+    #[test]
+    fn only_a_companion_with_anatomy_is_written_as_version_6() {
+        let (mut sixes, mut older) = (0, 0);
+        for index in 0..1024_u64 {
+            let seed = crate::SeedStream::new([41; 32]).bytes("v6-only", index);
+            let parent = CreatureDesign::generated(seed, 0, None);
+            for design in [parent, CreatureDesign::generated(seed, 1, Some(parent))] {
+                let code = encode_creature_seed(
+                    SharedCreatureSeed {
+                        design: Some(design),
+                        source_colony_seed: seed,
+                        source_generation: 0,
+                    }
+                    .into(),
+                );
+                let encoded = code.strip_prefix("FORMIGA-").unwrap().replace('-', "");
+                let payload = decode_base32(&encoded).unwrap();
+                let version = payload[0] >> 4;
+                if design.details.has_anatomy() {
+                    assert_eq!(version, 6);
+                    sixes += 1;
+                    continue;
+                }
+                older += 1;
+                assert!(version <= 5, "{design:?} written as {version}");
+                // Within what 0.69.0 decoded: wings 2, horns 2, belly 1, tip 2.
+                let d = design.details;
+                assert!(d.wings <= 2 && d.horns <= 2 && d.belly <= 1 && d.tip <= 2);
+                let expected = match design.edition() {
+                    Edition::Details => 5,
+                    Edition::Archetypes => 4,
+                    _ if !design.classic.is_modular() => 3,
+                    _ => 2,
+                };
+                assert_eq!(version, expected);
+            }
+        }
+        assert!(sixes > 50 && older > 1000, "{sixes} {older}");
+    }
+
     #[test]
     fn every_seed_code_boundary_is_validated_before_import() {
         let valid = encode_creature_seed(

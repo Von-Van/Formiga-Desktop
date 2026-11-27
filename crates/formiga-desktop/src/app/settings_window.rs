@@ -782,22 +782,13 @@ impl FormigaApp {
     /// contract's `apply_design`, which touches nothing else about the companion; a design that is
     /// not exactly in range is refused, never repaired.
     fn restyle_companion(&mut self, creature_id: CreatureId, design: formiga_core::forms::Design) {
-        if design.validate().is_err() {
-            tracing::warn!("a restyled look out of range was not kept");
-            return;
+        let kept = self
+            .world
+            .as_mut()
+            .is_some_and(|world| crate::clubhouse::restyle::keep_look(world, creature_id, &design));
+        if !kept {
+            tracing::warn!("a restyled look was not kept");
         }
-        let kept = self.world.as_mut().is_some_and(|world| {
-            let name = creature_name(world, creature_id);
-            world.edit(ColonyEdit::Restyled { name }, |world| {
-                world
-                    .save
-                    .creatures
-                    .iter_mut()
-                    .find(|creature| creature.id == creature_id)
-                    .map(|creature| formiga_farm_contract::apply_design(creature, &design))
-                    .is_some()
-            })
-        });
         if kept {
             self.save_with_feedback("New look kept");
             self.redraw_due = Instant::now();

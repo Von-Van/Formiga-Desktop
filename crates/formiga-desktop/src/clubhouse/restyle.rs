@@ -12,6 +12,31 @@
 use super::*;
 use formiga_core::forms::{Design, Form};
 
+/// Give companion `id` the look `design`, as one change the footer can take back
+/// (`ColonyEdit::Restyled`). The look is changed the one way Desktop changes any look, by the
+/// Farm contract's `apply_design`, which touches nothing else about the companion. A design that
+/// is not exactly in range is refused, never repaired. Returns whether it was kept.
+pub(crate) fn keep_look(world: &mut World, id: CreatureId, design: &Design) -> bool {
+    if design.validate().is_err() {
+        return false;
+    }
+    let Some(name) = world
+        .save
+        .creatures
+        .iter()
+        .find(|creature| creature.id == id)
+        .map(|creature| creature.name.clone())
+    else {
+        return false;
+    };
+    world.edit(ColonyEdit::Restyled { name }, |world| {
+        if let Some(creature) = world.save.creatures.iter_mut().find(|c| c.id == id) {
+            formiga_farm_contract::apply_design(creature, design);
+        }
+    });
+    true
+}
+
 /// The working copy of one companion's look. Never saved.
 #[derive(Default)]
 pub(crate) struct RestyleState {
@@ -565,4 +590,86 @@ fn face_controls(ui: &mut Ui, design: &mut Design) {
             ],
         );
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An edited look is kept on the companion and drawn on it, survives the colony being saved
+    /// and opened again, and Undo puts back exactly the look it had.
+    #[test]
+    fn a_restyled_look_is_kept_drawn_saved_and_undone() {
+        let desktop = DesktopSnapshot::default();
+        let mut world = World::new([29; 32], OffsetDateTime::UNIX_EPOCH, &desktop);
+        let creature = world.save.creatures[0].clone();
+        let id = creature.id;
+        let before = creature.appearance.clone();
+        let mut design = Design::of(&creature.appearance);
+        let Form::Companion { recipe } = &mut design.form else {
+            panic!("a new companion has a recipe");
+        };
+        recipe.muzzle = (recipe.muzzle + 1) % 3;
+        recipe.coat = [200, 120, 90];
+        recipe.archetype = recipe.archetype.max(1);
+        recipe.face_template = recipe.face_template.max(1);
+        recipe.body = BodyPlan::Round;
+        *recipe = Anatomy::Ruff.put_on(recipe.bounded(), [240, 226, 200]);
+        assert!(Anatomy::Ruff.is_on(&recipe.details));
+        design.face.mouth_style = MouthStyle::Cat;
+        let design = design.normalized();
+
+        assert!(keep_look(&mut world, id, &design));
+        let kept = world.save.creatures.iter().find(|c| c.id == id).unwrap();
+        assert_eq!(Design::of(&kept.appearance), design);
+        assert_eq!(kept.name, creature.name);
+        assert_eq!(kept.temperament, creature.temperament);
+        // Drawn on it: its standing frame is not the one it had.
+        let face = formiga_art::FaceRenderState {
+            expression: formiga_art::ExpressionKind::Neutral,
+            eyelids: formiga_art::EyelidPose::Open,
+            gaze: formiga_art::GazeDirection::default(),
+        };
+        let drawn = |genome: &AppearanceGenome| {
+            CreatureRenderer::render_composited_frame(genome, ActionKind::Idle, 0, true, true, face)
+        };
+        assert_ne!(drawn(&kept.appearance), drawn(&before));
+
+        // Saved and opened again.
+        let path = std::env::temp_dir().join(format!(
+            "formiga-restyle-{}-{}.json",
+            std::process::id(),
+            id
+        ));
+        let store = formiga_core::SaveStore::new(&path);
+        store.save(&world.save).unwrap();
+        let reopened = store.load().unwrap().unwrap().into_inner();
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("json.bak"));
+        let again = reopened.creatures.iter().find(|c| c.id == id).unwrap();
+        assert_eq!(Design::of(&again.appearance), design);
+
+        // Undone: exactly the look it had.
+        let edit = world.undo_last_edit().unwrap();
+        assert_eq!(edit.describe(), format!("restyling {}", creature.name));
+        let undone = world.save.creatures.iter().find(|c| c.id == id).unwrap();
+        assert_eq!(undone.appearance, before);
+        assert_eq!(undone.origin, creature.origin);
+    }
+
+    /// A look out of range is refused, never repaired, and nothing is recorded.
+    #[test]
+    fn a_look_out_of_range_is_not_kept() {
+        let desktop = DesktopSnapshot::default();
+        let mut world = World::new([31; 32], OffsetDateTime::UNIX_EPOCH, &desktop);
+        let id = world.save.creatures[0].id;
+        let mut design = Design::of(&world.save.creatures[0].appearance);
+        if let Form::Companion { recipe } = &mut design.form {
+            recipe.width = 99;
+        }
+        let before = world.save.creatures[0].appearance.clone();
+        assert!(!keep_look(&mut world, id, &design));
+        assert_eq!(world.save.creatures[0].appearance, before);
+        assert_eq!(world.undoable_edits(), 0);
+    }
 }
