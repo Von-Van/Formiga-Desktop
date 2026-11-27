@@ -1187,3 +1187,68 @@ fn v34_keeps_a_village_that_stays_out_and_wonders_put_out_and_older_colonies_hav
     assert_eq!(loaded.companion.placed_wonders, vec![placed]);
     let _ = fs::remove_dir_all(directory);
 }
+
+/// Version 35 keeps who lodges with whom, the colony house handed on, and the visitors the
+/// colony remembers. An older colony lives as it always did, and remembers each visitor in its
+/// guest book once, by the name it last went by and with every visit the book still holds.
+#[test]
+fn v35_keeps_lodgings_and_known_visitors_and_older_colonies_remember_their_guest_book() {
+    let desktop = crate::DesktopSnapshot::default();
+    let now = datetime!(2026-11-27 12:00 UTC);
+    let mut world = crate::World::new([35; 32], now, &desktop);
+    let wren = crate::CreatureOrigin {
+        design: None,
+        source_colony_seed: [9; 32],
+        source_generation: 0,
+    };
+    let fig = crate::CreatureOrigin {
+        design: None,
+        source_colony_seed: [10; 32],
+        source_generation: 1,
+    };
+    for (days, name, origin) in [(3, "Wren", wren), (2, "Fig", fig), (1, "Wren B", wren)] {
+        world.save.visitors.sign(crate::GuestBookEntry {
+            visited_at_utc: now - time::Duration::days(days),
+            name: name.into(),
+            origin,
+            source: crate::VisitorSource::Wanderer,
+        });
+    }
+    let mut value = serde_json::to_value(&world.save).unwrap();
+    value["visitors"].as_object_mut().unwrap().remove("known");
+    value["save_version"] = 34.into();
+    let migrated = migrate(value, 34).unwrap();
+    assert_eq!(migrated.save_version, crate::SAVE_VERSION);
+    assert!(
+        migrated
+            .creatures
+            .iter()
+            .all(|c| c.lodges_with.is_none() && !c.keeps_colony_house)
+    );
+    assert_eq!(migrated.visitors.known.len(), 2);
+    let remembered = migrated.visitors.known(&wren).unwrap();
+    assert_eq!(remembered.name, "Wren B");
+    assert_eq!(remembered.visits, 2);
+    assert_eq!(remembered.first_met_utc, now - time::Duration::days(3));
+    assert_eq!(remembered.last_seen_utc, now - time::Duration::days(1));
+    assert_eq!(migrated.visitors.known(&fig).unwrap().visits, 1);
+
+    // Written and read back, everything new is kept.
+    let mut save = migrated;
+    let founder = save.creatures[0].id;
+    let mut lodger = save.creatures[0].clone();
+    lodger.id = founder + 1;
+    lodger.colony_order = 1;
+    lodger.name = "Lodger".into();
+    lodger.lodges_with = Some(founder);
+    save.creatures.push(lodger);
+    save.visitors.remember_friends(&fig, &[founder]);
+    let directory = std::env::temp_dir().join(format!("formiga-v35-{}", std::process::id()));
+    let store = SaveStore::new(directory.join("colony.json"));
+    store.save(&save).unwrap();
+    let loaded = store.load().unwrap().unwrap();
+    assert_eq!(loaded.creatures[1].lodges_with, Some(founder));
+    assert_eq!(loaded.visitors.known, save.visitors.known);
+    assert_eq!(loaded.visitors.known(&fig).unwrap().friends, [founder]);
+    let _ = fs::remove_dir_all(directory);
+}

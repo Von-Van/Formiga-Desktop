@@ -477,6 +477,20 @@ impl World {
         Ok(creature_id)
     }
 
+    /// A visitor the colony remembers, exactly as it was when it was here — its look, size,
+    /// temperament and habits — under the name it went by, rebuilt from the origin alone. For the
+    /// notebook to draw, and the same creature a returning wanderer walks in as.
+    pub fn remembered_visitor(
+        &self,
+        origin: &CreatureOrigin,
+        now: OffsetDateTime,
+    ) -> Option<Creature> {
+        let known = self.save.visitors.known(origin)?;
+        let mut creature = rebuild_visitor(known.origin, now);
+        creature.name = known.name.clone();
+        Some(creature)
+    }
+
     /// The visitor's own seed code, to keep or to pass on.
     pub fn visitor_share_code(&self) -> Option<String> {
         self.save
