@@ -145,7 +145,14 @@ impl World {
         let object_ids = |objects: &[ColonyObject]| -> Vec<u64> {
             objects.iter().map(|object| object.id).collect()
         };
+        // A companion restyled has changed too, though everyone is still here.
+        let restyled = before
+            .creatures
+            .iter()
+            .zip(&self.save.creatures)
+            .any(|(was, now)| was.appearance != now.appearance);
         let changed = ids(&before.creatures) != ids(&self.save.creatures)
+            || restyled
             || before.home != self.save.home
             || before.housing != housing::housing_of(&self.save.creatures)
             || object_ids(&before.objects) != object_ids(&self.save.objects.objects);
@@ -187,6 +194,16 @@ impl World {
             .undo_history
             .pop_back()
             .ok_or(UndoError::NothingToUndo)?;
+        // A restyle takes back the look, and nothing the companion has done since.
+        if matches!(point.edit, ColonyEdit::Restyled { .. }) {
+            for creature in &mut self.save.creatures {
+                if let Some(was) = point.creatures.iter().find(|was| was.id == creature.id) {
+                    creature.appearance = was.appearance.clone();
+                    creature.origin.design = was.origin.design;
+                }
+            }
+            return Ok(point.edit);
+        }
         if point.edit.is_about_companions() {
             if let Err(error) = self.restore_companions(&point) {
                 self.undo_history.push_back(point);

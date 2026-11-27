@@ -12,10 +12,14 @@ Save version 35. Travel, household and Battle contract versions are unchanged.
   brushy tail tip and a plume of a tail, each only on the bodies it fits and drawn facing the
   screen, side-on and from behind. New companions draw them from a stream of their own
   (`Edition::Anatomy`), so every existing seed, recipe and code resolves as before; a recipe
-  carrying them shares as a version 6 code and travels to Formiga Hill as travel version 7, and a
-  house opened in Formiga Home writes its residents in it as household version 13. Neither adds a
-  field; an older Hill or Home still hosts every companion without anatomy. Save version 34 is
-  unchanged.
+  carrying them shares as a version 6 code.
+- Compatibility: save version 34 is unchanged. Trips are written as travel version 7 and houses as
+  household version 13, neither adding a field; a colony with no companion carrying anatomy still
+  asks for travel reader 1 and household reader 1, so Formiga Hill and Home 0.69.0 host every
+  colony that exists today exactly as before. A companion given anatomy, generated or restyled,
+  asks for travel reader 7: an older Hill or Home says it is too new rather than reading it
+  wrongly. Share codes are version 6 only for a companion with anatomy; every other companion is
+  still written as version 5, 4, 3 or 2, which older builds import.
 - Restyle a companion in the Creature studio: body, proportions, parts, colours, markings and face,
   the companion half of what Formiga Farm offers, kept as one change the footer can undo. Making a
   creature stays in Farm.

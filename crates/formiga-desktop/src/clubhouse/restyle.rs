@@ -12,6 +12,31 @@
 use super::*;
 use formiga_core::forms::{Design, Form};
 
+/// Give companion `id` the look `design`, as one change the footer can take back
+/// (`ColonyEdit::Restyled`). The look is changed the one way Desktop changes any look, by the
+/// Farm contract's `apply_design`, which touches nothing else about the companion. A design that
+/// is not exactly in range is refused, never repaired. Returns whether it was kept.
+pub(crate) fn keep_look(world: &mut World, id: CreatureId, design: &Design) -> bool {
+    if design.validate().is_err() {
+        return false;
+    }
+    let Some(name) = world
+        .save
+        .creatures
+        .iter()
+        .find(|creature| creature.id == id)
+        .map(|creature| creature.name.clone())
+    else {
+        return false;
+    };
+    world.edit(ColonyEdit::Restyled { name }, |world| {
+        if let Some(creature) = world.save.creatures.iter_mut().find(|c| c.id == id) {
+            formiga_farm_contract::apply_design(creature, design);
+        }
+    });
+    true
+}
+
 /// The working copy of one companion's look. Never saved.
 #[derive(Default)]
 pub(crate) struct RestyleState {
@@ -95,6 +120,43 @@ impl RestyleState {
             return;
         };
         self.preview(ui, creature, &draft);
+        // What to do with the look sits with the picture of it, above the long list of choices.
+        let changed = Some(&draft) != self.started.as_ref();
+        ui.horizontal_wrapped(|ui| {
+            let keep = ui
+                .add_enabled(changed, egui::Button::new("Keep this look").fill(mint()))
+                .on_disabled_hover_text("Nothing has changed yet.");
+            if keep.clicked() {
+                let kept = draft.normalized();
+                outcome.restyle = Some((creature.id, kept.clone()));
+                self.started = Some(kept.clone());
+                draft = kept;
+            }
+            if ui
+                .add_enabled(changed, egui::Button::new("Put back"))
+                .on_disabled_hover_text("Nothing has changed yet.")
+                .clicked()
+                && let Some(started) = &self.started
+            {
+                draft = started.clone();
+            }
+        });
+        ui.small("Kept looks can be undone from the footer, like any change to the colony.");
+        // Anatomy is new in this release: a Formiga Hill or Home built before it cannot draw it.
+        let has_anatomy = |design: &Design| {
+            design
+                .form
+                .recipe()
+                .is_some_and(|recipe| recipe.details.has_anatomy())
+        };
+        if has_anatomy(&draft) {
+            ui.small(
+                "Antlers, ear tufts, a ruff, a brush and a plume need Formiga Hill and Formiga \
+                 Home from this release or later. An older one will say this companion is too \
+                 new to visit.",
+            );
+        }
+        ui.add_space(8.0);
         let swatches = colony_swatches(save);
         match &mut draft.form {
             Form::Companion { recipe } => {
@@ -117,26 +179,6 @@ impl RestyleState {
             }
         }
         face_controls(ui, &mut draft);
-        let changed = Some(&draft) != self.started.as_ref();
-        ui.add_space(6.0);
-        ui.horizontal_wrapped(|ui| {
-            if ui
-                .add_enabled(changed, egui::Button::new("Keep this look").fill(mint()))
-                .clicked()
-            {
-                let kept = draft.normalized();
-                outcome.restyle = Some((creature.id, kept.clone()));
-                self.started = Some(kept.clone());
-                draft = kept;
-            }
-            if ui
-                .add_enabled(changed, egui::Button::new("Put back"))
-                .clicked()
-                && let Some(started) = &self.started
-            {
-                draft = started.clone();
-            }
-        });
         self.draft = Some(draft);
     }
 
@@ -204,7 +246,8 @@ impl RestyleState {
                 .show(ui, |ui| {
                     ui.add(
                         egui::Image::new(texture)
-                            .fit_to_exact_size(egui::vec2(48.0 * VIEWS as f32 * 2.0, 96.0)),
+                            .fit_to_exact_size(egui::vec2(48.0 * VIEWS as f32 * 2.0, 96.0))
+                            .alt_text("The new look facing you, side-on, from behind and waving"),
                     );
                 });
         }
@@ -269,14 +312,15 @@ fn color(ui: &mut Ui, label: &str, value: &mut [u8; 3], swatches: &[[u8; 3]]) {
             let button = egui::Button::new("")
                 .fill(fill)
                 .min_size(egui::vec2(14.0, 14.0));
-            if ui
-                .add(button)
-                .on_hover_text(format!(
-                    "#{:02x}{:02x}{:02x}",
-                    swatch[0], swatch[1], swatch[2]
-                ))
-                .clicked()
-            {
+            let name = format!(
+                "{label} #{:02x}{:02x}{:02x}, as someone in the colony wears it",
+                swatch[0], swatch[1], swatch[2]
+            );
+            let response = ui.add(button);
+            response.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name.clone())
+            });
+            if response.on_hover_text(name.clone()).clicked() {
                 *value = *swatch;
             }
         }
@@ -435,8 +479,8 @@ fn finish_controls(ui: &mut Ui, r: &mut CreatureDesign, swatches: &[[u8; 3]]) {
         color(ui, "Coat", &mut r.coat, swatches);
         color(ui, "Accent", &mut r.accent, swatches);
         let mut candy = r.classic.coat > 0;
-        ui.label("Candy coat");
-        if ui.checkbox(&mut candy, "").changed() {
+        ui.label("Coat style");
+        if ui.checkbox(&mut candy, "Candy colours").changed() {
             r.classic.coat = u8::from(candy);
         }
         ui.end_row();
@@ -565,4 +609,86 @@ fn face_controls(ui: &mut Ui, design: &mut Design) {
             ],
         );
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An edited look is kept on the companion and drawn on it, survives the colony being saved
+    /// and opened again, and Undo puts back exactly the look it had.
+    #[test]
+    fn a_restyled_look_is_kept_drawn_saved_and_undone() {
+        let desktop = DesktopSnapshot::default();
+        let mut world = World::new([29; 32], OffsetDateTime::UNIX_EPOCH, &desktop);
+        let creature = world.save.creatures[0].clone();
+        let id = creature.id;
+        let before = creature.appearance.clone();
+        let mut design = Design::of(&creature.appearance);
+        let Form::Companion { recipe } = &mut design.form else {
+            panic!("a new companion has a recipe");
+        };
+        recipe.muzzle = (recipe.muzzle + 1) % 3;
+        recipe.coat = [200, 120, 90];
+        recipe.archetype = recipe.archetype.max(1);
+        recipe.face_template = recipe.face_template.max(1);
+        recipe.body = BodyPlan::Round;
+        *recipe = Anatomy::Ruff.put_on(recipe.bounded(), [240, 226, 200]);
+        assert!(Anatomy::Ruff.is_on(&recipe.details));
+        design.face.mouth_style = MouthStyle::Cat;
+        let design = design.normalized();
+
+        assert!(keep_look(&mut world, id, &design));
+        let kept = world.save.creatures.iter().find(|c| c.id == id).unwrap();
+        assert_eq!(Design::of(&kept.appearance), design);
+        assert_eq!(kept.name, creature.name);
+        assert_eq!(kept.temperament, creature.temperament);
+        // Drawn on it: its standing frame is not the one it had.
+        let face = formiga_art::FaceRenderState {
+            expression: formiga_art::ExpressionKind::Neutral,
+            eyelids: formiga_art::EyelidPose::Open,
+            gaze: formiga_art::GazeDirection::default(),
+        };
+        let drawn = |genome: &AppearanceGenome| {
+            CreatureRenderer::render_composited_frame(genome, ActionKind::Idle, 0, true, true, face)
+        };
+        assert_ne!(drawn(&kept.appearance), drawn(&before));
+
+        // Saved and opened again.
+        let path = std::env::temp_dir().join(format!(
+            "formiga-restyle-{}-{}.json",
+            std::process::id(),
+            id
+        ));
+        let store = formiga_core::SaveStore::new(&path);
+        store.save(&world.save).unwrap();
+        let reopened = store.load().unwrap().unwrap().into_inner();
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("json.bak"));
+        let again = reopened.creatures.iter().find(|c| c.id == id).unwrap();
+        assert_eq!(Design::of(&again.appearance), design);
+
+        // Undone: exactly the look it had.
+        let edit = world.undo_last_edit().unwrap();
+        assert_eq!(edit.describe(), format!("restyling {}", creature.name));
+        let undone = world.save.creatures.iter().find(|c| c.id == id).unwrap();
+        assert_eq!(undone.appearance, before);
+        assert_eq!(undone.origin, creature.origin);
+    }
+
+    /// A look out of range is refused, never repaired, and nothing is recorded.
+    #[test]
+    fn a_look_out_of_range_is_not_kept() {
+        let desktop = DesktopSnapshot::default();
+        let mut world = World::new([31; 32], OffsetDateTime::UNIX_EPOCH, &desktop);
+        let id = world.save.creatures[0].id;
+        let mut design = Design::of(&world.save.creatures[0].appearance);
+        if let Form::Companion { recipe } = &mut design.form {
+            recipe.width = 99;
+        }
+        let before = world.save.creatures[0].appearance.clone();
+        assert!(!keep_look(&mut world, id, &design));
+        assert_eq!(world.save.creatures[0].appearance, before);
+        assert_eq!(world.undoable_edits(), 0);
+    }
 }

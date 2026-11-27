@@ -203,9 +203,11 @@ details, in the picture's own colours, with a tip made vivid enough to stand out
 ## Anatomy
 
 Since 0.69.1 a recipe can carry five more parts, each in a place a detail already has, so they
-travel in the same eight bytes: **antlers**, a little branched beam either side of the head, and
+travel in the same eight bytes: **antlers**, a single-pixel beam and one tine either side of the
+head in a pale shade of the coat, outlined once (side-on only the near one shows), and
 **ear tufts**, a dark tuft standing up from the tip of each ear, in the place horns go; a fluffy
-**ruff** round the neck in the belly's place and colour; and a **brush**, a long fluffy tuft at the
+**ruff**, a soft collar of uneven tufts on the shoulders, wider than the head, in a shade between
+the coat's light and the belly colour; and a **brush**, a long fluffy tuft at the
 end of a tapering tail, or a whole **plume**, the tail a soft oval curled up behind the back with
 its end turned over, in the tip's place and colour. `formiga_core::Anatomy` names them.
 

@@ -399,7 +399,14 @@ fn draw_parts(
     // A ruff goes round the neck under the head, which is drawn over the top of it.
     if d.details.belly == 2 && headed && !blob {
         let dx = if long { -1 } else { 0 };
-        ruff(c, d, p, hx + dx, hy + head - 2, head - 1, 1);
+        ruff(
+            c,
+            d,
+            p,
+            (hx + dx, hy + head - 2, head - 1),
+            1,
+            feet_reach(d, floor),
+        );
     }
     if !blob && headed {
         if k.coat > 0 {
@@ -637,17 +644,32 @@ fn horn_shade(d: CreatureDesign, p: Palette) -> Rgba {
     }
 }
 
-/// A little antler rooted under the head: a beam rising and leaning out to `side`, with one tine
-/// forking up and off it toward the outside, every outline down before any
-/// fill so the two read as one branch.
+/// A little antler rooted under the head: a single-pixel beam rising and leaning out to `side`,
+/// with one tine forking up and off it toward the outside, filled in `shade` and outlined once all
+/// round, so two of them stand clear of each other on top of the head rather than clumping.
 fn antler(c: &mut Canvas, p: Palette, shade: Rgba, root: PixelPoint, side: i32) {
-    let at = |dx: i32, dy: i32| (root.x + side * dx, root.y + dy);
-    let segments = [(at(0, 0), at(1, -6)), (at(1, -3), at(4, -5))];
-    for ((x0, y0), (x1, y1)) in segments {
-        c.line(x0, y0, x1, y1, 3, p.outline);
+    const FILL: [(i32, i32); 9] = [
+        (0, 0),
+        (0, -1),
+        (0, -2),
+        (1, -3),
+        (1, -4),
+        (1, -5),
+        (1, -6),
+        (2, -4),
+        (3, -5),
+    ];
+    let at = |(dx, dy): (i32, i32)| (root.x + side * dx, root.y + dy);
+    let filled: Vec<(i32, i32)> = FILL.into_iter().map(at).collect();
+    for &(x, y) in &filled {
+        for (nx, ny) in [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)] {
+            if !filled.contains(&(nx, ny)) {
+                c.set(nx, ny, p.outline);
+            }
+        }
     }
-    for ((x0, y0), (x1, y1)) in segments {
-        c.line(x0, y0, x1, y1, 1, shade);
+    for (x, y) in filled {
+        c.set(x, y, shade);
     }
 }
 
@@ -693,28 +715,76 @@ fn ear_tuft(
     }
 }
 
-/// A fluffy ruff round the neck in the belly colour, centred on `x` with its middle row at `y`
-/// and `half` either side: a soft band whose lower edge is scalloped into tufts. `way` is 1 as
-/// it faces the screen and side-on, -1 from behind, where its tufts point the same way down.
-#[allow(clippy::too_many_arguments)]
-fn ruff(c: &mut Canvas, d: CreatureDesign, p: Palette, x: i32, y: i32, half: i32, way: i32) {
-    let fur = crate::palette::detail_color(&d, d.details.belly_color);
-    let half = half.max(3);
-    let tufts: Vec<i32> = (-half + 1..=half - 1).step_by(3).collect();
+/// A soft collar of fur round the neck, sitting on the shoulders under the head: wider than the
+/// head, its edge broken into uneven tufts that hang lower in some places than others and poke out
+/// at its ends, in a shade between the coat's light and the belly colour, so it reads as more of
+/// the coat grown fluffy rather than something worn. Placed for a head whose lower edge is near `y`
+/// and which is `half` wide either side of `x`. `way` is 1 as it faces the screen and side-on,
+/// -1 from behind, and puts the light on the side it comes from; nothing goes below `lowest`.
+fn ruff(
+    canvas: &mut Canvas,
+    d: CreatureDesign,
+    p: Palette,
+    (x, y, half): (i32, i32, i32),
+    way: i32,
+    lowest: i32,
+) {
+    // Painted on its own and put down no lower than the feet, so a body crouched low keeps its
+    // ruff above the ground it stands on.
+    let mut layer = Canvas::new(canvas.width(), canvas.height());
+    let c = &mut layer;
+    let belly = crate::palette::detail_color(&d, d.details.belly_color);
+    let coat_light = blend(p.coat, p.highlight);
+    let fur = blend(coat_light, belly);
+    let shade = mix_toward(fur, p.shadow);
+    let half = half.max(3) + 1;
+    let y = y + 1;
+    // Tufts along the lower edge, hanging one or two rows, and one out past each end.
+    let tufts: Vec<(i32, i32, i32)> = (-half + 1..=half - 1)
+        .step_by(2)
+        .enumerate()
+        .map(|(index, dx)| {
+            (
+                dx,
+                2 + (index as i32 % 3).min(1),
+                1 + i32::from(index % 2 == 0),
+            )
+        })
+        .chain([(-half, 1, 1), (half, 1, 1)])
+        .collect();
     c.fill_ellipse(x, y, half + 1, 3, p.outline);
-    for &dx in &tufts {
-        c.fill_circle(x + dx, y + 2, 2, p.outline);
+    for &(dx, drop, r) in &tufts {
+        c.fill_circle(x + dx, y + drop, r + 1, p.outline);
     }
     c.fill_ellipse(x, y, half, 2, fur);
-    for &dx in &tufts {
-        c.fill_circle(x + dx, y + 2, 1, fur);
+    for &(dx, drop, r) in &tufts {
+        c.fill_circle(x + dx, y + drop, r, fur);
     }
-    // A shaded crease between the tufts, and the light along the top on the lit side.
-    let shade = mix_toward(fur, p.shadow);
-    for pair in tufts.windows(2) {
-        c.set(x + (pair[0] + pair[1]) / 2, y + 2, shade);
+    // Shade under each hanging tuft, and a few strands of light on the side the light comes from.
+    for &(dx, drop, r) in &tufts {
+        if drop > 0 {
+            c.set(x + dx, y + drop + r, shade);
+        }
     }
-    c.set(x - way * (half - 1), y - 1, lighter(fur));
+    let lit = lighter(fur);
+    for step in [half - 2, half - 5] {
+        c.set(x - way * step, y - 1, lit);
+        c.set(x - way * step + way, y, lit);
+    }
+    for row in 0..=lowest.min(canvas.height() as i32 - 1) {
+        for column in 0..canvas.width() as i32 {
+            let pixel = layer.get(column, row);
+            if pixel.a > 0 {
+                canvas.set(column, row, pixel);
+            }
+        }
+    }
+}
+
+/// Halfway between two colours.
+fn blend(a: Rgba, b: Rgba) -> Rgba {
+    let mid = |x: u8, y: u8| ((u16::from(x) + u16::from(y)) / 2) as u8;
+    Rgba::new(mid(a.r, b.r), mid(a.g, b.g), mid(a.b, b.b), 255)
 }
 
 /// `color` a third of the way to `toward`.
