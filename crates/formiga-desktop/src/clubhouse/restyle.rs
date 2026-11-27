@@ -46,10 +46,19 @@ pub(crate) struct RestyleState {
     draft: Option<Design>,
     /// The preview, and the design it was drawn for.
     preview: Option<(Design, TextureHandle)>,
+    /// Whether the section was open on the last frame, so the preview is pinned only while it is.
+    open: bool,
+    /// Where the pinned preview was last drawn, for the review tests.
+    pub(crate) preview_rect: Option<egui::Rect>,
 }
 
 /// The four views of the preview: facing the screen, side-on, turned away, and waving.
 const VIEWS: u32 = 4;
+
+/// How wide the pinned preview stands beside the choices, at 100% text, and how wide the choices
+/// must be able to be beside it; narrower than both together, it is pinned above them instead.
+pub(crate) const SIDE_PANE: f32 = 236.0;
+pub(crate) const CHOICES_MIN: f32 = 330.0;
 
 const LAYOUTS: [&str; 12] = [
     "Button",
@@ -76,17 +85,27 @@ impl RestyleState {
         *self = Self::default();
     }
 
-    pub(super) fn show(&mut self, ui: &mut Ui, save: &SaveFile, outcome: &mut SettingsOutcome) {
-        egui::CollapsingHeader::new("Restyle a companion")
-            .id_salt("restyle-a-companion")
-            .default_open(self.target.is_some())
-            .show(ui, |ui| self.contents(ui, save, outcome));
+    /// Whether a companion is being restyled with the section open, so its preview is pinned in
+    /// view outside the page's scrolling.
+    pub(crate) fn is_pinned(&self) -> bool {
+        self.open && self.target.is_some() && self.draft.is_some()
     }
 
-    fn contents(&mut self, ui: &mut Ui, save: &SaveFile, outcome: &mut SettingsOutcome) {
+    pub(super) fn show(&mut self, ui: &mut Ui, save: &SaveFile) {
+        let shown = egui::CollapsingHeader::new("Restyle a companion")
+            .id_salt("restyle-a-companion")
+            .default_open(self.target.is_some())
+            .show(ui, |ui| self.contents(ui, save));
+        self.open = shown.body_returned.is_some();
+        if !self.open {
+            self.preview_rect = None;
+        }
+    }
+
+    fn contents(&mut self, ui: &mut Ui, save: &SaveFile) {
         ui.label(
             "Change the parts, proportions, colours and face of someone who already lives here. \
-             Who they are stays the same.",
+             Who they are stays the same. The picture of them stays in view as you change them.",
         );
         let chosen = save
             .creatures
@@ -108,54 +127,19 @@ impl RestyleState {
                     }
                 }
             });
-        let Some(creature) = save
+        if !save
             .creatures
             .iter()
-            .find(|creature| Some(creature.id) == self.target)
-        else {
+            .any(|creature| Some(creature.id) == self.target)
+        {
+            let open = self.open;
             self.release();
+            self.open = open;
             return;
-        };
+        }
         let Some(mut draft) = self.draft.clone() else {
             return;
         };
-        self.preview(ui, creature, &draft);
-        // What to do with the look sits with the picture of it, above the long list of choices.
-        let changed = Some(&draft) != self.started.as_ref();
-        ui.horizontal_wrapped(|ui| {
-            let keep = ui
-                .add_enabled(changed, egui::Button::new("Keep this look").fill(mint()))
-                .on_disabled_hover_text("Nothing has changed yet.");
-            if keep.clicked() {
-                let kept = draft.normalized();
-                outcome.restyle = Some((creature.id, kept.clone()));
-                self.started = Some(kept.clone());
-                draft = kept;
-            }
-            if ui
-                .add_enabled(changed, egui::Button::new("Put back"))
-                .on_disabled_hover_text("Nothing has changed yet.")
-                .clicked()
-                && let Some(started) = &self.started
-            {
-                draft = started.clone();
-            }
-        });
-        ui.small("Kept looks can be undone from the footer, like any change to the colony.");
-        // Anatomy is new in this release: a Formiga Hill or Home built before it cannot draw it.
-        let has_anatomy = |design: &Design| {
-            design
-                .form
-                .recipe()
-                .is_some_and(|recipe| recipe.details.has_anatomy())
-        };
-        if has_anatomy(&draft) {
-            ui.small(
-                "Antlers, ear tufts, a ruff, a brush and a plume need Formiga Hill and Formiga \
-                 Home from this release or later. An older one will say this companion is too \
-                 new to visit.",
-            );
-        }
         ui.add_space(8.0);
         let swatches = colony_swatches(save);
         match &mut draft.form {
@@ -182,9 +166,147 @@ impl RestyleState {
         self.draft = Some(draft);
     }
 
+    /// The companion as the draft would have it, with what to do with the look beside or under
+    /// it: drawn above or beside the page, outside its scrolling, so it stays in view while the
+    /// choices scroll. `beside` is a column beside the choices, the four views two by two over the
+    /// buttons. Otherwise it is a band above them, as short as it can be: the views two by two with
+    /// the buttons beside them where there is room, or in a row with the buttons under them.
+    pub(crate) fn pinned(
+        &mut self,
+        ui: &mut Ui,
+        save: &SaveFile,
+        outcome: &mut SettingsOutcome,
+        beside: bool,
+    ) {
+        let Some(creature) = save
+            .creatures
+            .iter()
+            .find(|creature| Some(creature.id) == self.target)
+        else {
+            return;
+        };
+        let Some(mut draft) = self.draft.clone() else {
+            return;
+        };
+        let texture = self.drawn(ui.ctx(), creature, &draft);
+        // Every picture in the notebook is at a whole number of points to the pixel: two here
+        // where there is room, one where there is not.
+        let room = ui.available_width();
+        let square = 2.0 * 96.0 + 14.0;
+        if beside {
+            self.picture(ui, texture, 2, 2.0);
+            self.actions(ui, creature, &mut draft, outcome, true);
+        } else if room >= square + 200.0 * journal::text_scale(ui) {
+            ui.horizontal_top(|ui| {
+                self.picture(ui, texture, 2, 2.0);
+                ui.vertical(|ui| self.actions(ui, creature, &mut draft, outcome, false));
+            });
+        } else {
+            let unit = if room >= 4.0 * 96.0 + 14.0 { 2.0 } else { 1.0 };
+            self.picture(ui, texture, VIEWS, unit);
+            self.actions(ui, creature, &mut draft, outcome, false);
+        }
+        self.draft = Some(draft);
+    }
+
+    /// The four views, `columns` to a row, at `unit` points to the pixel.
+    fn picture(&mut self, ui: &mut Ui, texture: egui::TextureId, columns: u32, unit: f32) {
+        let rows = VIEWS / columns;
+        let cell = 48.0 * unit;
+        let frame = egui::Frame::new()
+            .fill(forest())
+            .stroke(egui::Stroke::new(2.0, gold()))
+            .inner_margin(6)
+            .show(ui, |ui| {
+                let (rect, response) = ui.allocate_exact_size(
+                    egui::vec2(cell * columns as f32, cell * rows as f32),
+                    egui::Sense::hover(),
+                );
+                response.widget_info(|| {
+                    egui::WidgetInfo::labeled(
+                        egui::WidgetType::Image,
+                        true,
+                        "The new look facing you, side-on, from behind and waving",
+                    )
+                });
+                for view in 0..VIEWS {
+                    let at = rect.min
+                        + egui::vec2(
+                            (view % columns) as f32 * cell,
+                            (view / columns) as f32 * cell,
+                        );
+                    let uv = egui::Rect::from_min_max(
+                        egui::pos2(view as f32 / VIEWS as f32, 0.0),
+                        egui::pos2((view + 1) as f32 / VIEWS as f32, 1.0),
+                    );
+                    ui.painter().image(
+                        texture,
+                        egui::Rect::from_min_size(at, egui::vec2(cell, cell)),
+                        uv,
+                        Color32::WHITE,
+                    );
+                }
+            });
+        self.preview_rect = Some(frame.response.rect);
+    }
+
+    /// The companion's name, "Keep this look" and "Put back", and what is worth knowing about
+    /// keeping it, with a line under the buttons saying a kept look can be undone if `undo_line`.
+    fn actions(
+        &mut self,
+        ui: &mut Ui,
+        creature: &Creature,
+        draft: &mut Design,
+        outcome: &mut SettingsOutcome,
+        undo_line: bool,
+    ) {
+        ui.strong(&creature.name);
+        let changed = Some(&*draft) != self.started.as_ref();
+        ui.horizontal_wrapped(|ui| {
+            let keep = ui
+                .add_enabled(changed, egui::Button::new("Keep this look").fill(mint()))
+                .on_hover_text("Kept looks can be undone from the footer.")
+                .on_disabled_hover_text("Nothing has changed yet.");
+            if keep.clicked() {
+                let kept = draft.normalized();
+                outcome.restyle = Some((creature.id, kept.clone()));
+                self.started = Some(kept.clone());
+                *draft = kept;
+            }
+            if ui
+                .add_enabled(changed, egui::Button::new("Put back"))
+                .on_disabled_hover_text("Nothing has changed yet.")
+                .clicked()
+                && let Some(started) = &self.started
+            {
+                *draft = started.clone();
+            }
+        });
+        if undo_line {
+            ui.small("Kept looks can be undone from the footer, like any change to the colony.");
+        }
+        // Anatomy is new in this release: a Formiga Hill or Home built before it cannot draw it.
+        if draft
+            .form
+            .recipe()
+            .is_some_and(|recipe| recipe.details.has_anatomy())
+        {
+            ui.small(
+                "Antlers, ear tufts, a ruff, a brush and a plume need Formiga Hill and Formiga \
+                 Home from this release or later. An older one will say this companion is too \
+                 new to visit.",
+            );
+        }
+    }
+
     /// The draft on the companion, facing the screen, side-on, turned away and waving, drawn again
     /// only when the draft changes.
-    fn preview(&mut self, ui: &mut Ui, creature: &Creature, draft: &Design) {
+    fn drawn(
+        &mut self,
+        context: &egui::Context,
+        creature: &Creature,
+        draft: &Design,
+    ) -> egui::TextureId {
         let stale = self
             .preview
             .as_ref()
@@ -235,22 +357,13 @@ impl RestyleState {
                     }
                 }
             }
-            let texture = upload(ui.ctx(), "restyle-preview", &strip);
+            let texture = upload(context, "restyle-preview", &strip);
             self.preview = Some((draft.clone(), texture));
         }
-        if let Some((_, texture)) = &self.preview {
-            egui::Frame::new()
-                .fill(forest())
-                .stroke(egui::Stroke::new(2.0, gold()))
-                .inner_margin(6)
-                .show(ui, |ui| {
-                    ui.add(
-                        egui::Image::new(texture)
-                            .fit_to_exact_size(egui::vec2(48.0 * VIEWS as f32 * 2.0, 96.0))
-                            .alt_text("The new look facing you, side-on, from behind and waving"),
-                    );
-                });
-        }
+        self.preview
+            .as_ref()
+            .map(|(_, texture)| texture.id())
+            .expect("drawn above")
     }
 }
 
@@ -273,88 +386,133 @@ fn colony_swatches(save: &SaveFile) -> Vec<[u8; 3]> {
 /// One labelled choice among `options`, as a menu.
 fn choose<T: PartialEq + Copy>(
     ui: &mut Ui,
+    flow: &mut Flow,
     label: &str,
     value: &mut T,
     options: &[(T, &str)],
 ) -> bool {
     let mut changed = false;
-    ui.label(label);
-    let current = options
-        .iter()
-        .find(|(option, _)| option == value)
-        .map_or("", |(_, name)| *name);
-    egui::ComboBox::from_id_salt(("restyle", label))
-        .selected_text(current)
-        .show_ui(ui, |ui| {
-            for (option, name) in options {
-                if ui.selectable_label(*value == *option, *name).clicked() && *value != *option {
-                    *value = *option;
-                    changed = true;
+    ui.vertical(|ui| {
+        ui.label(label);
+        let current = options
+            .iter()
+            .find(|(option, _)| option == value)
+            .map_or("", |(_, name)| *name);
+        egui::ComboBox::from_id_salt(("restyle", label))
+            .selected_text(current)
+            .show_ui(ui, |ui| {
+                for (option, name) in options {
+                    if ui.selectable_label(*value == *option, *name).clicked() && *value != *option
+                    {
+                        *value = *option;
+                        changed = true;
+                    }
                 }
-            }
-        });
-    ui.end_row();
+            });
+    });
+    flow.cell(ui);
     changed
 }
 
-fn slider(ui: &mut Ui, label: &str, value: &mut u8, low: u8, high: u8) {
-    ui.label(label);
-    ui.add(egui::Slider::new(value, low..=high));
-    ui.end_row();
-}
-
-fn color(ui: &mut Ui, label: &str, value: &mut [u8; 3], swatches: &[[u8; 3]]) {
-    ui.label(label);
-    ui.horizontal_wrapped(|ui| {
-        ui.color_edit_button_srgb(value);
-        for swatch in swatches {
-            let fill = Color32::from_rgb(swatch[0], swatch[1], swatch[2]);
-            let button = egui::Button::new("")
-                .fill(fill)
-                .min_size(egui::vec2(14.0, 14.0));
-            let name = format!(
-                "{label} #{:02x}{:02x}{:02x}, as someone in the colony wears it",
-                swatch[0], swatch[1], swatch[2]
-            );
-            let response = ui.add(button);
-            response.widget_info(|| {
-                egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name.clone())
-            });
-            if response.on_hover_text(name.clone()).clicked() {
-                *value = *swatch;
-            }
-        }
+fn slider(ui: &mut Ui, flow: &mut Flow, label: &str, value: &mut u8, low: u8, high: u8) {
+    ui.vertical(|ui| {
+        ui.label(label);
+        ui.add(egui::Slider::new(value, low..=high));
     });
-    ui.end_row();
+    flow.cell(ui);
 }
 
-fn grid(ui: &mut Ui, id: &str, add: impl FnOnce(&mut Ui)) {
+fn color(ui: &mut Ui, flow: &mut Flow, label: &str, value: &mut [u8; 3], swatches: &[[u8; 3]]) {
+    ui.vertical(|ui| {
+        ui.label(label);
+        ui.horizontal_wrapped(|ui| {
+            ui.color_edit_button_srgb(value);
+            for swatch in swatches {
+                let fill = Color32::from_rgb(swatch[0], swatch[1], swatch[2]);
+                let button = egui::Button::new("")
+                    .fill(fill)
+                    .min_size(egui::vec2(14.0, 14.0));
+                let name = format!(
+                    "{label} #{:02x}{:02x}{:02x}, as someone in the colony wears it",
+                    swatch[0], swatch[1], swatch[2]
+                );
+                let response = ui.add(button);
+                response.widget_info(|| {
+                    egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name.clone())
+                });
+                if response.on_hover_text(name.clone()).clicked() {
+                    *value = *swatch;
+                }
+            }
+        });
+    });
+    flow.cell(ui);
+}
+
+/// Choices laid out a few to a row, as many as the width and the text size have room for, each
+/// its label over its control, so the page's width is used rather than one narrow column.
+pub(crate) struct Flow {
+    per_row: usize,
+    in_row: usize,
+}
+
+impl Flow {
+    /// The next `count` choices belong together: start them on a row of their own if they would
+    /// not all fit on what is left of this one.
+    fn together(&mut self, ui: &mut Ui, count: usize) {
+        if self.in_row > 0 && self.in_row + count.min(self.per_row) > self.per_row {
+            ui.end_row();
+            self.in_row = 0;
+        }
+    }
+
+    /// One choice has been laid out.
+    fn cell(&mut self, ui: &mut Ui) {
+        self.in_row += 1;
+        if self.in_row == self.per_row {
+            ui.end_row();
+            self.in_row = 0;
+        }
+    }
+}
+
+/// How many choices go to a row in `width` at the window's text size: one to three.
+pub(crate) fn per_row(width: f32, text_scale: f32) -> usize {
+    ((width / (170.0 * text_scale)).floor() as usize).clamp(1, 3)
+}
+
+fn grid(ui: &mut Ui, id: &str, most: usize, add: impl FnOnce(&mut Ui, &mut Flow)) {
+    let per_row = per_row(ui.available_width(), journal::text_scale(ui)).min(most);
+    let mut flow = Flow { per_row, in_row: 0 };
     egui::Grid::new(("restyle-grid", id))
-        .num_columns(2)
-        .spacing([12.0, 6.0])
-        .show(ui, add);
+        .num_columns(per_row)
+        .spacing([18.0, 8.0])
+        .show(ui, |ui| add(ui, &mut flow));
 }
 
 fn body_controls(ui: &mut Ui, r: &mut CreatureDesign) {
     journal::kicker(ui, "Body");
-    grid(ui, "body", |ui| {
+    grid(ui, "body", 3, |ui, flow| {
         let plans: Vec<(BodyPlan, &str)> = BodyPlan::ALL
             .iter()
             .map(|plan| (*plan, plan.label()))
             .collect();
-        choose(ui, "Body", &mut r.body, &plans);
-        slider(ui, "Width", &mut r.width, 8, 12);
-        slider(ui, "Height", &mut r.height, 7, 11);
-        slider(ui, "Head size", &mut r.head, 7, 9);
-        slider(ui, "Leg length", &mut r.legs, 3, 6);
+        choose(ui, flow, "Body", &mut r.body, &plans);
+        flow.together(ui, 2);
+        slider(ui, flow, "Width", &mut r.width, 8, 12);
+        slider(ui, flow, "Height", &mut r.height, 7, 11);
+        flow.together(ui, 2);
+        slider(ui, flow, "Head size", &mut r.head, 7, 9);
+        slider(ui, flow, "Leg length", &mut r.legs, 3, 6);
     });
 }
 
 fn parts_controls(ui: &mut Ui, r: &mut CreatureDesign) {
     journal::kicker(ui, "Parts");
-    grid(ui, "parts", |ui| {
+    grid(ui, "parts", 3, |ui, flow| {
         choose(
             ui,
+            flow,
             "Ears",
             &mut r.ears,
             &[
@@ -366,21 +524,26 @@ fn parts_controls(ui: &mut Ui, r: &mut CreatureDesign) {
                 (EarStyle::Tuft, "Tufts"),
             ],
         );
-        slider(ui, "Ear size", &mut r.ear_size, 3, 7);
+        slider(ui, flow, "Ear size", &mut r.ear_size, 3, 7);
+        flow.together(ui, 2);
         choose(
             ui,
+            flow,
             "Muzzle",
             &mut r.muzzle,
             &[(0, "None"), (1, "Small"), (2, "Wide")],
         );
         choose(
             ui,
+            flow,
             "Crown",
             &mut r.classic.crown,
             &[(0, "Its ears"), (1, "Antennae"), (2, "Sprouts")],
         );
+        flow.together(ui, 2);
         choose(
             ui,
+            flow,
             "Tail",
             &mut r.tail,
             &[
@@ -393,12 +556,15 @@ fn parts_controls(ui: &mut Ui, r: &mut CreatureDesign) {
         );
         choose(
             ui,
+            flow,
             "Odd tail",
             &mut r.classic.tail,
             &[(0, "None"), (1, "Curl"), (2, "Star")],
         );
+        flow.together(ui, 2);
         choose(
             ui,
+            flow,
             "Limbs",
             &mut r.classic.limbs,
             &[(0, "Paws"), (1, "Nubs"), (2, "Stick legs")],
@@ -408,6 +574,7 @@ fn parts_controls(ui: &mut Ui, r: &mut CreatureDesign) {
             if r.body != BodyPlan::Winged {
                 choose(
                     ui,
+                    flow,
                     "Wing-nubs",
                     &mut r.details.wings,
                     &[(0, "None"), (1, "Membrane"), (2, "Feathered")],
@@ -421,14 +588,15 @@ fn parts_controls(ui: &mut Ui, r: &mut CreatureDesign) {
                 (4, "Ear tufts", Some(Anatomy::EarTufts)),
             ];
             let shape = *r;
-            fitting(ui, "On the head", &mut r.details.horns, &head, &shape);
+            flow.together(ui, 2);
+            fitting(ui, flow, "On the head", &mut r.details.horns, &head, &shape);
             let neck = [
                 (0, "None", None),
                 (1, "Belly patch", None),
                 (2, "Ruff", Some(Anatomy::Ruff)),
             ];
             let shape = *r;
-            fitting(ui, "Chest", &mut r.details.belly, &neck, &shape);
+            fitting(ui, flow, "Chest", &mut r.details.belly, &neck, &shape);
             if matches!(r.tail, 2 | 3) && r.classic.tail == 0 {
                 let tip = [
                     (0, "None", None),
@@ -438,7 +606,7 @@ fn parts_controls(ui: &mut Ui, r: &mut CreatureDesign) {
                     (4, "Plume", Some(Anatomy::Plume)),
                 ];
                 let shape = *r;
-                fitting(ui, "Tail tip", &mut r.details.tip, &tip, &shape);
+                fitting(ui, flow, "Tail tip", &mut r.details.tip, &tip, &shape);
             }
         }
     });
@@ -447,45 +615,67 @@ fn parts_controls(ui: &mut Ui, r: &mut CreatureDesign) {
 /// A choice among parts, the ones this body cannot carry shown but not offered.
 fn fitting(
     ui: &mut Ui,
+    flow: &mut Flow,
     label: &str,
     value: &mut u8,
     options: &[(u8, &str, Option<Anatomy>)],
     recipe: &CreatureDesign,
 ) {
-    ui.label(label);
-    let current = options
-        .iter()
-        .find(|(option, _, _)| option == value)
-        .map_or("", |(_, name, _)| *name);
-    egui::ComboBox::from_id_salt(("restyle", label))
-        .selected_text(current)
-        .show_ui(ui, |ui| {
-            for (option, name, part) in options {
-                let fits = part.is_none_or(|part| part.fits(recipe));
-                let response = ui
-                    .add_enabled(fits, egui::Button::selectable(*value == *option, *name))
-                    .on_disabled_hover_text("This body has nowhere to carry it.");
-                if response.clicked() {
-                    *value = *option;
+    ui.vertical(|ui| {
+        ui.label(label);
+        let current = options
+            .iter()
+            .find(|(option, _, _)| option == value)
+            .map_or("", |(_, name, _)| *name);
+        egui::ComboBox::from_id_salt(("restyle", label))
+            .selected_text(current)
+            .show_ui(ui, |ui| {
+                for (option, name, part) in options {
+                    let fits = part.is_none_or(|part| part.fits(recipe));
+                    let response = ui
+                        .add_enabled(fits, egui::Button::selectable(*value == *option, *name))
+                        .on_disabled_hover_text("This body has nowhere to carry it.");
+                    if response.clicked() {
+                        *value = *option;
+                    }
                 }
-            }
-        });
-    ui.end_row();
+            });
+    });
+    flow.cell(ui);
 }
 
 fn finish_controls(ui: &mut Ui, r: &mut CreatureDesign, swatches: &[[u8; 3]]) {
     journal::kicker(ui, "Colours and markings");
-    grid(ui, "finish", |ui| {
-        color(ui, "Coat", &mut r.coat, swatches);
-        color(ui, "Accent", &mut r.accent, swatches);
-        let mut candy = r.classic.coat > 0;
-        ui.label("Coat style");
-        if ui.checkbox(&mut candy, "Candy colours").changed() {
-            r.classic.coat = u8::from(candy);
+    // A colour and its swatches take a row each; the rest go a few to a row.
+    grid(ui, "colours", 1, |ui, flow| {
+        color(ui, flow, "Coat", &mut r.coat, swatches);
+        color(ui, flow, "Accent", &mut r.accent, swatches);
+        if r.details.belly > 0 {
+            color(
+                ui,
+                flow,
+                "Belly colour",
+                &mut r.details.belly_color,
+                swatches,
+            );
         }
-        ui.end_row();
+        if r.details.tip > 0 {
+            color(ui, flow, "Tip colour", &mut r.details.tip_color, swatches);
+        }
+    });
+    grid(ui, "markings", 3, |ui, flow| {
+        let mut candy = r.classic.coat > 0;
+        ui.vertical(|ui| {
+            ui.label("Coat style");
+            if ui.checkbox(&mut candy, "Candy colours").changed() {
+                r.classic.coat = u8::from(candy);
+            }
+        });
+        flow.cell(ui);
+        flow.together(ui, 2);
         choose(
             ui,
+            flow,
             "Marking",
             &mut r.marking,
             &[
@@ -500,22 +690,17 @@ fn finish_controls(ui: &mut Ui, r: &mut CreatureDesign, swatches: &[[u8; 3]]) {
         );
         choose(
             ui,
+            flow,
             "Pattern",
             &mut r.classic.pattern,
             &[(0, "None"), (1, "Stripes"), (2, "Spots"), (3, "Patches")],
         );
-        if r.details.belly > 0 {
-            color(ui, "Belly colour", &mut r.details.belly_color, swatches);
-        }
-        if r.details.tip > 0 {
-            color(ui, "Tip colour", &mut r.details.tip_color, swatches);
-        }
     });
 }
 
 fn face_controls(ui: &mut Ui, design: &mut Design) {
     journal::kicker(ui, "Face");
-    grid(ui, "face", |ui| {
+    grid(ui, "face", 3, |ui, flow| {
         if let Form::Companion { recipe } = &mut design.form {
             if recipe.archetype > 0 {
                 let layouts: Vec<(u8, &str)> = LAYOUTS
@@ -523,10 +708,11 @@ fn face_controls(ui: &mut Ui, design: &mut Design) {
                     .enumerate()
                     .map(|(index, name)| (index as u8 + 1, *name))
                     .collect();
-                choose(ui, "Layout", &mut recipe.face_template, &layouts);
+                choose(ui, flow, "Layout", &mut recipe.face_template, &layouts);
             } else {
                 choose(
                     ui,
+                    flow,
                     "Eyes",
                     &mut recipe.classic.face,
                     &[
@@ -544,6 +730,7 @@ fn face_controls(ui: &mut Ui, design: &mut Design) {
         let face = &mut design.face;
         choose(
             ui,
+            flow,
             "Eye shape",
             &mut face.eye_shape,
             &[
@@ -552,13 +739,18 @@ fn face_controls(ui: &mut Ui, design: &mut Design) {
                 (EyeShape::SoftSquare, "Soft square"),
             ],
         );
-        slider(ui, "Eye size", &mut face.eye_size, 1, 2);
-        slider(ui, "Eye spacing", &mut face.eye_spacing, 4, 7);
-        ui.label("Eye height");
-        ui.add(egui::Slider::new(&mut face.vertical_offset, -1..=1));
-        ui.end_row();
+        flow.together(ui, 3);
+        slider(ui, flow, "Eye size", &mut face.eye_size, 1, 2);
+        slider(ui, flow, "Eye spacing", &mut face.eye_spacing, 4, 7);
+        ui.vertical(|ui| {
+            ui.label("Eye height");
+            ui.add(egui::Slider::new(&mut face.vertical_offset, -1..=1));
+        });
+        flow.cell(ui);
+        flow.together(ui, 2);
         choose(
             ui,
+            flow,
             "Pupils",
             &mut face.pupil_style,
             &[
@@ -569,6 +761,7 @@ fn face_controls(ui: &mut Ui, design: &mut Design) {
         );
         choose(
             ui,
+            flow,
             "Shine",
             &mut face.highlight_style,
             &[
@@ -577,8 +770,10 @@ fn face_controls(ui: &mut Ui, design: &mut Design) {
                 (HighlightStyle::Diagonal, "Slanted"),
             ],
         );
+        flow.together(ui, 3);
         choose(
             ui,
+            flow,
             "Brows",
             &mut face.brow_style,
             &[
@@ -589,6 +784,7 @@ fn face_controls(ui: &mut Ui, design: &mut Design) {
         );
         choose(
             ui,
+            flow,
             "Mouth",
             &mut face.mouth_style,
             &[
@@ -600,6 +796,7 @@ fn face_controls(ui: &mut Ui, design: &mut Design) {
         );
         choose(
             ui,
+            flow,
             "Cheeks",
             &mut face.cheek_style,
             &[

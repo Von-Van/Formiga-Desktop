@@ -4534,8 +4534,19 @@ only its face. A part a body cannot carry (`Anatomy::fits`) is shown but not off
 
 The working copy and a preview of it — standing facing the screen, side-on, turned away, and
 waving — are made only once a companion is chosen, drawn again only when the copy changes, and let
-go of as soon as another page is shown or the notebook lets go of its images. "Keep this look" and
-"Put back" sit under the preview, above the choices. "Keep this look" sends
+go of as soon as another page is shown or the notebook lets go of its images. While the section is
+open with a companion chosen, the preview, its name, "Keep this look" and "Put back" are pinned in
+view outside the page's `ScrollArea` (`RestyleState::pinned`, drawn by `draw_settings` before the
+page scrolls), so every change shows on the companion as it is made: in a column beside the choices
+where the page is wide enough (`SIDE_PANE` and `CHOICES_MIN`, scaled with the text), the four views
+two by two; otherwise in a band above them, two by two with the buttons beside it where there is
+room and in a row where there is not. Every picture stays at a whole number of points to the pixel.
+The choices themselves go one to three to a row as the width and the text size allow
+(`restyle::per_row`), each its label over its control, with related choices kept together on a row
+(ears and their size, the tail and the odd tail, the eyes' size, spacing and height); a colour and
+its swatches take a row of their own. `the_restyled_companion_stays_in_view_while_its_choices_scroll`
+scrolls down to the face at 940 and 760 points wide, in both themes and at 100% and 150% text, and
+holds the preview where it was and inside the window at every step. "Keep this look" sends
 `SettingsOutcome::restyle`, and `restyle::keep_look` refuses a design `Design::validate` does not
 pass, and otherwise gives it to the companion with the Farm contract's `apply_design`, which changes
 its look and nothing else, inside `World::edit` as `ColonyEdit::Restyled`. `World::edit` keeps an
