@@ -539,10 +539,18 @@ fn earmuffs(l: &mut Layers, ink: TrinketInk, figure: Figure) {
     let strap = Tones::of(materials::DYE, ink);
     let half = figure.head_half.clamp(4, 10);
     let (cx, top) = (figure.crown.x, figure.crown.y);
-    for x in cx - half + 1..=cx + half - 1 {
-        let t = (x - cx) as f32 / half as f32;
-        let lift = ((1.0 - t * t) * 2.0).round() as i32;
-        l.bare.set(x, top - lift, strap.shadow);
+    if l.view == View::Side {
+        // Side-on the band runs over the crown from front to back, down to the one puff.
+        for x in cx - 3..=cx + 1 {
+            l.bare.set(x, top - 1, strap.shadow);
+        }
+        l.bare.set(cx - 1, top, strap.shadow);
+    } else {
+        for x in cx - half + 1..=cx + half - 1 {
+            let t = (x - cx) as f32 / half as f32;
+            let lift = ((1.0 - t * t) * 2.0).round() as i32;
+            l.bare.set(x, top - lift, strap.shadow);
+        }
     }
     // Side-on, one puff over the near ear in the middle of the side of the head, the band over
     // the top to it.

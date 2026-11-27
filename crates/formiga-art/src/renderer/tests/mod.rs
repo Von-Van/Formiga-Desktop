@@ -12,6 +12,7 @@ mod frames;
 mod identity;
 mod liveliness;
 mod poses;
+mod turned_wear;
 
 fn genome(family: BodyFamily) -> AppearanceGenome {
     AppearanceGenome {
