@@ -6,7 +6,7 @@ mod turned;
 pub(super) use turned::{
     TURNED_FACE, climbing_face, clinging_body, clings, turned_body, turned_clip, turned_footfall,
 };
-pub use turned::{TURNED_STRIDE_FRAMES, View, can_turn};
+pub use turned::{TURNED_STRIDE_FRAMES, View, can_turn, walks_turned};
 
 /// The largest a body is drawn, against the average: a companion of the greatest stature.
 const MAX_SIZE: f32 = formiga_core::STATURE_MAX as f32 / 100.0 + 0.01;
@@ -241,15 +241,16 @@ fn draw_parts(
             }
         }
     }
-    if d.details.horns > 0 && headed {
+    if (1..=3).contains(&d.details.horns) && headed {
         // Inside the ears, so the two never cover one another, and in the belly's cream where
         // there is one.
-        let reach = (ear_span - 4).max(2);
-        let shade = if d.details.belly > 0 {
-            crate::palette::detail_color(&d, d.details.belly_color)
+        // Antlers branch outward, so they stand further apart than horns, over the ears.
+        let reach = if d.details.horns == 3 {
+            (ear_span - 1).max(3)
         } else {
-            p.highlight
+            (ear_span - 4).max(2)
         };
+        let shade = horn_shade(d, p);
         for side in [-1, 1] {
             horn(
                 c,
@@ -267,6 +268,7 @@ fn draw_parts(
     for side in [-1, 1] {
         if k.crown == 0 && headed {
             ear_at(c, d, p, pose, ear_cx, ear_span, ear_top, ear, side);
+            ear_tuft(c, d, p, ear_cx, ear_span, ear_top, ear, side);
         }
     }
     let limbs = limbs(clip, frame, body, d.body);
@@ -314,7 +316,7 @@ fn draw_parts(
             }
             _ => {}
         }
-        if d.details.belly > 0 {
+        if d.details.belly == 1 {
             let belly = crate::palette::detail_color(&d, d.details.belly_color);
             if long {
                 // Along the underside, toward the chest.
@@ -394,6 +396,11 @@ fn draw_parts(
             }
         }
     }
+    // A ruff goes round the neck under the head, which is drawn over the top of it.
+    if d.details.belly == 2 && headed && !blob {
+        let dx = if long { -1 } else { 0 };
+        ruff(c, d, p, hx + dx, hy + head - 2, head - 1, 1);
+    }
     if !blob && headed {
         if k.coat > 0 {
             lit_oval(c, p, hx, hy, head, head - 1, p.coat);
@@ -464,6 +471,11 @@ fn tail_behind(
         // its end, in the coat's shade with only the tip in the accent. Held up from the
         // shoulder at the angle of a raised arm, in the accent a paw is tipped with, it read
         // as a paw waving all day. Its root starts inside the body, which covers it.
+        2 | 3 if d.details.tip == 4 => {
+            let tip = crate::palette::detail_color(&d, d.details.tip_color);
+            let long = d.body == BodyPlan::Long;
+            plume(c, p, tip, tx, y, ry, pose.tail_sway.clamp(-1, 1), long);
+        }
         2 | 3 => {
             let root = PixelPoint {
                 x: tx + 2,
@@ -476,8 +488,12 @@ fn tail_behind(
             if d.details.tip > 0 {
                 let tip = crate::palette::detail_color(&d, d.details.tip_color);
                 // A bobble is a pixel rounder than a flame, so it keeps a pixel further in
-                // from the edge of the frame.
-                let end = (tx - 6).max(if d.details.tip == 2 { 5 } else { 4 });
+                // from the edge of the frame, and a brush, longer, further still.
+                let end = (tx - 6).max(match d.details.tip {
+                    2 => 5,
+                    3 => 6,
+                    _ => 4,
+                });
                 tail_tip(c, p, d.details.tip, tip, end, ty);
             } else if d.tail == 3 {
                 oval(c, p, (tx - 6).max(4), ty, 2, 2, p.accent);
@@ -582,6 +598,10 @@ fn wing_nub(c: &mut Canvas, p: Palette, style: u8, root: PixelPoint, side: i32, 
 /// longer horn swept back and out to `side`. Horns are drawn pale, the way horn reads against a
 /// coat of any colour.
 fn horn(c: &mut Canvas, p: Palette, shade: Rgba, style: u8, root: PixelPoint, side: i32) {
+    if style == 3 {
+        antler(c, p, shade, root, side);
+        return;
+    }
     let rows = if style == 2 { 6 } else { 4 };
     for row in 0..=rows {
         // Widest at the root, a point at the tip; a swept horn leans out as it rises.
@@ -607,8 +627,161 @@ fn horn(c: &mut Canvas, p: Palette, shade: Rgba, style: u8, root: PixelPoint, si
     );
 }
 
-/// The tip of a tapering tail: a flame flickering up from it, or a round bobble.
+/// What a horn is drawn in: the belly's cream where there is one, and otherwise the pale of the
+/// coat's highlight.
+fn horn_shade(d: CreatureDesign, p: Palette) -> Rgba {
+    if d.details.belly > 0 {
+        crate::palette::detail_color(&d, d.details.belly_color)
+    } else {
+        p.highlight
+    }
+}
+
+/// A little antler rooted under the head: a beam rising and leaning out to `side`, with one tine
+/// forking up and off it toward the outside, every outline down before any
+/// fill so the two read as one branch.
+fn antler(c: &mut Canvas, p: Palette, shade: Rgba, root: PixelPoint, side: i32) {
+    let at = |dx: i32, dy: i32| (root.x + side * dx, root.y + dy);
+    let segments = [(at(0, 0), at(1, -6)), (at(1, -3), at(4, -5))];
+    for ((x0, y0), (x1, y1)) in segments {
+        c.line(x0, y0, x1, y1, 3, p.outline);
+    }
+    for ((x0, y0), (x1, y1)) in segments {
+        c.line(x0, y0, x1, y1, 1, shade);
+    }
+}
+
+/// The tip of an ear [`ear_at`] drew at column `ex`, for an ear that comes to one.
+fn ear_tip(d: CreatureDesign, ex: i32, ear_top: i32, ear: i32) -> Option<PixelPoint> {
+    match d.ears {
+        EarStyle::Pointed | EarStyle::Tuft => Some(PixelPoint {
+            x: ex,
+            y: ear_top - ear,
+        }),
+        EarStyle::Long => Some(PixelPoint {
+            x: ex,
+            y: ear_top - ear / 2 - ear.min(6) - 1,
+        }),
+        _ => None,
+    }
+}
+
+/// A dark tuft of fur standing up from the tip of each ear that comes to one, three pixels tall
+/// and leaning a little out, the way a lynx's does. Only a recipe with ear tufts has one.
+#[allow(clippy::too_many_arguments)]
+fn ear_tuft(
+    c: &mut Canvas,
+    d: CreatureDesign,
+    p: Palette,
+    ear_cx: i32,
+    ear_span: i32,
+    ear_top: i32,
+    ear: i32,
+    side: i32,
+) {
+    if d.details.horns != 4 {
+        return;
+    }
+    let Some(tip) = ear_tip(d, ear_cx + side * ear_span, ear_top, ear) else {
+        return;
+    };
+    // Shorter on an ear already reaching the top of its frame, which nothing may touch.
+    for (dx, up) in [(0, 1), (0, 2), (side, 3)] {
+        if tip.y - up >= 1 {
+            c.set(tip.x + dx, tip.y - up, p.outline);
+        }
+    }
+}
+
+/// A fluffy ruff round the neck in the belly colour, centred on `x` with its middle row at `y`
+/// and `half` either side: a soft band whose lower edge is scalloped into tufts. `way` is 1 as
+/// it faces the screen and side-on, -1 from behind, where its tufts point the same way down.
+#[allow(clippy::too_many_arguments)]
+fn ruff(c: &mut Canvas, d: CreatureDesign, p: Palette, x: i32, y: i32, half: i32, way: i32) {
+    let fur = crate::palette::detail_color(&d, d.details.belly_color);
+    let half = half.max(3);
+    let tufts: Vec<i32> = (-half + 1..=half - 1).step_by(3).collect();
+    c.fill_ellipse(x, y, half + 1, 3, p.outline);
+    for &dx in &tufts {
+        c.fill_circle(x + dx, y + 2, 2, p.outline);
+    }
+    c.fill_ellipse(x, y, half, 2, fur);
+    for &dx in &tufts {
+        c.fill_circle(x + dx, y + 2, 1, fur);
+    }
+    // A shaded crease between the tufts, and the light along the top on the lit side.
+    let shade = mix_toward(fur, p.shadow);
+    for pair in tufts.windows(2) {
+        c.set(x + (pair[0] + pair[1]) / 2, y + 2, shade);
+    }
+    c.set(x - way * (half - 1), y - 1, lighter(fur));
+}
+
+/// `color` a third of the way to `toward`.
+fn mix_toward(color: Rgba, toward: Rgba) -> Rgba {
+    let mix = |a: u8, b: u8| ((u16::from(a) * 2 + u16::from(b)) / 3) as u8;
+    Rgba::new(
+        mix(color.r, toward.r),
+        mix(color.g, toward.g),
+        mix(color.b, toward.b),
+        color.a,
+    )
+}
+
+/// A whole tail that is a soft plume, curled up behind the back from the rump at `tx`, the body's
+/// back edge, with its end turned over in `tip`: a big oval of coat with a smaller one at its
+/// top, both outlined before either is filled so they read as one, and fur marked down its length
+/// in shade. It leans with `sway`.
+#[allow(clippy::too_many_arguments)]
+fn plume(c: &mut Canvas, p: Palette, tip: Rgba, tx: i32, y: i32, ry: i32, sway: i32, long: bool) {
+    // A four-pawed body is long already: its plume sits closer in, reaching no further out behind
+    // it than a stalk tail does, which keeps it in its frame when the body is turned upright
+    // against a wall.
+    let px = if long { tx - 1 } else { tx - 3 }.max(6);
+    let tall = (ry - 1).clamp(4, 7);
+    let (cx, cy) = (px + 1 + sway, y - tall - 1);
+    c.fill_ellipse(px, y, 5, tall + 1, p.outline);
+    c.fill_ellipse(cx, cy.max(5), 4, 4, p.outline);
+    c.fill_ellipse(px, y, 4, tall, p.coat);
+    c.fill_ellipse(px - 1, y + tall / 2, 2, (tall / 2).max(1), p.shadow);
+    c.fill_ellipse(cx, cy.max(5), 3, 3, tip);
+    c.set(cx - 1, cy.max(5) - 2, lighter(tip));
+    for row in [y - tall / 2, y, y + tall / 2 - 1] {
+        c.set(px - 2, row, p.shadow);
+        c.set(px - 3, row + 1, p.shadow);
+    }
+}
+
+/// A plume seen from behind, standing up the middle of the back from the rump at `x`, over the
+/// body: an upright oval of coat, shaded down one side and marked with fur, its curled-over end in
+/// `tip` at the top.
+fn plume_from_behind(c: &mut Canvas, p: Palette, tip: Rgba, x: i32, y: i32, ry: i32) {
+    let tall = (ry - 1).clamp(4, 7);
+    let (cx, cy) = (x, y + ry / 2 - tall);
+    c.fill_ellipse(cx, cy, 4, tall + 1, p.outline);
+    c.fill_ellipse(cx, cy - tall + 1, 3, 3, p.outline);
+    c.fill_ellipse(cx, cy, 3, tall, p.coat);
+    c.fill_ellipse(cx + 2, cy + 1, 1, (tall - 2).max(1), p.shadow);
+    c.fill_ellipse(cx, cy - tall + 1, 2, 2, tip);
+    c.set(cx - 1, cy - tall, lighter(tip));
+    for row in [cy - 1, cy + 2] {
+        c.set(cx - 1, row, p.shadow);
+    }
+}
+
+/// The tip of a tapering tail: a flame flickering up from it, a round bobble, or a fluffy brush.
 fn tail_tip(c: &mut Canvas, p: Palette, style: u8, color: Rgba, x: i32, y: i32) {
+    if style == 3 {
+        // Longer than it is tall, along the tail, with a tuft at its very end and fur marked
+        // across it.
+        c.fill_ellipse(x - 1, y, 4, 3, p.outline);
+        c.set(x - 5, y - 1, p.outline);
+        c.fill_ellipse(x - 1, y, 3, 2, color);
+        c.set(x - 4, y, color);
+        c.set(x, y - 1, lighter(color));
+        c.set(x + 1, y + 1, mix_toward(color, p.shadow));
+        return;
+    }
     if style == 2 {
         oval(c, p, x, y - 1, 3, 3, color);
         c.fill_rect(x - 1, y - 3, 2, 1, lighter(color));

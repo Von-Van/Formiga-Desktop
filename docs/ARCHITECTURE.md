@@ -373,6 +373,17 @@ walking turned wears `TURNED_FACE`, neutral with its eyes open, and does not bli
 expression until it stops. Each frame returns a `Figure` and its `hands` and `mouth` as any
 frame does, so what it wears and carries is placed against the turned body.
 
+The Echo Fox walks turned too. `walks_turned` is `can_turn` or the fox, and it decides the walk,
+run and walk away; `can_turn` alone still decides the climbs, so the fox climbs facing the screen
+as it always has and `formiga_core::climbs_turned` is unchanged. `fox::draw_turned` draws the fox's
+own picture side-on — `SIDE_HEAD` outlined all round over `SIDE_BODY`, its pointed white muzzle,
+one eye and blush, the brush out behind curling up to its white tip, the far foot in shade and the
+forepaw folded on the white bib — and from behind, the sketch's own body in its coat with the dark
+backs of its ears and the brush standing up the middle of its back. It is moved by the same stride
+every turned body is: feet forward and back or up in turn, the body sinking onto a planted foot,
+the head carried ahead and the ears laid back in a run, the brush a frame late. Its colours are the
+sketch's own, so it is the same fox.
+
 In the side-on walk the near foot is planted and carried back under the body for three frames
 while the far one comes forward through the air, then the other way about; the body sinks a row
 as each foot takes its weight, the near paw swings against the near foot, and the tail lifts and
@@ -1986,6 +1997,20 @@ companion's standing frame on its own, as it sits on that companion, for a page 
 beside its name. The overlay rebakes a companion's atlas only when what it wears
 changes. `cargo run -p formiga-tools -- accessory-sheet` draws every piece on every body plan.
 
+A piece follows a body turned. `draw_accessory_seen` is told which way the frame's body is turned
+— side-on or from behind for a walk, a run or a climb drawn turned, facing the screen in every
+other frame — and places the piece by `seen(figure, view)`. Facing the screen nothing changes.
+Side-on the collar is the narrower band a neck is from the side, at the front of the body under
+the face, so a bell, a shell fan, a scarf's end and a kerchief's point hang off the front of the
+chest, a pin sits on it, and earmuffs show one puff over the near ear with the band over the
+crown. From behind the body hides what is on the front of the head and the chest — a pin, the star
+and moon clips, a bell, a fan, the ends of a scarf or a cord — a bow tied at the back of the head is
+seen square on in the middle of it, a kerchief shows its knot and two ends, and a snail pack rides
+the middle of the back on a strap over each shoulder. `render_dressed_turned_frame` draws a
+standing companion turned and dressed, and `turn-sheet --wearables` every piece on every turned
+view, on bodies at three statures, an original blob, a mini and the fox; `accessory-sheet` adds a
+side-on walk, a walk away and a climb from behind to each body's poses.
+
 The wardrobe on the Your colony page, in `clubhouse/collection.rs`, pictures each choice beside its
 name as it would sit on the companion — one strip of twenty boxes cut by `render_worn_piece`, drawn
 again only when the companion changes — and shows the companion wearing whatever the pointer is
@@ -2023,7 +2048,10 @@ forelegs are; holding on to a ledge to dangle or climb is the one reach that goe
 behind the cheek, and pulling itself up onto one the other, down onto the ledge. A resting paw stays folded on the belly. The face
 is drawn in the face frame like a companion's, so blinks, gazes and expressions come from the
 same face state. Belongings and effects are still each companion's own. `formiga-tools fox-sheet`
-draws every clip and every face.
+draws every clip and every face, and `turn-sheet --fox` the fox turned. Its walk, run and walk away
+are drawn side-on and from behind like a companion's (see the turned walks under
+[Procedural identity and animation](#procedural-identity-and-animation)), which takes its atlas
+from 1,898,496 to 1,990,656 bytes, one row of cells more.
 
 A fox visiting Formiga Hill or Formiga Home is a fox there too: `TravelAppearance` carries
 `echo_fox` from travel version 5 (household version 9), set only while it is true, and
@@ -4363,6 +4391,27 @@ With it, a house's pixels are cut only when the village's look changes, and the 
 from the tick that already syncs the creatures'. While a house is open nothing is drawn for those
 inside it, and looking for Home's word on who is indoors is one file's modified time a second,
 read only when it has changed.
+
+## Restyling a companion in the studio
+
+The creature studio (`clubhouse/studio.rs`) restyles a companion who already lives here, in
+`clubhouse/restyle.rs`: its body plan among the five companion plans and its proportions; its ears,
+muzzle, crown, tail, odd tail, limbs, wing-nubs, what grows on its head, what is on its chest and the
+tip of its tail; its coat, accent, candy coat, marking, pattern and the colours of a belly or a tip,
+with the colony's own coats and accents beside every colour; and its face layout and features. These
+are the companion half of what Formiga Farm's inspector offers, on the same `forms::Design`, so they
+reach exactly the recipes Farm's do. Making a creature stays in Farm: the sculpted body plans and
+their parts, coats and markings, the animals to start from, rolling a design and starting over are
+not here. A sculpted form, or a look from before recipes, keeps its body and colours and can change
+only its face. A part a body cannot carry (`Anatomy::fits`) is shown but not offered.
+
+The working copy and a preview of it — standing facing the screen, side-on, turned away, and
+waving — are made only once a companion is chosen, drawn again only when the copy changes, and let
+go of as soon as another page is shown or the notebook lets go of its images. "Keep this look"
+sends `SettingsOutcome::restyle`; the app refuses a design `Design::validate` does not pass, and
+otherwise gives it to the companion with the Farm contract's `apply_design`, which changes its look
+and nothing else, inside `World::edit` as `ColonyEdit::Restyled`, so the footer can take it back. No
+journal line is written: the new-look line belongs to Formiga Farm.
 
 ## Sculpted forms (save v29)
 

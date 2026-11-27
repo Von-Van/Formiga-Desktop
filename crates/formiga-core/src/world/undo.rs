@@ -52,6 +52,8 @@ pub enum ColonyEdit {
     MovedIn { name: String },
     /// Two households swapped houses.
     SwappedHouses,
+    /// A companion's look changed in the creature studio, by name.
+    Restyled { name: String },
 }
 
 impl ColonyEdit {
@@ -78,6 +80,7 @@ impl ColonyEdit {
             Self::TookDownHouse { name } => format!("taking down {name}'s house"),
             Self::MovedIn { name } => format!("moving {name}"),
             Self::SwappedHouses => "swapping houses".to_owned(),
+            Self::Restyled { name } => format!("restyling {name}"),
         }
     }
 

@@ -1167,9 +1167,9 @@ fn turned_walks_are_drawn_for_bodies_that_turn_and_stood_in_for_the_rest() {
                 .collect();
             let plain = CreatureRenderer::render_body_frame(&genome, front, 0, false).canvas;
             let eyes = |canvas: &Canvas| canvas.pixels().iter().filter(|px| **px == eye).count();
-            if !crate::can_turn(&genome) {
-                // The fox and a sculpted form colour their own eyes, so the face is told by
-                // the frame being more than the bare walk's.
+            if !crate::walks_turned(&genome) {
+                // A sculpted form colours its own eyes, so the face is told by the frame being
+                // more than the bare walk's.
                 let drawn = |canvas: &Canvas| canvas.pixels().iter().filter(|px| px.a > 0).count();
                 assert_ne!(frames[0], plain, "{name} {turned:?}: its face is in");
                 assert!(drawn(&frames[0]) >= drawn(&plain), "{name} {turned:?}");
@@ -1182,6 +1182,10 @@ fn turned_walks_are_drawn_for_bodies_that_turn_and_stood_in_for_the_rest() {
                 frames[0], plain,
                 "{name} {turned:?} is the walk facing the screen"
             );
+            if genome.echo_fox {
+                // The fox draws its own eye, in its outline ink.
+                continue;
+            }
             if turned == Gesture::Depart {
                 assert_eq!(eyes(&frames[0]), eyes(&plain), "{name}: a back has no face");
             } else {

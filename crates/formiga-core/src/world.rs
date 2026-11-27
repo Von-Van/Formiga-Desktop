@@ -312,6 +312,17 @@ impl World {
         Self::new_from(colony_seed, now, desktop, Edition::LATEST)
     }
 
+    /// A new colony whose first companion comes from `generator`: for sample colonies and fixtures
+    /// that must go on being written exactly as they were when an older generator was the newest.
+    pub fn new_by(
+        colony_seed: [u8; 32],
+        now: OffsetDateTime,
+        desktop: &DesktopSnapshot,
+        generator: Edition,
+    ) -> Self {
+        Self::new_from(colony_seed, now, desktop, generator)
+    }
+
     /// A new colony whose companions all come from the original generator: for the scenes tests
     /// tuned on the companions it made.
     #[cfg(test)]

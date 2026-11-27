@@ -46,7 +46,7 @@ pub use renderer::{
     TOY_COLOURWAYS, TOY_KINDS, TURNED_STRIDE_FRAMES, View, can_turn, footfall_frame, held_now,
     held_tether, held_up_at, meal_eyelids, meal_face, meal_held, meal_offset, meal_pose, play_face,
     play_held, play_offset, play_pose, prop_in_motion, prop_variants, render_held_sheet,
-    shown_set_back, shows_held_by_default, village_held,
+    shown_set_back, shows_held_by_default, village_held, walks_turned,
 };
 pub use shelter::{
     PENNANT_PATCH, ResidentMark, SHELTER_SIZE, ShelterRenderer, VILLAGE_ATLAS_COLUMNS,

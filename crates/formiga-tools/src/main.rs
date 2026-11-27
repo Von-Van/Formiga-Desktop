@@ -183,6 +183,12 @@ fn main() -> Result<()> {
             "docs/assets/ambient-sheet.png",
         )),
         Some("hold-sheet") => hold_sheet(output_argument_with_default(&args, "hold-sheet.png")),
+        Some("turn-sheet") if args.iter().any(|arg| arg == "--wearables") => {
+            turn_sheet::wearables(output_argument_with_default(&args, "turn-wearables.png"))
+        }
+        Some("turn-sheet") if args.iter().any(|arg| arg == "--anatomy") => {
+            turn_sheet::anatomy(output_argument_with_default(&args, "anatomy-sheet.png"))
+        }
         Some("turn-sheet") if args.iter().any(|arg| arg == "--animate") => {
             turn_sheet::animate(output_argument_with_default(&args, "turn-walks.gif"), &args)
         }

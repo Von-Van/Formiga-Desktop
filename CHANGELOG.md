@@ -8,6 +8,20 @@ Save version 35. Travel, household and Battle contract versions are unchanged.
 
 ### Added
 
+- Five new parts a companion can be generated or restyled with: antlers, ear tufts, a ruff, a
+  brushy tail tip and a plume of a tail, each only on the bodies it fits and drawn facing the
+  screen, side-on and from behind. New companions draw them from a stream of their own
+  (`Edition::Anatomy`), so every existing seed, recipe and code resolves as before; a recipe
+  carrying them shares as a version 6 code and travels to Formiga Hill as travel version 7, and a
+  house opened in Formiga Home writes its residents in it as household version 13. Neither adds a
+  field; an older Hill or Home still hosts every companion without anatomy. Save version 34 is
+  unchanged.
+- Restyle a companion in the Creature studio: body, proportions, parts, colours, markings and face,
+  the companion half of what Formiga Farm offers, kept as one change the footer can undo. Making a
+  creature stays in Farm.
+- The Echo Fox walks and runs side-on and walks away turned, in its own picture.
+- `turn-sheet --anatomy`, `--wearables` and `--fox`, and turned clips and the fox on
+  `accessory-sheet`.
 - Who lives where is yours to arrange. A house picked out on the Home page lists who lives in it,
   each with a Move to… choice of the other houses (and, for a full-size companion living with
   somebody, a house of its own again); Swap households with… exchanges the people of two houses
@@ -29,6 +43,10 @@ Save version 35. Travel, household and Battle contract versions are unchanged.
 
 ### Changed
 
+- What a companion wears follows it turned: side-on, pieces at the front of the neck hang off the
+  front of the chest and earmuffs show one puff; from behind, what is on the front of the head or
+  chest is hidden, a bow and a snail pack are seen square on, and a kerchief shows its knot.
+- A test pins every existing companion, mini, sculpted form and the fox to the pixels 0.69.0 drew.
 - A companion lodging in another's house goes into Formiga Home with that household. A little one
   living away from its big version stays out on the desktop during a visit, and the home of a
   household whose house is down is kept aside, as it was, for when the house goes up again.

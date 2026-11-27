@@ -30,6 +30,7 @@ pub enum ProjectionError {
 const fn reader_for(edition: core::Edition) -> u32 {
     match edition {
         core::Edition::Original | core::Edition::Archetypes | core::Edition::Details => 1,
+        core::Edition::Anatomy => 7,
     }
 }
 
@@ -331,6 +332,7 @@ mod tests {
             core::Edition::Original,
             core::Edition::Archetypes,
             core::Edition::Details,
+            core::Edition::Anatomy,
         ] {
             assert!(reader_for(edition) <= crate::TRAVEL_FORMAT_VERSION);
         }

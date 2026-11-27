@@ -69,6 +69,13 @@ pub fn can_turn(genome: &AppearanceGenome) -> bool {
     }
 }
 
+/// Whether anything draws this body walking and running turned, side-on along the ground and
+/// away up a path: every body that [`can_turn`], and the Echo Fox, which walks turned but climbs
+/// facing the screen as it always has.
+pub fn walks_turned(genome: &AppearanceGenome) -> bool {
+    genome.echo_fox || can_turn(genome)
+}
+
 /// One frame of a turned walk or run, or of standing still: how far each foot is from where it
 /// stands and how high off the ground, and what the body does over them. Side-on the two feet
 /// are the near and the far one, and go forward and back; turned away they are the right and the
@@ -483,6 +490,18 @@ impl CreatureRenderer {
         facing_right: bool,
         face: FaceRenderState,
     ) -> Option<Canvas> {
+        Self::render_dressed_turned_frame(genome, None, view, step, facing_right, face)
+    }
+
+    /// [`Self::render_turned_frame`] wearing `dress`, placed on the body the way it is turned.
+    pub fn render_dressed_turned_frame(
+        genome: &AppearanceGenome,
+        dress: Option<crate::AccessoryArt>,
+        view: View,
+        step: Option<u8>,
+        facing_right: bool,
+        face: FaceRenderState,
+    ) -> Option<Canvas> {
         if view == View::Front {
             let (clip, frame) = match step {
                 Some(step) => {
@@ -491,8 +510,9 @@ impl CreatureRenderer {
                 }
                 None => (ActionKind::Idle, 0),
             };
-            return Some(Self::render_composited_frame(
+            return Some(Self::render_dressed_composited_frame(
                 genome,
+                dress,
                 clip,
                 frame,
                 facing_right,
@@ -500,11 +520,20 @@ impl CreatureRenderer {
                 face,
             ));
         }
-        if !can_turn(genome) {
+        if !walks_turned(genome) {
             return None;
         }
         let stride = Stride::of(view, step.map(|step| (Gait::Walk, step)));
-        let (mut canvas, _) = draw_turned(genome, view, stride, face);
+        let (mut canvas, figure) = draw_turned(genome, view, stride, face);
+        if let Some(dress) = dress {
+            super::super::accessories::draw_accessory_seen(
+                &mut canvas,
+                dress,
+                figure,
+                genome.logical_size,
+                view,
+            );
+        }
         if !facing_right {
             canvas.mirror_horizontal();
         }
@@ -542,8 +571,23 @@ fn draw_turned(
     stride: Stride,
     face: FaceRenderState,
 ) -> (Canvas, Figure) {
-    let palette = crate::palette_for(genome);
     let mut canvas = Canvas::new(FRAME_SIZE, FRAME_SIZE);
+    if genome.echo_fox {
+        let step = super::super::fox::Step {
+            near_x: stride.near_x,
+            near_lift: stride.near_lift,
+            far_x: stride.far_x,
+            far_lift: stride.far_lift,
+            bob: stride.bob,
+            lean: stride.lean,
+            tail: stride.tail,
+            ears_back: stride.ears_back,
+            sway: stride.sway,
+        };
+        let figure = super::super::fox::draw_turned(&mut canvas, view, step, face);
+        return (canvas, figure);
+    }
+    let palette = crate::palette_for(genome);
     let (mass, figure) = match genome.design.map(CreatureDesign::bounded) {
         Some(design) => recipe_turned(&mut canvas, design, palette, genome, view, stride),
         None => blob_turned(&mut canvas, genome, palette, view, stride),
@@ -1182,13 +1226,21 @@ fn recipe_turned(
         } else {
             shaded(c, p, |far| {
                 ear_at(far, d, p, pose, ear_cx + 2, 0, ear_top, ear, 1);
+                ear_tuft(far, d, p, ear_cx + 2, 0, ear_top, ear, 1);
             });
             if !floppy {
                 ear_at(c, d, p, pose, ear_cx - 1, 0, ear_top, ear, -1);
+                ear_tuft(c, d, p, ear_cx - 1, 0, ear_top, ear, -1);
             }
         }
-        if d.details.horns > 0 {
-            for (dx, near) in [(4, false), (1, true)] {
+        if (1..=3).contains(&d.details.horns) {
+            // Antlers branch, so the far one stands well clear of the near one.
+            let pair = if d.details.horns == 3 {
+                [(5, false), (0, true)]
+            } else {
+                [(4, false), (1, true)]
+            };
+            for (dx, near) in pair {
                 let root = PixelPoint {
                     x: ear_cx + dx,
                     y: ear_top,
@@ -1290,7 +1342,7 @@ fn recipe_turned(
             (mass.front(hy + 3) - half + i32::from(!blob), half)
         });
         trunk(c, d, p, body, 1);
-        if d.details.belly > 0 {
+        if d.details.belly == 1 {
             // Down its front.
             inside(c, p, body, |layer| {
                 layer.fill_ellipse(
@@ -1319,6 +1371,10 @@ fn recipe_turned(
             && !blob
         {
             c.fill_ellipse(mx, hy + 3, half + 1, 4, p.outline);
+        }
+        // A ruff stands out under the chin, round the front of the neck.
+        if d.details.belly == 2 && !blob {
+            ruff(c, d, p, hx - 1, hy + head - 2, head - 2, 1);
         }
         head_oval(c, hx);
         if let Some((mx, half)) = muzzle {
@@ -1379,12 +1435,19 @@ fn recipe_turned(
     } else {
         for side in [-1, 1] {
             ear_at(c, d, p, pose, ear_cx, ear_span, ear_top, ear, side);
+            ear_tuft(c, d, p, ear_cx, ear_span, ear_top, ear, side);
         }
     }
-    if d.details.horns > 0 {
+    if (1..=3).contains(&d.details.horns) {
         for side in [-1, 1] {
             let root = PixelPoint {
-                x: ear_cx + side * (ear_span - 4).max(2),
+                x: ear_cx
+                    + side
+                        * if d.details.horns == 3 {
+                            (ear_span - 1).max(3)
+                        } else {
+                            (ear_span - 4).max(2)
+                        },
                 y: ear_top,
             };
             horn(c, p, horn_shade, d.details.horns, root, side);
@@ -1491,6 +1554,10 @@ fn recipe_turned(
             paws_out(c, cling);
         }
     }
+    // A ruff shows round the back of the neck, under the head.
+    if d.details.belly == 2 && !blob {
+        ruff(c, d, p, x, hy + head - 2, head - 1, -1);
+    }
     head_oval(c, x);
     if k.coat == 0 {
         c.fill_ellipse(x + 2, top + 3, 3, 1, p.highlight);
@@ -1502,6 +1569,11 @@ fn recipe_turned(
     } else {
         match d.tail {
             1 => oval(c, p, x, y + ry - 3, 3, 3, p.highlight),
+            // A plume stands up the middle of the back, over it, its end curled over at the top.
+            2 | 3 if d.details.tip == 4 => {
+                let tip = crate::palette::detail_color(&d, d.details.tip_color);
+                plume_from_behind(c, p, tip, x - 1 + sway, y, ry);
+            }
             2 | 3 => {
                 let root = PixelPoint { x, y: y + ry - 3 };
                 let end = PixelPoint {

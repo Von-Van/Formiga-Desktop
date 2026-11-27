@@ -2,14 +2,15 @@
 //!
 //!   cargo run -p formiga-tools -- accessory-sheet [--output docs/assets/accessory-sheet.png]
 //!
-//! One row per accessory, and two rows of keepsakes worn as pins. Along each row, six bodies —
-//! the three original families, a long modular body, a blob, and a mini — each resting, walking,
-//! asleep and cheering, drawn through `BodyPresentation` with the face the desktop resolves, so
-//! the sheet shows what the overlay shows.
+//! One row per accessory, and two rows of keepsakes worn as pins. Along each row, seven bodies —
+//! the three original families, a long modular body, a blob, a mini and the Echo Fox — each
+//! resting, walking, asleep and cheering, drawn through `BodyPresentation` with the face the
+//! desktop resolves, so the sheet shows what the overlay shows; and then walking side-on, walking
+//! away and climbing with its back to the screen, so a piece is seen following a body turned.
 
 use crate::{blit_scaled_square_alpha, reference_creatures, write_png};
 use anyhow::Result;
-use formiga_art::{AccessoryArt, BodyPresentation, CreatureRenderer, FRAME_SIZE};
+use formiga_art::{AccessoryArt, BodyClip, BodyPresentation, CreatureRenderer, FRAME_SIZE};
 use formiga_core::*;
 use std::path::PathBuf;
 use time::OffsetDateTime;
@@ -22,6 +23,14 @@ const POSES: [(ActionKind, f32, Option<Gesture>); 4] = [
     (ActionKind::Traverse, 0.25, None),
     (ActionKind::Sleep, 0.0, None),
     (ActionKind::InspectScreen, 0.1, Some(Gesture::Cheer)),
+];
+
+/// The turned clips each body is drawn in after its poses: a side-on walk, a walk away, and a
+/// climb with its back to the screen. A body nothing draws turned shows what stands in for them.
+const TURNED: [(BodyClip, u8); 3] = [
+    (BodyClip::Gesture(Gesture::Stride), 1),
+    (BodyClip::Gesture(Gesture::Depart), 1),
+    (BodyClip::Gesture(Gesture::Scale), 2),
 ];
 
 pub(crate) fn subjects() -> Vec<Creature> {
@@ -48,6 +57,9 @@ pub(crate) fn subjects() -> Vec<Creature> {
     if let Some(mini) = subjects.last_mut() {
         mini.appearance.logical_size = 26;
     }
+    let mut fox = preview;
+    fox.appearance.echo_fox = true;
+    subjects.push(fox);
     subjects
 }
 
@@ -82,7 +94,8 @@ pub fn run(path: PathBuf) -> Result<()> {
     rows.extend(AccessoryKind::ALL.map(|kind| Some(Accessory::Worn(kind))));
     rows.extend([0_u8, 26, 58, 150].map(|variant| Some(Accessory::Pin(variant))));
     let cell = FRAME_SIZE * SCALE;
-    let columns = subjects.len() * POSES.len();
+    let per = POSES.len() + TURNED.len();
+    let columns = subjects.len() * per;
     let width = columns as u32 * cell;
     let height = rows.len() as u32 * cell;
     let mut pixels = vec![0_u8; (width * height * 4) as usize];
@@ -119,7 +132,33 @@ pub fn run(path: PathBuf) -> Result<()> {
                     false,
                     face,
                 );
-                let column = index * POSES.len() + pose_index;
+                let column = index * per + pose_index;
+                blit_scaled_square_alpha(
+                    &mut pixels,
+                    width,
+                    column as u32 * cell,
+                    row as u32 * cell,
+                    &canvas.rgba_bytes(),
+                    FRAME_SIZE,
+                    SCALE,
+                );
+            }
+            for (turned_index, (clip, frame)) in TURNED.into_iter().enumerate() {
+                let face = formiga_art::FaceRenderState {
+                    expression: formiga_art::ExpressionKind::Content,
+                    eyelids: formiga_art::EyelidPose::Open,
+                    gaze: formiga_art::GazeDirection::default(),
+                };
+                let canvas = CreatureRenderer::render_dressed_composited_frame(
+                    &subject.appearance,
+                    dress,
+                    clip,
+                    frame,
+                    true,
+                    false,
+                    face,
+                );
+                let column = index * per + POSES.len() + turned_index;
                 blit_scaled_square_alpha(
                     &mut pixels,
                     width,

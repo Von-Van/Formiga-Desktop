@@ -30,6 +30,8 @@ pub(crate) struct StudioState {
     pub reading_picture: bool,
     /// The village tree the large preview stands a companion beside, uploaded once.
     tree: Option<TextureHandle>,
+    /// A companion who already lives here, being restyled.
+    pub(crate) restyle: super::restyle::RestyleState,
 }
 
 impl StudioState {
@@ -38,11 +40,13 @@ impl StudioState {
             .iter()
             .map(|c| c.texture.id())
             .chain(self.tree.iter().map(|t| t.id()))
+            .chain(self.restyle.texture_ids())
     }
 
     pub(super) fn release_images(&mut self) {
         self.clear_previews();
         self.tree = None;
+        self.restyle.release();
     }
 
     pub fn clear_previews(&mut self) {
@@ -237,6 +241,7 @@ impl StudioState {
                     }
                 }
             });
+        self.restyle.show(ui, save, outcome);
         if self.candidates.is_empty() {
             ui.add_space(20.0);
             ui.label("A few new faces are waiting to be discovered.");
