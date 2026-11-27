@@ -4,8 +4,34 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+Save version 35. Travel, household and Battle contract versions are unchanged.
+
+### Added
+
+- Who lives where is yours to arrange. A house picked out on the Home page lists who lives in it,
+  each with a Move to… choice of the other houses (and, for a full-size companion living with
+  somebody, a house of its own again); Swap households with… exchanges the people of two houses
+  while the houses stay exactly where and as they are; and Take down this house… asks once,
+  saying who will move where, before the house comes down. Any house can come down but the last
+  one; when the colony house does, the next house along becomes the colony house. A household
+  whose house comes down moves in together with the house that has room for all of them, the
+  emptiest and nearest first, or else shares the emptiest. Nobody leaves the colony or forgets
+  anything — memories, bonds, belongings, what it wears and what it has done all stay — and a
+  house put up again comes back where it stood, built and decorated as it was. Every change can
+  be undone, and none is offered while a house is open in Formiga Home.
+- Visitors come back. The colony remembers up to twelve visitors it has met as themselves — the
+  name, the origin that recreates them exactly, how often and when they came, and up to three
+  residents they got on with — and now and then a wanderer it has met turns up again instead of
+  somebody new, looking, sized and behaving exactly as it did, under the name it went by. A friend
+  from last time is greeted with a heart and a bounce, gone over to first on the walk round and
+  stayed with a little longer, and everyone who met a guest waves it off as it leaves. Visitors
+  already in a colony's guest book are remembered from it.
+
 ### Changed
 
+- A companion lodging in another's house goes into Formiga Home with that household. A little one
+  living away from its big version stays out on the desktop during a visit, and the home of a
+  household whose house is down is kept aside, as it was, for when the house goes up again.
 - The way back from an open section of a notebook page, "‹ Your colony" in the turned-up corner
   at the page's foot, sits four points lower, its writing level with the page number across from
   it rather than crowding the last line of the section, at every size of text.

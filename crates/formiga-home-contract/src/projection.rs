@@ -84,8 +84,8 @@ pub fn likely_visitors(save: &core::SaveFile, keeper: core::CreatureId) -> Vec<c
         .collect()
 }
 
-/// The snapshot of the household that keeps `keeper`'s house: the keeper and every little one who
-/// lives with it, drawn exactly as a trip would carry them; the `visitors` Desktop lends for the
+/// The snapshot of the household that keeps `keeper`'s house: the keeper and everyone who lives
+/// with it — its little ones, and any companion lodging there with its own little ones — drawn exactly as a trip would carry them; the `visitors` Desktop lends for the
 /// visit, of those who keep houses of their own; who keeps every other house; everything the
 /// colony has that a house can show; and what Desktop `offers` to take back from the visit, which
 /// should be only what it applies. The same colony, house, visitors, offer, session and time
@@ -114,6 +114,15 @@ pub fn project_household(
         .iter()
         .filter(|creature| core::house_slot_for(creature, &save.creatures, order) == slot)
         .collect();
+    // A little one goes in only beside its big version, as on a trip: one who lives in this
+    // house while its big version lives in another stays out on the desktop for the visit.
+    let here: Vec<core::CreatureId> = living.iter().map(|creature| creature.id).collect();
+    living.retain(|creature| {
+        creature
+            .role
+            .parent_id()
+            .is_none_or(|parent| here.contains(&parent))
+    });
     living.sort_by_key(|creature| (creature.id != keeper, creature.colony_order, creature.id));
     let residents: Vec<_> = living
         .iter()

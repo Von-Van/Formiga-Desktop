@@ -56,9 +56,9 @@ pub use habitat::{
     colony_cottages, habitat_contains, home_anchor, home_commons, home_dwelling_position,
     home_ground_plan, home_ground_positions, home_guest_position, home_hangout_positions,
     home_lot_widths, home_object_position, home_object_positions, home_resting_position,
-    home_tree_position, house_owners, house_roof_height, house_slot_for, keep_whole_in,
-    nearest_habitat_point, resolved_colony_object_position, resolved_home_anchor, standing_span,
-    validate_habitat, village_span,
+    home_tree_position, house_keeper_of, house_owners, house_roof_height, house_slot_for,
+    keep_whole_in, keeps_house, nearest_habitat_point, resolved_colony_object_position,
+    resolved_home_anchor, standing_span, validate_habitat, village_span,
 };
 pub use habits::{
     Celebration, FLOURISH_WAIT_SECS, Flourish, HABIT_PERFORMANCE_CHANCE, Habit, HabitCue,
@@ -91,19 +91,21 @@ pub use trinkets::{
     TrinketCondition, TrinketInfo, all_trinkets, trinket_count, trinket_info, trinkets_for,
 };
 pub use visitor::{
-    FavoriteError, FavoriteVisitor, GuestBookEntry, MAX_FAVORITE_VISITORS, MAX_GUEST_BOOK_ENTRIES,
-    MAX_TOUR_STOPS, ResidentAnswer, TourInterest, TourMoment, TourStop, VisitPhase, VisitProgress,
-    Visitor, VisitorError, VisitorSource, VisitorState,
+    FavoriteError, FavoriteVisitor, GuestBookEntry, KnownVisitor, MAX_FAVORITE_VISITORS,
+    MAX_GUEST_BOOK_ENTRIES, MAX_KNOWN_VISITORS, MAX_TOUR_STOPS, MAX_VISITOR_FRIENDS,
+    ResidentAnswer, TourInterest, TourMoment, TourStop, VisitPhase, VisitProgress, Visitor,
+    VisitorError, VisitorSource, VisitorState,
 };
 pub use wonders::{
     MAX_PLACED_WONDERS, PlacedWonder, WonderKind, WonderRecord, WonderSeats, WonderView,
 };
 pub use world::{
     BubbleGrowth, CLIMB_BACK_INSET, CLIMB_FRAME_RISE, CLIMB_FRAMES_PER_SECOND, CLIMB_STROKE_FRAMES,
-    ColonyEdit, MANTLE_FRAMES_PER_SECOND, MANTLE_HAUL_FRAMES, MANTLE_PULL_FRAMES, ThoughtBubble,
-    UndoError, VILLAGE_PATH_DEPTH, WonderPose, World, climb_grip_reach, climbs_away,
-    climbs_on_all_fours, climbs_turned, ground_below, mantle_frame_drop, mantle_frame_drop_for,
-    wonder_length, wonder_motion, wonder_poses,
+    ColonyEdit, HOUSE_ROOM, HousingError, MANTLE_FRAMES_PER_SECOND, MANTLE_HAUL_FRAMES,
+    MANTLE_PULL_FRAMES, ThoughtBubble, UndoError, VILLAGE_PATH_DEPTH, WonderPose, World,
+    climb_grip_reach, climbs_away, climbs_on_all_fours, climbs_turned, ground_below,
+    house_residents, mantle_frame_drop, mantle_frame_drop_for, rehoming_host, wonder_length,
+    wonder_motion, wonder_poses,
 };
 
-pub const SAVE_VERSION: u32 = 34;
+pub const SAVE_VERSION: u32 = 35;

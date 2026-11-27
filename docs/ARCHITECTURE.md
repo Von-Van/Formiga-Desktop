@@ -2044,6 +2044,61 @@ picked out shows its keeper, anyone else who lives there, its kind, where it sta
 and its six places to decorate. Nothing is written until something is let go, and every change goes through the same
 outcomes as the rest of the page, so each can be undone.
 
+## Who lives where (save v35)
+
+Every full-size companion keeps a house of its own and a mini lives in its big version's, unless
+the person at the desk has arranged otherwise. Two saved fields on `Creature` say so:
+`lodges_with`, the companion whose house it lives in when that is not where it would live by
+itself, and `keeps_colony_house`, set on the one full-size keeper the colony house was handed to
+when that is not the first to arrive. Both are absent from the file while they say nothing, so a
+colony that never moved anyone writes exactly what it did before. `keeps_house` answers whether a
+companion keeps a house (full-size and lodging with nobody, and the first to arrive regardless if
+a damaged file left nobody keeping one); `house_keeper_of` follows a lodging, or a mini's big
+version, to the keeper of the house a companion lives in; `colony_cottage_list`, `house_owners`
+and `house_slot_for` all read them, so the overlay, the village's plans, Formiga Home's household
+and every other caller follow the arrangement without being told. A house is keyed by its keeper
+throughout — its type, depth, place in the row and decorations — so moving people never moves a
+house, and a house taken down keeps its choices for when it goes up again.
+
+`world/housing.rs` makes the changes, each through `World::edit` and so undoable like the rest of
+the Home page (`ColonyEdit::{TookDownHouse, MovedIn, SwappedHouses}`; an undo point keeps every
+companion's housing fields beside the home):
+
+- `take_down_house(keeper)` moves the whole household — the keeper, its minis and anyone lodging
+  with it — together into another house, and refuses only the village's last house. Where they go
+  is `rehoming_host`: the house with the fewest residents that has room for the whole household
+  (`HOUSE_ROOM`, a keeper and as many minis as a full-size companion can have, four), the nearest
+  along the row on a tie; when none has room, the emptiest, nearest first, shared. The keeper and
+  its lodgers lodge with that house's keeper; its minis follow it. When the colony house comes
+  down, the next house along becomes the colony house.
+- `move_into_house(resident, keeper)` moves a mini or a lodger by itself; a companion that keeps a
+  house brings its household and its house comes down, into the house chosen.
+- `give_own_house(resident)` gives a full-size lodger its house back, in the place in the row it
+  had, or at the end, with the minis who lived with it.
+- `swap_households(a, b)` exchanges the people of two houses: each house's drawn type is written
+  down for its new keeper where it would otherwise change, depths and decorations change keys, and
+  the row is written out in full with the two swapped, so every house stands where it stood.
+
+Nothing else is touched: no companion is removed, replaced or regenerated, and its memories, bonds,
+tallies, belongings, wear and progress stay as they were — a property test runs long random runs
+of all four changes and undo over several colonies and holds all of that, and that everybody lives
+in a house the village has, after every step and across a save and load. `normalize_housing`
+tidies the fields on every colony opened and after every change: a lodging names a house's keeper
+directly, or nothing when it says only what the colony would do anyway, and a lodging to somebody
+who has gone or round in a circle is dropped. A companion leaving the colony takes nobody's house
+with it: anyone lodging with it moves on by the same rule.
+
+Whatever was under way about the houses resolves as the change is made. Every plan in the village
+(a call next door, a walk to a doorstep, somebody indoors, a game) is let go, the residents' turns
+are given back, and a guest on its walk round works its tour out again; everyone then walks home
+to the house that is theirs now. While a house is open in Formiga Home its household is indoors,
+so every change is refused (`HousingError::HouseOpen`) and the page offers none. A trip carries
+none of it: housing is kept in the colony file, which a trip leaves alone.
+
+On the Home page, a house picked out lists everyone who lives in it, each with a Move to… choice of
+the other houses (and A house of its own for a full-size lodger), a Swap households with… choice,
+and Take down this house…, which asks once, naming who will move where, before it does anything.
+
 ## The ground the village stands on (save v30)
 
 The village stands on a shallow strip of grass seen a little from above, `GROUND_BAND` = 11
@@ -2250,10 +2305,11 @@ of each run of floor a wonder could stand on.
 
 A dwelling's ground footprint, in shelter pixels, is 84 for the colony house and 68 for a
 companion's — 60 and 46 until 0.61.0, 70 and 56 until 0.65.0. There is no mini's cottage: a house belongs to a full-size companion, and a mini
-lives in its big version's — `house_slot_for` answers which house any companion comes home to,
-and a mini keeps that answer if it ever grows full-size. `house_owners` lists the keepers in the
-order their houses stand: the founder in the colony house, then the cottages in the order the
-owner arranged them, then anyone never arranged in the order they arrived.
+lives in its big version's unless it was moved — `house_slot_for` answers which house any
+companion comes home to (see "Who lives where"). `house_owners` lists the keepers in the
+order their houses stand: the founder in the colony house, or whoever it was handed to, then the
+cottages in the order the owner arranged them, then anyone never arranged in the order they
+arrived.
 
 One walk lays out the whole strip: `Tree(Outward)`, `Dwelling(0)` through `Dwelling(n)` a
 `VILLAGE_GAP` apart, and `Tree(Inward)`. Neither belongings nor standing places are lots any more
@@ -2587,6 +2643,39 @@ dropping one. Inviting a favorite goes through `invite_visitor` exactly as a pas
 same checks answer and the same visitor, under the same name, comes back. The Creature studio's "Adopt a shared companion from a code" offers "Invite
 for a day" from the same explicit preview that adoption uses, disabled while somebody is visiting or
 when the code names a creature already at home.
+
+### Visitors the colony knows (save v35)
+
+`VisitorState::known` remembers up to `MAX_KNOWN_VISITORS` (twelve) visitors as individuals, each
+once: a `KnownVisitor` with the name it went by, the `CreatureOrigin` that recreates it — recipe,
+seed and generation, the same compact identity a share code carries, and nothing drawn — whether it
+wandered by or was invited, when it was first and last here, how many visits it has paid, and up to
+`MAX_VISITOR_FRIENDS` (three) residents it got on with, the ones it went over to most recently
+first. A visit is remembered when the guest book is signed, and the residents a day-long friend
+meets later in its stay are added as the houses go. A full roster forgets the visitor least often
+here, and of those the one longest away. A colony opened from before version 35 remembers each
+origin in its guest book once, by the name it last went by. At its fullest — twelve visitors, each
+with a recipe, a full-length name and three friends — the roster writes about 16 KiB of the
+pretty-printed colony file, most of it the seeds' digits; a typical visitor is a little over 1 KiB.
+A friend who leaves the colony is dropped from the roster when the colony is next opened. The
+Journal's guest book counts a remembered visitor's visits from the roster, which outlasts the book,
+and says who it gets on with under its name, for the visitor here now and every line before.
+
+A visitor is rebuilt from its origin alone (`World::remembered_visitor`), which gives the same
+look, stature, temperament, leanings, habits and behaviour seed every time — so it also tours a
+village the way it did, since a visit is authored from the guest's own seed — and a test holds a
+visitor drawn from a colony file written and read back to be pixel-identical to the one that was
+here. At a gathering a wanderer is due at, two times in five a wanderer the colony has met comes
+back instead of somebody new (`visitor-return-v1`, from the colony seed and the gathering), under
+its old name unless a resident has taken it.
+
+A returning visitor meets the colony differently. Residents it got on with answer its hello with a
+bounce under a heart, sooner and for longer, whatever their temperament makes of strangers; others
+who were here last time wave as before; and the guest itself says hello with a heart when a friend
+is among those answering. On its walk round it goes over to a friend before anyone else and stays a
+little longer. As it says goodbye, everyone it went over to, and any friend of its who is here,
+waves it off in turn, a friend under a heart; reduced motion keeps every bubble and drops every
+gesture.
 
 ## Keeping faces clear
 
@@ -4208,6 +4297,14 @@ and moving in all stay with Home until Desktop applies them.
 | Opening | The household that keeps the house, and whichever of its closest friends from other houses are free, are lent for the visit. Those going in let go of whatever they were doing and go indoors (`World::begin_house_visit`): for a Home that says who is indoors, every resident but those its home `stays_out`, and nobody else until Home says so; for an older Home, everyone lent. The colony is saved, and the snapshot and homes are written. Any failure brings them straight back out |
 | Open | Home has the house. Whoever is indoors stays there and the world leaves them alone; everyone else lives as always. For a Home that says who is indoors, Desktop looks for its latest word at most once a second, from a tick it was taking anyway, and keeps exactly those lent who are named indoors and the rest out on the desktop (`World::settle_house_visit`): residents the owner sends out from Home's cells, and friends until they come over and once they have gone home. Someone in the owner's hand when the word came goes in once put down. The tray offers to bring the household back |
 | Closing | Home has gone, or the owner asked for the household back: Home's last result is kept as `accept_result` allows, the visit's line goes in the journal if Home sent one, the files are closed, and everyone comes back out where they went in (`World::end_house_visit`) |
+
+A household is whoever lives in the house as "Who lives where" arranges it: a companion lodging
+there goes in with it as a resident. A little one living in a house its big version does not goes
+in only beside it, so it stays out on the desktop for that visit, and the snapshot never carries a
+little one alone. The homes Desktop keeps hold one for every household; a household whose house is
+down is not sent to Home, since its keeper keeps no house in the village, and its home is kept aside
+in `home/state.json` as it was, for when the house goes up again (at most `MAX_HOUSEHOLDS` in all).
+No contract format or version changed for any of this.
 
 The states are `house::VisitState`, runtime only, and only one house is ever open. While one is,
 the colony cannot leave for Formiga Hill, and a trip under way keeps every house shut; replacing

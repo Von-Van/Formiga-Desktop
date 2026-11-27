@@ -18,6 +18,7 @@ mod habits;
 mod hangouts;
 mod home;
 mod house_visits;
+mod housing;
 mod interaction;
 mod journeys;
 mod meals;

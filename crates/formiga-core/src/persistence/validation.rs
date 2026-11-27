@@ -16,8 +16,8 @@
 use crate::{
     CreatureRole, MAX_COLONY_CREATURES, MAX_COLONY_OBJECTS, MAX_FAVORITE_VISITORS, MAX_GARDENS,
     MAX_HABITAT_ZONES, MAX_HANGOUTS, MAX_HOUSE_DECORATIONS, MAX_JOURNAL_ENTRIES,
-    MAX_NAME_CHARACTERS, MAX_ORNAMENTS, MAX_PINNED_ENTRIES, MAX_RELATIONSHIPS, MAX_ROUTINES,
-    MAX_SCHEDULED_TRANSITIONS, SaveFile, TRINKET_VARIANTS,
+    MAX_KNOWN_VISITORS, MAX_NAME_CHARACTERS, MAX_ORNAMENTS, MAX_PINNED_ENTRIES, MAX_RELATIONSHIPS,
+    MAX_ROUTINES, MAX_SCHEDULED_TRANSITIONS, MAX_VISITOR_FRIENDS, SaveFile, TRINKET_VARIANTS,
 };
 use std::collections::BTreeSet;
 use time::OffsetDateTime;
@@ -101,6 +101,12 @@ impl From<SaveFile> for ValidatedSave {
         save.settings.habitat.zones.truncate(MAX_HABITAT_ZONES);
         save.visitors.normalize();
         crate::world::normalize_colony_roles(&mut save);
+        crate::world::normalize_housing(&mut save.creatures);
+        // A visitor's friends are residents still here.
+        let residents: BTreeSet<_> = save.creatures.iter().map(|creature| creature.id).collect();
+        for known in &mut save.visitors.known {
+            known.friends.retain(|friend| residents.contains(friend));
+        }
         crate::world::normalize_relationships(&mut save);
         save.objects.objects.truncate(MAX_COLONY_OBJECTS);
         save.home.normalize_village();
@@ -427,6 +433,47 @@ pub fn violations(save: &SaveFile) -> Vec<String> {
     check(
         save.visitors.favorites.len() <= MAX_FAVORITE_VISITORS,
         &|| format!("{} favourite visitors", save.visitors.favorites.len()),
+    );
+    let known = &save.visitors.known;
+    check(
+        known.len() <= MAX_KNOWN_VISITORS
+            && known.iter().enumerate().all(|(index, k)| {
+                known[..index]
+                    .iter()
+                    .all(|earlier| earlier.origin != k.origin)
+            }),
+        &|| format!("{} known visitors, or one known twice", known.len()),
+    );
+    check(
+        known.iter().all(|k| {
+            k.visits >= 1
+                && k.first_met_utc <= k.last_seen_utc
+                && k.friends.len() <= MAX_VISITOR_FRIENDS
+                && crate::validate_creature_name(&k.name).is_ok()
+        }),
+        &|| "a known visitor with no visits, a name it cannot have, or too many friends".to_owned(),
+    );
+    // Who lives where.
+    check(
+        save.creatures.iter().all(|creature| {
+            creature
+                .lodges_with
+                .is_none_or(|host| host != creature.id && ids.contains(&host))
+        }),
+        &|| "a companion lodges with itself or with somebody who is not here".to_owned(),
+    );
+    check(
+        save.creatures
+            .iter()
+            .filter(|creature| creature.keeps_colony_house)
+            .all(|creature| crate::keeps_house(creature, &save.creatures))
+            && save
+                .creatures
+                .iter()
+                .filter(|creature| creature.keeps_colony_house)
+                .count()
+                <= 1,
+        &|| "the colony house is kept by more than one, or by one who keeps no house".to_owned(),
     );
     check(
         save.trips.last.as_ref().is_none_or(trip_holds)

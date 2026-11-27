@@ -391,6 +391,20 @@ fn favorite_visitors(
 /// Who has come by the houses: whoever is here now, the favorites kept to invite again, and the
 /// last two dozen visitors before them. A line in the book carries a name, a day, and the code
 /// that recreates the visitor — the same code they would have handed over themselves.
+/// Who a visitor the colony remembers got on with, by the names they go by now: "Gets on with
+/// Poppy and Biscuit." `None` for a visitor it does not remember, or one who made no friends.
+fn friends_line(save: &SaveFile, origin: &formiga_core::CreatureOrigin) -> Option<String> {
+    let names: Vec<&str> = save
+        .visitors
+        .known(origin)?
+        .friends
+        .iter()
+        .filter_map(|id| save.creatures.iter().find(|c| c.id == *id))
+        .map(|creature| creature.name.as_str())
+        .collect();
+    (!names.is_empty()).then(|| format!("Gets on with {}.", names.join(" and ")))
+}
+
 fn guest_book(
     ui: &mut Ui,
     save: &SaveFile,
@@ -423,6 +437,9 @@ fn guest_book(
                     ordinal(u32::from(before) + 1),
                     today::ago_text(last, OffsetDateTime::now_utc(), offset)
                 ));
+            }
+            if let Some(friends) = friends_line(save, &guest.creature.origin) {
+                ui.small(friends);
             }
             ui.horizontal_wrapped(|ui| {
                 let room = save.visitors.can_stay(&save.creatures);
@@ -463,7 +480,13 @@ fn guest_book(
         {
             {
                 for entry in save.visitors.guest_book.iter().rev().take(shown) {
-                    let visits = save.visitors.visits_of(&entry.origin);
+                    // The colony's own count of a visitor it remembers outlasts the book.
+                    let visits = save
+                        .visitors
+                        .known(&entry.origin)
+                        .map_or(save.visitors.visits_of(&entry.origin), |known| {
+                            usize::from(known.visits)
+                        });
                     card(ui, |ui| {
                         ui.small(format!(
                             "{} · {}{}",
@@ -473,12 +496,15 @@ fn guest_book(
                                 VisitorSource::Wanderer => "came by the houses",
                             },
                             if visits > 1 {
-                                format!(" · {visits} visits in the book")
+                                format!(" · {visits} visits")
                             } else {
                                 String::new()
                             }
                         ));
                         ui.strong(&entry.name);
+                        if let Some(friends) = friends_line(save, &entry.origin) {
+                            ui.small(friends);
+                        }
                         ui.horizontal_wrapped(|ui| {
                             if ui.small_button("Copy code").clicked() {
                                 ui.ctx().copy_text(encode_creature_seed(entry.origin));

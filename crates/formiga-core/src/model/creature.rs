@@ -173,6 +173,16 @@ pub struct Creature {
     pub colony_order: u8,
     #[serde(default)]
     pub role: CreatureRole,
+    /// The companion whose house this one lives in, when that is not where it would live by
+    /// itself: a full-size companion who keeps no house of its own, or a mini living somewhere
+    /// other than its big version's. Absent while it lives where it always would. See
+    /// [`crate::house_slot_for`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lodges_with: Option<CreatureId>,
+    /// This full-size companion keeps the colony house, in place of the companion who arrived
+    /// first. Absent for everyone else, and for the first arrival while it keeps it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub keeps_colony_house: bool,
     #[serde(default = "default_true")]
     pub kept: bool,
     #[serde(default)]

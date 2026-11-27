@@ -36,7 +36,7 @@ use formiga_core::{
     BehaviorPreset, ColonyEdit, CursorSnapshot, DesktopRect, DesktopSnapshot, DesktopWindow,
     DisplayKey, GardenKind, HabitatPreset, HangoutKind, HomeCorner, MonitorInfo, Point,
     RoamingLeaning, RoutineSchedule, SaveFile, SaveStore, ScheduledTransition, ValidatedSave,
-    VillagePalette, World, WorldCommand, violations,
+    VillagePalette, World, WorldCommand, house_owners, violations,
 };
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -895,7 +895,49 @@ fn edit(
     desktop: &DesktopSnapshot,
 ) -> bool {
     let before = world.undoable_edits();
-    match rng.random_range(0..7) {
+    match rng.random_range(0..8) {
+        6 => {
+            // Who lives where: a house taken down, somebody moved in elsewhere or given its own
+            // house back, or two households swapped.
+            let ids: Vec<_> = world.save.creatures.iter().map(|c| c.id).collect();
+            let keepers: Vec<_> =
+                house_owners(&world.save.creatures, &world.save.home.cottage_order)
+                    .as_slice()
+                    .to_vec();
+            if ids.is_empty() || keepers.is_empty() {
+                return false;
+            }
+            let resident = ids[rng.random_range(0..ids.len())];
+            let (a, b) = (
+                keepers[rng.random_range(0..keepers.len())],
+                keepers[rng.random_range(0..keepers.len())],
+            );
+            let _ = match rng.random_range(0..4) {
+                0 => world
+                    .edit(
+                        ColonyEdit::TookDownHouse {
+                            name: String::new(),
+                        },
+                        |world| world.take_down_house(a),
+                    )
+                    .map(drop),
+                1 => world.edit(
+                    ColonyEdit::MovedIn {
+                        name: String::new(),
+                    },
+                    |world| world.move_into_house(resident, a),
+                ),
+                2 => world.edit(
+                    ColonyEdit::MovedIn {
+                        name: String::new(),
+                    },
+                    |world| world.give_own_house(resident),
+                ),
+                _ => world.edit(ColonyEdit::SwappedHouses, |world| {
+                    world.swap_households(a, b)
+                }),
+            };
+        }
         0 => {
             let kind = HangoutKind::STARTING[rng.random_range(0..3)];
             let along = rng.random_bool(0.8).then(|| rng.random_range(0.0..1.0));

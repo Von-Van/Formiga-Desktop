@@ -46,6 +46,12 @@ pub enum ColonyEdit {
     TreeKeepsakes,
     /// The keepsakes rearranged.
     RearrangedKeepsakes,
+    /// A house taken down, its household moving in elsewhere, by the name of its keeper.
+    TookDownHouse { name: String },
+    /// A companion moved into another house, or given its own again, by name.
+    MovedIn { name: String },
+    /// Two households swapped houses.
+    SwappedHouses,
 }
 
 impl ColonyEdit {
@@ -69,6 +75,9 @@ impl ColonyEdit {
             Self::Ornament(kind) => format!("changing the {}", kind.label().to_lowercase()),
             Self::TreeKeepsakes => "choosing the keepsakes in the trees".to_owned(),
             Self::RearrangedKeepsakes => "rearranging the keepsakes".to_owned(),
+            Self::TookDownHouse { name } => format!("taking down {name}'s house"),
+            Self::MovedIn { name } => format!("moving {name}"),
+            Self::SwappedHouses => "swapping houses".to_owned(),
         }
     }
 
@@ -102,6 +111,8 @@ pub(super) struct UndoPoint {
     day_book: DayBook,
     home: ColonyHome,
     objects: Vec<ColonyObject>,
+    /// Who lived in which house.
+    housing: Vec<housing::Housing>,
     /// Companions the change itself brought in, which taking it back sends away again. Anyone
     /// who arrived on their own since stays.
     added: Vec<CreatureId>,
@@ -121,6 +132,7 @@ impl World {
             day_book: self.save.day_book.clone(),
             home: self.save.home.clone(),
             objects: self.save.objects.objects.clone(),
+            housing: housing::housing_of(&self.save.creatures),
             added: Vec::new(),
         };
         let result = change(self);
@@ -132,6 +144,7 @@ impl World {
         };
         let changed = ids(&before.creatures) != ids(&self.save.creatures)
             || before.home != self.save.home
+            || before.housing != housing::housing_of(&self.save.creatures)
             || object_ids(&before.objects) != object_ids(&self.save.objects.objects);
         if changed {
             let added = self
@@ -215,6 +228,17 @@ impl World {
             }
             self.save.objects.objects = objects;
         }
+        // Everyone still here lives where they lived before the change; anyone who arrived since
+        // keeps the house it has.
+        for creature in &mut self.save.creatures {
+            if let Some((_, lodges_with, keeps_colony_house)) =
+                point.housing.iter().find(|(id, _, _)| *id == creature.id)
+            {
+                creature.lodges_with = *lodges_with;
+                creature.keeps_colony_house = *keeps_colony_house;
+            }
+        }
+        normalize_housing(&mut self.save.creatures);
         self.save.home.normalize_village();
         self.clear_runtime_plans();
         Ok(point.edit)

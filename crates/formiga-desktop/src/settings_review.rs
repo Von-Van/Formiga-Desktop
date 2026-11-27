@@ -2830,7 +2830,7 @@ fn the_guest_book_remembers_how_often_a_visitor_has_come() {
     assert!(
         h.labels
             .iter()
-            .any(|(text, _)| text.ends_with("· 2 visits in the book")),
+            .any(|(text, _)| text.ends_with("· 2 visits")),
         "{:?}",
         h.labels.iter().map(|x| &x.0).collect::<Vec<_>>()
     );
@@ -4002,4 +4002,38 @@ fn the_journal_has_pictures_taped_in() {
         h.screen = egui::vec2(940.0, 1600.0);
         h.picture().save(path.join("Journal-pictures.png")).unwrap();
     }
+}
+
+/// A house picked out on the Home page can be taken down only once that is confirmed, saying who
+/// moves where; nothing about who lives where is offered while a house is open in Formiga Home.
+#[test]
+fn a_picked_house_is_taken_down_only_once_confirmed() {
+    use crate::clubhouse::{FormigaHomeView, arrange::Picked};
+    let mut h = Harness::new(SettingsTab::Home);
+    h.screen = egui::vec2(1000.0, 3000.0);
+    let owners: Vec<CreatureId> =
+        formiga_core::house_owners(&h.save.creatures, &h.save.home.cottage_order)
+            .as_slice()
+            .to_vec();
+    assert!(owners.len() >= 2, "the review colony has cottages");
+    let keeper = owners[1];
+    h.clubhouse.home.arrange.picked = Some(Picked::House(keeper));
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(shown(&h, "Who lives here:"));
+    let asked = h.click("Take down this house…");
+    assert_eq!(asked.take_down_house, None, "asked first");
+    h.frame(Vec::new());
+    assert!(shown(&h, "Keep it"));
+    assert_eq!(h.click("Take down house").take_down_house, Some(keeper));
+    h.clubhouse.formiga_home = FormigaHomeView {
+        installed: true,
+        open: Some(owners[0]),
+        can_open: false,
+    };
+    h.frame(Vec::new());
+    let outcome = h.click("Take down this house…");
+    assert_eq!(outcome.take_down_house, None);
+    h.frame(Vec::new());
+    assert!(!shown(&h, "Keep it"), "not while a house is open");
 }

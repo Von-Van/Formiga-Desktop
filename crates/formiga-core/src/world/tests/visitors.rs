@@ -1581,3 +1581,220 @@ fn a_guest_spends_its_visit_in_among_the_village_using_its_spots() {
         "{in_the_village:.0}s in the village and {at_the_edge:.0}s at the edge of {visiting:.0}s"
     );
 }
+
+/// Everything that makes a visitor who it is, to the eye and in how it behaves: its recipe and
+/// look, its size, its temperament and leanings, its habits and the seed its choices come from.
+fn visitor_identity(creature: &Creature) -> String {
+    format!(
+        "{} {:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?}",
+        creature.id,
+        creature.origin,
+        creature.appearance,
+        creature.display_scale_percent,
+        creature.personality,
+        creature.temperament,
+        creature.behavior_seed,
+        creature.memory.habits,
+        creature.role,
+    )
+}
+
+/// Bring a wanderer in and let it say hello, over as many gatherings as it takes. Returns the
+/// wanderer as it was while it was here, and where the clock got to.
+fn meet_a_wanderer(
+    world: &mut World,
+    mut now: OffsetDateTime,
+    desktop: &DesktopSnapshot,
+) -> (Creature, OffsetDateTime) {
+    for _ in 0..16 {
+        gather(world, now, desktop);
+        if world.save.visitors.guest.is_some() {
+            for _ in 0..(600.0 / 0.05) as i64 {
+                now += Duration::milliseconds(50);
+                world.tick(now, 0.05, desktop);
+                world.drain_events().for_each(drop);
+                if world
+                    .save
+                    .visitors
+                    .guest
+                    .as_ref()
+                    .is_some_and(|guest| guest.visit.greeted && !guest.visit.met.is_empty())
+                {
+                    break;
+                }
+            }
+            if let Some(guest) = &world.save.visitors.guest
+                && guest.visit.greeted
+            {
+                let met = guest.creature.clone();
+                // The houses go, and the wanderer signs on its way out.
+                now += Duration::minutes(1);
+                world.dismiss_home(now, false);
+                world.tick(now, 0.0, desktop);
+                return (met, now);
+            }
+        }
+        now += Duration::minutes(31);
+    }
+    panic!("no wanderer came by in sixteen gatherings");
+}
+
+/// A wanderer the colony has met is remembered as somebody: once, by name, with the residents it
+/// went over to as friends. Written and read back, it comes back of its own accord at a later
+/// gathering exactly as it was — the same look, size, temperament, habits and name — and the
+/// friend it made bounces under a heart while the rest of the colony answers as it would.
+#[test]
+fn a_wanderer_met_before_comes_back_exactly_as_it_was_after_a_relaunch() {
+    for seed in [seed_expecting_a_visitor(), [3; 32], [140; 32]] {
+        let desktop = desktop();
+        let created = datetime!(2026-05-04 9:00 UTC);
+        let mut world = colony_of_two(seed, created);
+        let now = run(&mut world, created, 30.0, &desktop);
+        let (met, mut now) = meet_a_wanderer(&mut world, now, &desktop);
+        let known = world
+            .save
+            .visitors
+            .known(&met.origin)
+            .expect("remembered")
+            .clone();
+        assert_eq!(known.name, met.name);
+        assert_eq!(known.visits, 1);
+        assert!(!known.friends.is_empty(), "it made a friend");
+        assert!(known.friends.len() <= MAX_VISITOR_FRIENDS);
+
+        let bytes = serde_json::to_vec(&world.save).unwrap();
+        let mut world = World::from_save(crate::persistence::decode(&bytes).unwrap());
+        assert_eq!(world.save.visitors.known, vec![known.clone()]);
+        let remembered = world.remembered_visitor(&met.origin, now).unwrap();
+        assert_eq!(visitor_identity(&remembered), visitor_identity(&met));
+
+        let mut came_back = None;
+        for _ in 0..80 {
+            now += Duration::minutes(31);
+            gather(&mut world, now, &desktop);
+            if let Some(guest) = &world.save.visitors.guest
+                && guest.creature.origin == met.origin
+            {
+                came_back = Some(guest.creature.clone());
+                break;
+            }
+        }
+        let back = came_back.unwrap_or_else(|| panic!("{seed:?}: the wanderer never came back"));
+        assert_eq!(visitor_identity(&back), visitor_identity(&met), "{seed:?}");
+        assert_eq!(back.name, met.name);
+
+        // Walk in and say hello: the friend answers as a friend.
+        let mut answers = Vec::new();
+        for _ in 0..(90.0 / 0.05) as i64 {
+            now += Duration::milliseconds(50);
+            world.tick(now, 0.05, &desktop);
+            world.drain_events().for_each(drop);
+            if let Some(guest) = &world.save.visitors.guest {
+                answers.extend(guest.visit.answers.iter().copied());
+                if guest.visit.greeted {
+                    assert_eq!(guest.visit.friends, known.friends);
+                }
+            }
+        }
+        let friend_answers: Vec<_> = answers
+            .iter()
+            .filter(|answer| known.friends.contains(&answer.creature_id))
+            .collect();
+        assert!(!friend_answers.is_empty(), "{seed:?}: the friend answered");
+        for answer in friend_answers {
+            assert_eq!(answer.bubble, Some(BubbleIcon::Heart), "{answer:?}");
+            assert_eq!(answer.gesture, Some(Gesture::Bop), "{answer:?}");
+        }
+    }
+}
+
+/// The roster keeps at most a dozen, each once; a full roster forgets the one least often here,
+/// and of those the one longest away; friends are the most recent first, three at most.
+#[test]
+fn the_roster_of_known_visitors_is_bounded_and_forgets_the_least_seen() {
+    let mut state = VisitorState::default();
+    let start = datetime!(2026-01-01 0:00 UTC);
+    let origin = |n: u8| CreatureOrigin {
+        design: None,
+        source_colony_seed: [n; 32],
+        source_generation: 0,
+    };
+    for n in 0..MAX_KNOWN_VISITORS as u8 {
+        let at = start + Duration::days(i64::from(n));
+        state.remember_visit("V", origin(n), VisitorSource::Wanderer, at, &[]);
+        // Everyone but the first two comes twice.
+        if n >= 2 {
+            state.remember_visit("V", origin(n), VisitorSource::Wanderer, at, &[]);
+        }
+    }
+    state.remember_visit(
+        "V",
+        origin(1),
+        VisitorSource::Wanderer,
+        start + Duration::days(40),
+        &[1, 2],
+    );
+    state.remember_visit(
+        "New",
+        origin(99),
+        VisitorSource::Wanderer,
+        start + Duration::days(50),
+        &[],
+    );
+    assert_eq!(state.known.len(), MAX_KNOWN_VISITORS);
+    assert!(state.known(&origin(0)).is_none(), "seen once, longest ago");
+    assert!(state.known(&origin(1)).is_some());
+    state.remember_friends(&origin(1), &[3, 4, 1]);
+    assert_eq!(state.known(&origin(1)).unwrap().friends, [3, 4, 1]);
+    // The serialized roster is small: a dozen with recipes and three friends each.
+    for known in &mut state.known {
+        known.origin.design = Some(CreatureDesign::generated(
+            known.origin.source_colony_seed,
+            0,
+            None,
+        ));
+        known.friends = vec![u64::MAX, u64::MAX - 1, u64::MAX - 2];
+        known.name = "W".repeat(MAX_NAME_CHARACTERS);
+    }
+    let bytes = serde_json::to_vec_pretty(&state.known).unwrap().len();
+    eprintln!("a full roster of known visitors writes {bytes} bytes");
+    assert!(bytes < 24 * 1024, "{bytes}");
+}
+
+/// Residents who met a guest wave it off as it says goodbye — a friend from an earlier visit
+/// with a heart — and under reduced motion only the bubbles are said.
+#[test]
+fn the_residents_who_met_a_guest_wave_it_goodbye() {
+    for reduce_motion in [false, true] {
+        let desktop = desktop();
+        let created = datetime!(2026-05-04 9:00 UTC);
+        let mut world = colony_of_two(seed_expecting_a_visitor(), created);
+        world.save.settings.reduce_motion = reduce_motion;
+        let now = run(&mut world, created, 30.0, &desktop);
+        gather(&mut world, now, &desktop);
+        assert!(world.save.visitors.guest.is_some());
+        let mut farewells = Vec::new();
+        let mut met = Vec::new();
+        for step in 1..=((900.0 / 0.05) as i64) {
+            world.tick(now + Duration::milliseconds(step * 50), 0.05, &desktop);
+            world.drain_events().for_each(drop);
+            let Some(guest) = &world.save.visitors.guest else {
+                break;
+            };
+            if guest.visit.phase == VisitPhase::Farewell && farewells.is_empty() {
+                farewells = guest.visit.farewells.clone();
+                met = guest.visit.met.clone();
+            }
+        }
+        if !reduce_motion {
+            assert!(!met.is_empty(), "the guest went over to somebody");
+        }
+        for id in &met {
+            let wave = farewells
+                .iter()
+                .find(|answer| answer.creature_id == *id)
+                .unwrap_or_else(|| panic!("{id} waved: {farewells:?}"));
+            assert_eq!(wave.gesture.is_some(), !reduce_motion);
+        }
+    }
+}
