@@ -500,6 +500,7 @@ impl FormigaApp {
             });
             *changed = true;
         }
+        Self::edit_housing(world, outcome, changed, notice);
         if let Some((keeper, style)) = outcome.house_style {
             world.edit(ColonyEdit::HouseType, |world| {
                 world.save.home.set_house_style(keeper, style);
@@ -517,6 +518,81 @@ impl FormigaApp {
                 world.save.home.palette = palette;
             });
             *changed = true;
+        }
+    }
+
+    /// A house taken down, a companion moved into another house or given its own again, and two
+    /// households swapped: each one undoable change, said in its own words, or why it could not
+    /// be made.
+    fn edit_housing(
+        world: &mut formiga_core::World,
+        outcome: &SettingsOutcome,
+        changed: &mut bool,
+        notice: &mut Option<String>,
+    ) {
+        let name = |world: &formiga_core::World, id: CreatureId| {
+            world
+                .save
+                .creatures
+                .iter()
+                .find(|creature| creature.id == id)
+                .map_or_else(String::new, |creature| creature.name.clone())
+        };
+        let mut said = |result: Result<String, formiga_core::HousingError>| match result {
+            Ok(message) => {
+                *changed = true;
+                *notice = Some(message);
+            }
+            Err(error) => *notice = Some(format!("Could not move house: {error}.")),
+        };
+        if let Some(keeper) = outcome.take_down_house {
+            let keeper_name = name(world, keeper);
+            let result = world.edit(
+                ColonyEdit::TookDownHouse {
+                    name: keeper_name.clone(),
+                },
+                |world| world.take_down_house(keeper),
+            );
+            said(result.map(|host| {
+                format!(
+                    "Took down {keeper_name}'s house; they live with {} now",
+                    name(world, host)
+                )
+            }));
+        }
+        if let Some((resident, host)) = outcome.move_into_house {
+            let resident_name = name(world, resident);
+            let result = world.edit(
+                ColonyEdit::MovedIn {
+                    name: resident_name.clone(),
+                },
+                |world| {
+                    if resident == host {
+                        world.give_own_house(resident)
+                    } else {
+                        world.move_into_house(resident, host)
+                    }
+                },
+            );
+            said(result.map(|()| {
+                if resident == host {
+                    format!("{resident_name} has a house of their own again")
+                } else {
+                    format!("{resident_name} moved in with {}", name(world, host))
+                }
+            }));
+        }
+        if let Some((a, b)) = outcome.swap_households {
+            let result = world.edit(ColonyEdit::SwappedHouses, |world| {
+                world.swap_households(a, b)
+            });
+            said(result.map(|()| {
+                format!(
+                    "{}'s and {}'s households swapped houses",
+                    name(world, a),
+                    name(world, b)
+                )
+            }));
         }
     }
 

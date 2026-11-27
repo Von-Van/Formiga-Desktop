@@ -49,6 +49,13 @@ pub struct SettingsOutcome {
     pub set_hangout: Option<(formiga_core::HangoutKind, Option<f32>)>,
     /// The cottages in a new order, as the companions who keep them.
     pub cottage_order: Option<Vec<CreatureId>>,
+    /// Take down the house this companion keeps; its household moves in elsewhere.
+    pub take_down_house: Option<CreatureId>,
+    /// Move a companion into the house another keeps, or with the same companion twice, give it
+    /// a house of its own again.
+    pub move_into_house: Option<(CreatureId, CreatureId)>,
+    /// Swap the households of the houses these two keep.
+    pub swap_households: Option<(CreatureId, CreatureId)>,
     /// Open the house this companion keeps in Formiga Home.
     pub open_house: Option<CreatureId>,
     /// Bring the household of the house open in Formiga Home back out.
