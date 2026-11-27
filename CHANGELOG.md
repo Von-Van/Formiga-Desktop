@@ -2,6 +2,29 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Added
+
+- Five new parts a companion can be generated or restyled with: antlers, ear tufts, a ruff, a
+  brushy tail tip and a plume of a tail, each only on the bodies it fits and drawn facing the
+  screen, side-on and from behind. New companions draw them from a stream of their own
+  (`Edition::Anatomy`), so every existing seed, recipe and code resolves as before; a recipe
+  carrying them shares as a version 6 code and travels to Formiga Hill as travel version 7.
+- Restyle a companion in the Creature studio: body, proportions, parts, colours, markings and face,
+  the companion half of what Formiga Farm offers, kept as one change the footer can undo. Making a
+  creature stays in Farm.
+- The Echo Fox walks and runs side-on and walks away turned, in its own picture.
+- `turn-sheet --anatomy`, `--wearables` and `--fox`, and turned clips and the fox on
+  `accessory-sheet`.
+
+### Changed
+
+- What a companion wears follows it turned: side-on, pieces at the front of the neck hang off the
+  front of the chest and earmuffs show one puff; from behind, what is on the front of the head or
+  chest is hidden, a bow and a snail pack are seen square on, and a kerchief shows its knot.
+- A test pins every existing companion, mini, sculpted form and the fox to the pixels 0.69.0 drew.
+
 ## [0.69.0] - 2026-11-27
 
 The animation pass, a lived-in village and a notebook that reads as a notebook, released together
