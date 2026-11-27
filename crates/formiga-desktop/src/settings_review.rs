@@ -658,6 +658,46 @@ fn collect_labels(shape: &egui::Shape, labels: &mut Vec<(String, egui::Rect)>) {
     }
 }
 
+/// Restyling a companion in the studio: its look is loaded only once it is chosen, offered back
+/// only once it changes, and let go of as soon as another page is shown.
+#[test]
+fn studio_restyles_a_companion_and_lets_go_of_it_off_the_page() {
+    let mut h = Harness::new(SettingsTab::Studio);
+    h.screen = egui::vec2(940.0, 2200.0);
+    let before = h.artwork_bytes();
+    h.click("Restyle a companion");
+    assert_eq!(
+        h.artwork_bytes(),
+        before,
+        "nothing is drawn until a companion is chosen"
+    );
+    h.click("Choose a companion");
+    let name = h.save.creatures[0].name.clone();
+    h.click(&name);
+    h.frame(Vec::new());
+    assert!(
+        h.artwork_bytes() > before,
+        "the chosen companion is previewed"
+    );
+    assert!(
+        h.click("Keep this look").restyle.is_none(),
+        "nothing has changed yet"
+    );
+    if let Some(path) = std::env::var_os("FORMIGA_UI_REVIEW_DIR").map(std::path::PathBuf::from) {
+        std::fs::create_dir_all(&path).unwrap();
+        h.picture()
+            .save(path.join("Studio-940-cream-100-restyle.png"))
+            .unwrap();
+    }
+    h.tab = SettingsTab::Colony;
+    h.frame(Vec::new());
+    assert_eq!(
+        h.clubhouse.studio.restyle.texture_ids().count(),
+        0,
+        "the working copy goes with the page"
+    );
+}
+
 #[test]
 fn studio_clicks_preview_before_adoption_and_protect_replacement() {
     let mut h = Harness::new(SettingsTab::Studio);

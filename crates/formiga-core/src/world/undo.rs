@@ -46,6 +46,8 @@ pub enum ColonyEdit {
     TreeKeepsakes,
     /// The keepsakes rearranged.
     RearrangedKeepsakes,
+    /// A companion's look changed in the creature studio, by name.
+    Restyled { name: String },
 }
 
 impl ColonyEdit {
@@ -69,6 +71,7 @@ impl ColonyEdit {
             Self::Ornament(kind) => format!("changing the {}", kind.label().to_lowercase()),
             Self::TreeKeepsakes => "choosing the keepsakes in the trees".to_owned(),
             Self::RearrangedKeepsakes => "rearranging the keepsakes".to_owned(),
+            Self::Restyled { name } => format!("restyling {name}"),
         }
     }
 

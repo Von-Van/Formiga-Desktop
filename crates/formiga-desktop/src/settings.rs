@@ -120,6 +120,8 @@ pub struct SettingsOutcome {
     /// Four more takes on the picture the ones on show came from.
     pub request_reference_retry: bool,
     pub accept_creature_preview: Option<PreviewAcceptance>,
+    /// A companion given a new look in the creature studio.
+    pub restyle: Option<(CreatureId, formiga_core::forms::Design)>,
     /// A friend's code, asked over for a day.
     pub invite_visitor: Option<SharedCreatureSeed>,
     /// Whoever is visiting right now, asked to stay for good.
@@ -1175,6 +1177,10 @@ fn draw_settings(
             // and whatever is written on the page finds them through the grid.
             clubhouse::journal::RuleGrid { top: ui.max_rect().top(), pitch }.keep(ui.ctx());
             clubhouse.recovery.cards(ui, save_location, outcome);
+            // The restyling studio holds its working copy only while the studio is on show.
+            if *tab != SettingsTab::Studio {
+                clubhouse.studio.restyle.release();
+            }
             match tab {
                 SettingsTab::Today => clubhouse.today.show(ui, &mut clubhouse.shell, save, monitors, tab, clubhouse.reading.as_ref()),
                 SettingsTab::Colony => {
