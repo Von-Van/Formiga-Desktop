@@ -44,8 +44,8 @@ pub use bubble::BubbleIcon;
 pub use companion::*;
 pub use daybook::{DAYS_KEPT, DayBook, DayNote, DayPair, DayRecord, day_notes};
 pub use design::{
-    BODY_ARCHETYPES, BodyArchetype, BodyPlan, ClassicParts, CreatureDesign, DetailParts, EarStyle,
-    Edition, FACE_TEMPLATES, Strangeness, apply_creature_design, hsl, to_hsl,
+    Anatomy, BODY_ARCHETYPES, BodyArchetype, BodyPlan, ClassicParts, CreatureDesign, DetailParts,
+    EarStyle, Edition, FACE_TEMPLATES, Strangeness, apply_creature_design, hsl, to_hsl,
 };
 pub use habitat::{
     BELONGING_CLEARANCE, BELONGING_DEPTH, CREATURE_FRAME_WIDTH, Cottages, DWELLING_CELL,

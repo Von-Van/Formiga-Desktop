@@ -48,10 +48,11 @@ pub(crate) fn options(args: &[String]) -> Result<Options> {
         bail!("--count takes 1 to 400");
     }
     let edition = match value("--edition").as_deref() {
-        None | Some("details") => Edition::Details,
+        None | Some("anatomy") => Edition::Anatomy,
+        Some("details") => Edition::Details,
         Some("archetypes") => Edition::Archetypes,
         Some("original") => Edition::Original,
-        Some(other) => bail!("--edition is details, archetypes or original, not {other}"),
+        Some(other) => bail!("--edition is anatomy, details, archetypes or original, not {other}"),
     };
     Ok(Options {
         count,
@@ -85,6 +86,10 @@ fn entries(options: &Options) -> Vec<Entry> {
                 ),
                 Edition::Archetypes => {
                     let (design, strangeness) = CreatureDesign::drawn(seed, 0);
+                    (design, Some(strangeness))
+                }
+                Edition::Anatomy => {
+                    let (design, strangeness) = CreatureDesign::anatomical(seed, 0);
                     (design, Some(strangeness))
                 }
                 Edition::Details => {

@@ -172,11 +172,15 @@ impl ClassicParts {
 pub struct DetailParts {
     /// 0 none; 1 membrane wing-nubs; 2 feathered wing-nubs. Both in the accent colour.
     pub wings: u8,
-    /// 0 none; 1 short nubs; 2 horns swept back.
+    /// What grows on the head: 0 none; 1 short nubs; 2 horns swept back; since 0.69.1, 3 little
+    /// antlers, and 4 tufts at the tips of the ears.
     pub horns: u8,
-    /// 0 none; 1 a patch down the front in `belly_color`.
+    /// 0 none; 1 a patch down the front in `belly_color`; since 0.69.1, 2 a fluffy ruff round the
+    /// neck in that colour.
     pub belly: u8,
-    /// 0 none; 1 a flame; 2 a round bobble. Either in `tip_color`, on a tapering tail.
+    /// 0 none; 1 a flame; 2 a round bobble; since 0.69.1, 3 a fluffy brush, and 4 the whole tail
+    /// a plume curled up behind the back, its end in that colour. Each in `tip_color`, on a
+    /// tapering tail.
     pub tip: u8,
     pub belly_color: [u8; 3],
     pub tip_color: [u8; 3],
@@ -184,7 +188,13 @@ pub struct DetailParts {
 
 impl DetailParts {
     /// The largest value each part takes: wings, horns, belly, tip.
-    const LIMITS: [u8; 4] = [2, 2, 1, 2];
+    const LIMITS: [u8; 4] = [2, 4, 2, 4];
+
+    /// Whether these details carry any of the anatomy added in 0.69.1 (see [`Anatomy`]), which
+    /// makes a recipe one of [`Edition::Anatomy`].
+    pub fn has_anatomy(&self) -> bool {
+        Anatomy::ALL.into_iter().any(|part| part.is_on(self))
+    }
 
     pub fn is_none(&self) -> bool {
         *self == Self::default()
@@ -299,6 +309,177 @@ impl DetailParts {
     }
 }
 
+/// Anatomy a recipe can carry since 0.69.1, each in a place a [`DetailParts`] part already has, so
+/// a recipe carries it in the same eight bytes and every recipe before reads exactly as it did:
+/// antlers and ear tufts on the head, a ruff round the neck, and a brush or a whole plume of a
+/// tail. Not every body can wear every part: [`Anatomy::fits`] says which, and a recipe that
+/// carries a part its body cannot is bounded without it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Anatomy {
+    /// Little branched antlers between the ears.
+    Antlers,
+    /// A dark tuft at the tip of each pointed or long ear.
+    EarTufts,
+    /// A fluffy ruff round the neck, over the top of the chest.
+    Ruff,
+    /// A fluffy brush at the end of a tapering tail.
+    Brush,
+    /// The whole tail a soft plume curled up behind the back.
+    Plume,
+}
+
+impl Anatomy {
+    pub const ALL: [Self; 5] = [
+        Self::Antlers,
+        Self::EarTufts,
+        Self::Ruff,
+        Self::Brush,
+        Self::Plume,
+    ];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Antlers => "Antlers",
+            Self::EarTufts => "Ear tufts",
+            Self::Ruff => "Ruff",
+            Self::Brush => "Brushy tail tip",
+            Self::Plume => "Plume tail",
+        }
+    }
+
+    /// Whether `details` carry this part.
+    pub fn is_on(self, details: &DetailParts) -> bool {
+        match self {
+            Self::Antlers => details.horns == 3,
+            Self::EarTufts => details.horns == 4,
+            Self::Ruff => details.belly == 2,
+            Self::Brush => details.tip == 3,
+            Self::Plume => details.tip == 4,
+        }
+    }
+
+    /// Whether a body built as `design` can carry this part. A blob has no head apart from its
+    /// one mass to carry antlers on and no neck for a ruff; tufts need an ear with a tip to grow
+    /// from; a plume needs a body with a back to curl up behind, which wings take; and nothing
+    /// grows in the place of a classic crown or tail.
+    pub fn fits(self, design: &CreatureDesign) -> bool {
+        use BodyPlan as P;
+        match self {
+            Self::Antlers => design.body != P::Blob && design.classic.crown == 0,
+            Self::EarTufts => {
+                design.classic.crown == 0
+                    && matches!(
+                        design.ears,
+                        EarStyle::Pointed | EarStyle::Long | EarStyle::Tuft
+                    )
+            }
+            Self::Ruff => design.body != P::Blob,
+            Self::Brush => design.classic.tail == 0,
+            Self::Plume => {
+                design.classic.tail == 0 && matches!(design.body, P::Round | P::Upright | P::Long)
+            }
+        }
+    }
+
+    /// `design` wearing this part in `color`, in place of whatever was in its place, with the
+    /// tapering tail a brush or a plume needs; unchanged if its body cannot carry it.
+    pub fn put_on(self, mut design: CreatureDesign, color: [u8; 3]) -> CreatureDesign {
+        if !self.fits(&design) || design.archetype == 0 {
+            return design;
+        }
+        let d = &mut design.details;
+        match self {
+            Self::Antlers => d.horns = 3,
+            Self::EarTufts => d.horns = 4,
+            Self::Ruff => {
+                d.belly = 2;
+                d.belly_color = color;
+            }
+            Self::Brush | Self::Plume => {
+                d.tip = if self == Self::Brush { 3 } else { 4 };
+                d.tip_color = color;
+                if !matches!(design.tail, 2 | 3) {
+                    design.tail = 2;
+                }
+            }
+        }
+        design.bounded()
+    }
+
+    /// `design` without this part, and nothing else changed.
+    pub fn take_off(self, mut design: CreatureDesign) -> CreatureDesign {
+        if !self.is_on(&design.details) {
+            return design;
+        }
+        let d = &mut design.details;
+        match self {
+            Self::Antlers | Self::EarTufts => d.horns = 0,
+            Self::Ruff => d.belly = 0,
+            Self::Brush | Self::Plume => d.tip = 0,
+        }
+        design.bounded()
+    }
+
+    /// The anatomy of a new companion of `archetype`, drawn after everything else and only in a
+    /// place its recipe left empty: each part at a few in a hundred, leaning toward the
+    /// archetypes it suits — tufts and brushes toward critters and whelps, ruffs toward puffs,
+    /// antlers toward whelps — and only on a body that [`fits`](Self::fits) it.
+    fn generated(design: &mut CreatureDesign, archetype: BodyArchetype, rng: &mut impl Rng) {
+        use BodyArchetype as A;
+        let (antlers, tufts, ruff, brush, plume) = match archetype {
+            A::Mochi => (0.02, 0.04, 0.08, 0.03, 0.05),
+            A::Critter => (0.08, 0.18, 0.10, 0.12, 0.12),
+            A::Bean => (0.06, 0.08, 0.06, 0.04, 0.04),
+            A::Puff => (0.02, 0.08, 0.16, 0.04, 0.10),
+            A::Sprite => (0.08, 0.10, 0.05, 0.05, 0.04),
+            A::Whelp => (0.14, 0.12, 0.14, 0.14, 0.10),
+            A::Birb => (0.0, 0.06, 0.10, 0.04, 0.0),
+            A::Goober => (0.06, 0.06, 0.06, 0.06, 0.06),
+        };
+        // Cream, or a pale shade of the coat.
+        fn pale(rng: &mut impl Rng, coat: [u8; 3], lightness: f32) -> [u8; 3] {
+            let (hue, saturation, _) = to_hsl(coat);
+            if rng.random_bool(0.5) {
+                hsl(
+                    rng.random_range(36.0..52.0),
+                    rng.random_range(0.5..0.75),
+                    lightness,
+                )
+            } else {
+                hsl(hue, saturation * 0.55, lightness)
+            }
+        }
+        let head: f64 = rng.random();
+        if design.details.horns == 0 {
+            if head < antlers && Self::Antlers.fits(design) {
+                *design = Self::Antlers.put_on(*design, [0; 3]);
+            } else if head >= antlers && head < antlers + tufts && Self::EarTufts.fits(design) {
+                *design = Self::EarTufts.put_on(*design, [0; 3]);
+            }
+        }
+        let neck = chance(rng, ruff);
+        let ruff_color = pale(rng, design.coat, 0.86);
+        if design.details.belly == 0 && neck && Self::Ruff.fits(design) {
+            *design = Self::Ruff.put_on(*design, ruff_color);
+        }
+        let tail: f64 = rng.random();
+        let brush_color = pale(rng, design.coat, 0.93);
+        let (accent_hue, accent_saturation, accent_lightness) = to_hsl(design.accent);
+        let plume_color = hsl(
+            accent_hue,
+            (accent_saturation + 0.1).min(0.85),
+            (accent_lightness + 0.12).min(0.86),
+        );
+        if design.details.tip == 0 {
+            if tail < brush && Self::Brush.fits(design) {
+                *design = Self::Brush.put_on(*design, brush_color);
+            } else if tail >= brush && tail < brush + plume && Self::Plume.fits(design) {
+                *design = Self::Plume.put_on(*design, plume_color);
+            }
+        }
+    }
+}
+
 /// Coat and accent pairs from the original palettes. A new companion wearing candy colours starts
 /// from one of these, nudged a little, so it keeps their contrast without repeating them exactly.
 const CANDY: [([u8; 3], [u8; 3]); 12] = [
@@ -329,11 +510,14 @@ pub enum Edition {
     /// Since 0.63.0: the same, and then the small details of [`DetailParts`] from a stream of
     /// their own, so everything the archetypes draw is drawn exactly as before.
     Details,
+    /// Since 0.69.1: the same, and then the [`Anatomy`] from a stream of its own, so everything
+    /// the details draw is drawn exactly as before.
+    Anatomy,
 }
 
 impl Edition {
     /// What a companion made today comes from.
-    pub const LATEST: Self = Self::Details;
+    pub const LATEST: Self = Self::Anatomy;
 }
 
 /// The number of authored face layouts a recipe can wear.
@@ -724,6 +908,17 @@ impl CreatureDesign {
         if self.classic.tail > 0 || !matches!(self.tail, 2 | 3) {
             self.details.tip = 0;
         }
+        // Anatomy only on a body that can carry it. No recipe before 0.69.1 has any, so none of
+        // them changes.
+        for part in Anatomy::ALL {
+            if part.is_on(&self.details) && !part.fits(&self) {
+                match part {
+                    Anatomy::Antlers | Anatomy::EarTufts => self.details.horns = 0,
+                    Anatomy::Ruff => self.details.belly = 0,
+                    Anatomy::Brush | Anatomy::Plume => self.details.tip = 0,
+                }
+            }
+        }
         self.details = self.details.bounded();
         self
     }
@@ -732,6 +927,8 @@ impl CreatureDesign {
     pub fn edition(&self) -> Edition {
         if self.archetype == 0 {
             Edition::Original
+        } else if self.details.has_anatomy() {
+            Edition::Anatomy
         } else if self.details.is_none() {
             Edition::Archetypes
         } else {
@@ -754,12 +951,23 @@ impl CreatureDesign {
     ) -> Self {
         match (parent.map_or(generator, |parent| parent.edition()), parent) {
             (Edition::Original, _) => Self::generated_original(seed, generation, parent),
-            (Edition::Archetypes | Edition::Details, Some(parent)) => {
+            (Edition::Archetypes | Edition::Details | Edition::Anatomy, Some(parent)) => {
                 Self::mini_of(parent, seed, generation)
             }
             (Edition::Archetypes, None) => Self::drawn(seed, generation).0,
             (Edition::Details, None) => Self::detailed(seed, generation).0,
+            (Edition::Anatomy, None) => Self::anatomical(seed, generation).0,
         }
+    }
+
+    /// A new companion's recipe as [`Self::detailed`] makes it, then its [`Anatomy`] from a stream
+    /// of its own, so the recipe and its details are exactly the ones the details alone would draw.
+    pub fn anatomical(seed: [u8; 32], generation: u8) -> (Self, Strangeness) {
+        let (mut design, strangeness) = Self::detailed(seed, generation);
+        let archetype = design.body_archetype().unwrap_or(BodyArchetype::Mochi);
+        let mut rng = SeedStream::new(seed).rng("creature-anatomy-v1", u64::from(generation));
+        Anatomy::generated(&mut design, archetype, &mut rng);
+        (design, strangeness)
     }
 
     /// A new companion's recipe as the current generator makes it, and how it came to be chosen.
@@ -1772,7 +1980,10 @@ mod tests {
             let (detailed, strangeness) = CreatureDesign::detailed(seed, 0);
             let (drawn, drawn_strangeness) = CreatureDesign::drawn(seed, 0);
             assert_eq!(strangeness, drawn_strangeness);
-            assert_eq!(detailed, CreatureDesign::generated(seed, 0, None));
+            assert_eq!(
+                detailed,
+                CreatureDesign::generated_by(Edition::Details, seed, 0, None)
+            );
             assert_eq!(detailed, detailed.bounded());
             let d = detailed.details;
             assert_eq!(
@@ -1832,6 +2043,147 @@ mod tests {
                 CreatureDesign::generated_by(Edition::Archetypes, seed, 1, Some(plain))
             );
         }
+    }
+
+    /// Anatomy comes to a few companions in a hundred, each part only on a body that can carry it
+    /// and only where nothing was drawn before, and the recipe and the details under it are exactly
+    /// the ones the details alone draw, but for the tail a brush or a plume brings with it.
+    #[test]
+    fn anatomy_is_rare_fits_its_body_and_leaves_what_is_under_it_alone() {
+        let count = 4000;
+        let mut parts = [0_u32; 5];
+        let mut any = 0;
+        for index in 0..count {
+            let seed = SeedStream::new([59; 32]).bytes("anatomy", index);
+            let (anatomical, strangeness) = CreatureDesign::anatomical(seed, 0);
+            let (detailed, detailed_strangeness) = CreatureDesign::detailed(seed, 0);
+            assert_eq!(strangeness, detailed_strangeness);
+            assert_eq!(anatomical, CreatureDesign::generated(seed, 0, None));
+            assert_eq!(anatomical, anatomical.bounded());
+            let (a, d) = (anatomical.details, detailed.details);
+            if !a.has_anatomy() {
+                assert_eq!(anatomical, detailed);
+                continue;
+            }
+            any += 1;
+            assert_eq!(anatomical.edition(), Edition::Anatomy);
+            assert_eq!(detailed.edition() == Edition::Anatomy, false);
+            for (n, part) in Anatomy::ALL.into_iter().enumerate() {
+                if part.is_on(&a) {
+                    parts[n] += 1;
+                    assert!(part.fits(&anatomical), "{part:?} on {anatomical:?}");
+                }
+            }
+            // Only into a place the details left empty.
+            for (before, after) in [(d.horns, a.horns), (d.belly, a.belly), (d.tip, a.tip)] {
+                assert!(before == after || before == 0, "{d:?} -> {a:?}");
+            }
+            assert_eq!(a.wings, d.wings);
+            assert_eq!(
+                CreatureDesign {
+                    details: d,
+                    tail: detailed.tail,
+                    ..anatomical
+                },
+                detailed
+            );
+            assert_eq!(Some(a), DetailParts::from_bytes(&a.to_bytes()));
+        }
+        for (part, n) in Anatomy::ALL.into_iter().zip(parts) {
+            let share = f64::from(n) / count as f64;
+            assert!(
+                (0.01..=0.12).contains(&share),
+                "{part:?} on {:.1}% of companions",
+                share * 100.0
+            );
+        }
+        let share = f64::from(any) / count as f64;
+        assert!(
+            (0.12..=0.40).contains(&share),
+            "{:.1}% have any",
+            share * 100.0
+        );
+    }
+
+    /// Every part goes on exactly the bodies it fits, comes off again leaving nothing else
+    /// changed, and a recipe that carries one its body cannot is bounded without it.
+    #[test]
+    fn anatomy_goes_only_where_a_body_can_carry_it() {
+        let base = CreatureDesign::generated_by(Edition::Archetypes, [3; 32], 0, None);
+        for body in BodyPlan::ALL {
+            for ears in EarStyle::ALL {
+                for crown in [0, 1] {
+                    for classic_tail in [0, 2] {
+                        let mut design = base;
+                        design.body = body;
+                        design.ears = ears;
+                        design.classic.crown = crown;
+                        design.classic.tail = classic_tail;
+                        design.details = DetailParts::default();
+                        let design = design.bounded();
+                        for part in Anatomy::ALL {
+                            let worn = part.put_on(design, [200, 180, 150]);
+                            assert_eq!(part.is_on(&worn.details), part.fits(&design));
+                            assert_eq!(worn, worn.bounded());
+                            if part.fits(&design) {
+                                assert_eq!(worn.edition(), Edition::Anatomy);
+                                let off = part.take_off(worn);
+                                assert!(!off.details.has_anatomy());
+                                assert_eq!(off.body, design.body);
+                                assert_eq!(off.ears, design.ears);
+                            }
+                            // Forced onto any body, a part that does not fit is bounded away.
+                            let mut forced = design;
+                            match part {
+                                Anatomy::Antlers => forced.details.horns = 3,
+                                Anatomy::EarTufts => forced.details.horns = 4,
+                                Anatomy::Ruff => forced.details.belly = 2,
+                                Anatomy::Brush => forced.details.tip = 3,
+                                Anatomy::Plume => forced.details.tip = 4,
+                            }
+                            forced.tail = 2;
+                            let fits = part.fits(&forced);
+                            assert_eq!(part.is_on(&forced.bounded().details), fits);
+                        }
+                    }
+                }
+            }
+        }
+        // The rules say what each body is like.
+        let on = |body: BodyPlan, ears: EarStyle| {
+            let mut d = base;
+            d.body = body;
+            d.ears = ears;
+            d.classic = ClassicParts::default();
+            d
+        };
+        assert!(!Anatomy::Antlers.fits(&on(BodyPlan::Blob, EarStyle::Round)));
+        assert!(!Anatomy::Ruff.fits(&on(BodyPlan::Blob, EarStyle::Round)));
+        assert!(!Anatomy::Plume.fits(&on(BodyPlan::Winged, EarStyle::Round)));
+        assert!(!Anatomy::EarTufts.fits(&on(BodyPlan::Long, EarStyle::Floppy)));
+        assert!(Anatomy::EarTufts.fits(&on(BodyPlan::Long, EarStyle::Pointed)));
+        assert!(Anatomy::Plume.fits(&on(BodyPlan::Long, EarStyle::None)));
+    }
+
+    /// A mini keeps its parent's anatomy wherever its own recipe can carry it.
+    #[test]
+    fn a_mini_keeps_its_parents_anatomy() {
+        let mut kept = 0;
+        for index in 0..512 {
+            let seed = SeedStream::new([67; 32]).bytes("anatomy-minis", index);
+            let parent = CreatureDesign::generated(seed, 0, None);
+            if !parent.details.has_anatomy() {
+                continue;
+            }
+            let mini = CreatureDesign::generated(seed, 1, Some(parent));
+            for part in Anatomy::ALL {
+                if part.is_on(&parent.details) && part.fits(&mini) {
+                    assert!(part.is_on(&mini.details), "{part:?}");
+                    kept += 1;
+                }
+            }
+        }
+        assert!(kept > 20, "{kept}");
     }
 
     #[test]
