@@ -8,6 +8,7 @@ mod effects;
 mod face_change;
 mod faces;
 mod frames;
+mod identity;
 mod liveliness;
 mod poses;
 
