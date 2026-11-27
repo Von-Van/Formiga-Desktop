@@ -801,7 +801,7 @@ impl World {
                         creature_id: *id,
                         after: 0.2 + index as f32 * 0.45,
                         hold: VISITS.farewell_secs,
-                        gesture: Some(Gesture::Reach).filter(|_| !reduce_motion),
+                        gesture: (!reduce_motion).then_some(Gesture::Reach),
                         bubble: friend.then_some(BubbleIcon::Heart),
                     }
                 })
@@ -1252,7 +1252,7 @@ pub(super) fn reunion(answer: ResidentAnswer, reduce_motion: bool) -> ResidentAn
     ResidentAnswer {
         after: answer.after * 0.5,
         hold: answer.hold + REUNION_HOLD_SECS,
-        gesture: Some(Gesture::Bop).filter(|_| !reduce_motion),
+        gesture: (!reduce_motion).then_some(Gesture::Bop),
         bubble: Some(BubbleIcon::Heart),
         ..answer
     }
