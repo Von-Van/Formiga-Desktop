@@ -40,6 +40,21 @@ Save version 35. Travel, household and Battle contract versions are unchanged.
   from last time is greeted with a heart and a bounce, gone over to first on the walk round and
   stayed with a little longer, and everyone who met a guest waves it off as it leaves. Visitors
   already in a colony's guest book are remembered from it.
+- Magic fruit. Once every few days of a colony being out on the desktop, what a companion sits
+  down to eat turns out to be a glowing star fruit, and once it has eaten it something odd happens
+  to it for a minute or two: it floats a hand's breadth off the ground, every step is a bounce, it
+  can hardly walk for running, or little lights twinkle all round it — whichever its temperament
+  leans to — and then it wears off. Being picked up, a climb, a scene, falling asleep, going home,
+  a trip or a visit, hiding or pausing put it straight back on its feet; nothing about it is
+  saved, counted or shown anywhere but on the companion. With reduced motion it is a few lights
+  that stay where they are. `formiga-tools magic-sheet` shows each one.
+- Companions notice the desktop around them. Now and then one points at a window beside it and
+  has a good look, peers round the end of the ledge it is on, or sits on a window's top with its
+  legs over the front; a playful one gives a friend standing at the end of a low ledge a little
+  push off it, and the friend lands, has its say and is laughed with; and a friend below cheers
+  somebody up onto a window. They use poses companions already had, come every minute or two at
+  most and never the same twice running, wait for anything bigger to finish, and stay away with
+  reduced motion.
 
 ### Changed
 

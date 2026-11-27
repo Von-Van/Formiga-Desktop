@@ -234,6 +234,12 @@ impl AttentionRuntime {
 }
 
 impl AttentionRuntime {
+    /// Whether nothing is going on: no scene with anybody in it and no colony cooldown after one,
+    /// so something small and new may begin.
+    pub(super) fn settled(&self) -> bool {
+        self.plans.is_empty() && self.colony_cooldown <= 0.0
+    }
+
     /// Whether a scene has a part for this companion, owning it or not.
     pub(super) fn has_plan(&self, id: CreatureId) -> bool {
         self.plans.contains_key(&id)

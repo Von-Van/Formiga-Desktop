@@ -486,6 +486,8 @@ impl World {
         self.end_village_life();
         self.clear_beats();
         self.send_wonder_away(None);
+        self.end_all_magic();
+        self.clear_surroundings();
     }
 
     pub(super) fn register_creature_runtime(&mut self, creature: &Creature) {

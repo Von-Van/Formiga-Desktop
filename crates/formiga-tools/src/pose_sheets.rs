@@ -1241,7 +1241,7 @@ pub fn meal_sheet(path: PathBuf) -> Result<()> {
     let subjects = gesture_subjects();
     let cell = FRAME_SIZE * SCALE;
     let width = MOMENTS * cell;
-    let height = Food::ALL.len() as u32 * cell;
+    let height = Food::DRAWN.len() as u32 * cell;
     let mut pixels = vec![0_u8; (width * height * 4) as usize];
     for chunk in pixels.chunks_exact_mut(4) {
         chunk.copy_from_slice(&[236, 234, 228, 255]);
@@ -1254,7 +1254,7 @@ pub fn meal_sheet(path: PathBuf) -> Result<()> {
     creature.state.facing_right = true;
     creature.state.action = ActionKind::Eat;
     creature.state.action_duration = LENGTH;
-    for (row, food) in Food::ALL.into_iter().enumerate() {
+    for (row, food) in Food::DRAWN.into_iter().enumerate() {
         creature.appearance = subjects[row % subjects.len()].clone();
         let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(row as u64);
         let mut meal = Meal::plan(food, LENGTH, Appetite::default(), &mut rng);

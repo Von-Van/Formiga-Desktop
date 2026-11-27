@@ -66,7 +66,7 @@ fn moments() -> Vec<Moment> {
 
 /// The bodies on the sheet, as creatures rather than bare genomes, since what a creature shows
 /// depends on who it is as well as what it looks like.
-fn subjects() -> Vec<Creature> {
+pub(crate) fn subjects() -> Vec<Creature> {
     let mut subjects: Vec<Creature> = reference_creatures()
         .into_iter()
         .map(|mut creature| {

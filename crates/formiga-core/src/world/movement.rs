@@ -163,7 +163,9 @@ pub(super) fn execute_action(
         creature.state.velocity.x = 0.0;
         return;
     }
-    let speed = 24.0 + creature.personality.activity * 34.0;
+    // Zoomies from a magic fruit hurry every walk it takes; nothing else does.
+    let speed = (24.0 + creature.personality.activity * 34.0)
+        * creature.state.magic.map_or(1.0, |spell| spell.pace());
     let mut target_x = None;
     let mut target_stop_distance = 0.0_f32;
     let mut target_speed_multiplier = 1.0;

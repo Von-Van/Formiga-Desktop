@@ -249,6 +249,10 @@ pub struct CreatureState {
     /// umbrella it is riding down from a ledge. Runtime only, like `meal`.
     #[serde(skip)]
     pub play: Option<crate::play::Play>,
+    /// A magic fruit it ate a little while ago, and what it is doing to it. Runtime only, like
+    /// `presence`: a spell simply ends on a relaunch.
+    #[serde(skip)]
+    pub magic: Option<crate::magic::Spell>,
 }
 
 /// How a creature has been carrying itself lately: whether its feet are actually taking it
@@ -380,6 +384,15 @@ impl Beat {
     pub fn finished(&self) -> bool {
         self.elapsed >= self.length
     }
+
+    /// How far its legs hang down over a ledge it is sitting on, in art pixels: easing down as it
+    /// sits and back up as it gets up again.
+    pub fn ledge_sink(&self) -> f32 {
+        let ease = 0.4_f32.min(self.length * 0.5);
+        let into = (self.elapsed / ease).clamp(0.0, 1.0);
+        let out = ((self.length - self.elapsed) / ease).clamp(0.0, 1.0);
+        crate::tuning::SURROUNDINGS.ledge_sink * into.min(out)
+    }
 }
 
 /// What a beat is.
@@ -440,6 +453,18 @@ pub enum BeatKind {
     Pounce,
     /// Jumping at something: the friend a troublemaker has just pounced on.
     Startle,
+    /// Both paws thrown up for joy: a magic fruit working, a friend up a window, a friend nudged
+    /// off a ledge. This and the four below come from `world/magic.rs` and
+    /// `world/surroundings.rs`, and use poses the atlas already has.
+    Delight,
+    /// A paw out toward a window nearby, then a long look at it.
+    PointAt,
+    /// Low at the side of a window, leaning to look round its edge.
+    PeekRound,
+    /// Sat on the top of a window with its legs hanging over the front, looking down.
+    LedgeSit,
+    /// A paw put out to give a friend at the end of a ledge a little push.
+    Nudge,
 }
 
 /// Small things the village shows in someone's hands or on the ground.
@@ -497,6 +522,7 @@ impl CreatureState {
             presence,
             meal,
             play,
+            magic,
             position: _,
             velocity: _,
             facing_right: _,
@@ -518,6 +544,19 @@ impl CreatureState {
         *presence = Presence::default();
         *meal = None;
         *play = None;
+        *magic = None;
+    }
+
+    /// How far above its contact point it is drawn just now, in art pixels: floating or bouncing
+    /// under a spell, or less than nothing while it sits on a ledge with its legs hanging over the
+    /// edge. Its feet in the simulation never leave the ground it stands on.
+    pub fn drawn_lift(&self) -> f32 {
+        let magic = self.magic.map_or(0.0, |spell| spell.lift);
+        let sink = self
+            .beat
+            .filter(|beat| beat.kind == BeatKind::LedgeSit)
+            .map_or(0.0, |beat| beat.ledge_sink());
+        magic - sink
     }
 
     /// The game it is playing, where the game is what is drawn: at play, or riding down under an
@@ -545,7 +584,7 @@ impl CreatureState {
     pub fn drawn_position(&self, points_per_pixel: f32) -> Point {
         Point {
             x: self.position.x,
-            y: self.position.y - self.depth * points_per_pixel,
+            y: self.position.y - (self.depth + self.drawn_lift()) * points_per_pixel,
         }
     }
 

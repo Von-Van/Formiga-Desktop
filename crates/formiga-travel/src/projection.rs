@@ -315,6 +315,7 @@ impl Traveler {
                 presence: core::Presence::default(),
                 meal: None,
                 play: None,
+                magic: None,
             },
             leaning: core::RoamingLeaning::default(),
             accessory: self.accessory.map(|accessory| accessory.to_accessory()),
