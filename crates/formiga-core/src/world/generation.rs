@@ -340,6 +340,8 @@ fn generate_creature(
         },
         colony_order: generation,
         role: CreatureRole::Adult,
+        lodges_with: None,
+        keeps_colony_house: false,
         kept: true,
         mini_arrivals: MiniArrivalState::default(),
         name: default_creature_name(colony_seed, generation, existing_names),

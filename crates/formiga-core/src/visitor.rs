@@ -9,6 +9,13 @@ pub const MAX_GUEST_BOOK_ENTRIES: usize = 24;
 /// line in the guest book, so it outlasts the book moving on past the visit it came from.
 pub const MAX_FAVORITE_VISITORS: usize = 8;
 
+/// How many visitors the colony remembers as individuals it has met. Once it is full, the one
+/// least often here, and of those the one longest away, makes room for somebody new.
+pub const MAX_KNOWN_VISITORS: usize = 12;
+
+/// How many residents a visitor remembers getting on with, closest first.
+pub const MAX_VISITOR_FRIENDS: usize = 3;
+
 /// How many places a guest's walk around the village stops at, counting the spot it walked in
 /// to: the one place it comes back to before the goodbye, and up to five out in the village —
 /// the spots the person at the desk put down, a garden, a keepsake, a doorstep and the middle
@@ -237,6 +244,29 @@ pub struct FavoriteVisitor {
     pub origin: CreatureOrigin,
 }
 
+/// A visitor the colony has met, remembered as somebody rather than as a line in the book: the
+/// name it went by and the origin that recreates it exactly — its look, its size, its temperament
+/// and habits, and so the way it tours the village — with how often it has been, when it was first
+/// and last here, and the residents it got on with. Nothing drawn is kept: the origin is the whole
+/// of what it looks like.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct KnownVisitor {
+    pub name: String,
+    pub origin: CreatureOrigin,
+    #[serde(default)]
+    pub source: VisitorSource,
+    #[serde(with = "time::serde::rfc3339")]
+    pub first_met_utc: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
+    pub last_seen_utc: OffsetDateTime,
+    /// Visits it has paid, the one under way included once it has said hello.
+    pub visits: u16,
+    /// The residents it went over to and was answered by, most recent first, at most
+    /// [`MAX_VISITOR_FRIENDS`]. Absent while there are none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub friends: Vec<CreatureId>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct VisitorState {
@@ -249,6 +279,10 @@ pub struct VisitorState {
     /// Visitors kept to be invited again, oldest first. Never more than
     /// [`MAX_FAVORITE_VISITORS`], and never the same visitor twice.
     pub favorites: Vec<FavoriteVisitor>,
+    /// Everyone the colony has met, at most [`MAX_KNOWN_VISITORS`], each once. Absent while it
+    /// has met nobody.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub known: Vec<KnownVisitor>,
 }
 
 impl VisitorState {
@@ -364,6 +398,98 @@ impl VisitorState {
             first
         });
         self.favorites.truncate(MAX_FAVORITE_VISITORS);
+        let mut seen = Vec::with_capacity(self.known.len());
+        self.known.retain(|known| {
+            let first = !seen.contains(&known.origin);
+            seen.push(known.origin);
+            first
+        });
+        for known in &mut self.known {
+            known.visits = known.visits.max(1);
+            known.last_seen_utc = known.last_seen_utc.max(known.first_met_utc);
+            let mut friends = Vec::with_capacity(MAX_VISITOR_FRIENDS);
+            for friend in &known.friends {
+                if !friends.contains(friend) && friends.len() < MAX_VISITOR_FRIENDS {
+                    friends.push(*friend);
+                }
+            }
+            known.friends = friends;
+        }
+        while self.known.len() > MAX_KNOWN_VISITORS {
+            self.forget_one_known();
+        }
+    }
+
+    /// The visitor with this origin, if the colony has met it.
+    pub fn known(&self, origin: &CreatureOrigin) -> Option<&KnownVisitor> {
+        self.known.iter().find(|known| known.origin == *origin)
+    }
+
+    /// Whoever is visiting, as the colony remembers them, if it has met them before.
+    pub fn known_guest(&self) -> Option<&KnownVisitor> {
+        self.known(&self.guest.as_ref()?.creature.origin)
+    }
+
+    /// Remember a visit by somebody: a new face goes in, making room by forgetting the one least
+    /// often here and longest away; a familiar one counts one more visit. Its friends are the
+    /// residents it met this time, ahead of the ones it met before.
+    pub(crate) fn remember_visit(
+        &mut self,
+        name: &str,
+        origin: CreatureOrigin,
+        source: VisitorSource,
+        now: OffsetDateTime,
+        met: &[CreatureId],
+    ) {
+        if let Some(known) = self.known.iter_mut().find(|known| known.origin == origin) {
+            known.visits = known.visits.saturating_add(1);
+            known.last_seen_utc = known.last_seen_utc.max(now);
+            known.name = name.to_owned();
+            if source == VisitorSource::Invited {
+                known.source = source;
+            }
+        } else {
+            while self.known.len() >= MAX_KNOWN_VISITORS {
+                self.forget_one_known();
+            }
+            self.known.push(KnownVisitor {
+                name: name.to_owned(),
+                origin,
+                source,
+                first_met_utc: now,
+                last_seen_utc: now,
+                visits: 1,
+                friends: Vec::new(),
+            });
+        }
+        self.remember_friends(&origin, met);
+    }
+
+    /// The residents a visitor met, put ahead of those it met before, at most
+    /// [`MAX_VISITOR_FRIENDS`] of them.
+    pub(crate) fn remember_friends(&mut self, origin: &CreatureOrigin, met: &[CreatureId]) {
+        let Some(known) = self.known.iter_mut().find(|known| known.origin == *origin) else {
+            return;
+        };
+        let mut friends: Vec<CreatureId> = Vec::with_capacity(MAX_VISITOR_FRIENDS);
+        for id in met.iter().chain(known.friends.iter()) {
+            if !friends.contains(id) && friends.len() < MAX_VISITOR_FRIENDS {
+                friends.push(*id);
+            }
+        }
+        known.friends = friends;
+    }
+
+    fn forget_one_known(&mut self) {
+        if let Some(index) = self
+            .known
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, known)| (known.visits, known.last_seen_utc))
+            .map(|(index, _)| index)
+        {
+            self.known.remove(index);
+        }
     }
 
     /// Settle a colony that has just been opened. A visit is a scene, not a saved position: any

@@ -211,7 +211,36 @@ const STEPS: &[Step] = &[
     // 34: whether the village stays on the desktop between visits home, and the wonders the person
     // at the desk has put out. An older colony's village comes and goes, and it has put none out.
     Step::adds_only(33),
+    // 35: who lives in which house when it is not their own — a companion lodging with another,
+    // and the colony house handed on — and the visitors the colony remembers as individuals. An
+    // older colony lives as it always did, and remembers everyone already in its guest book.
+    Step::settle(34, |save, _| known_from_guest_book(save)),
 ];
+
+/// The visitors a colony before version 35 had met, read from its guest book: each origin once,
+/// by the name it last went by, first and last seen as the book has them, and as many visits as
+/// the book still holds. Who it got on with was never written down.
+fn known_from_guest_book(save: &mut SaveFile) {
+    let mut entries = save.visitors.guest_book.clone();
+    entries.sort_by_key(|entry| entry.visited_at_utc);
+    for entry in entries {
+        save.visitors.remember_visit(
+            &entry.name,
+            entry.origin,
+            entry.source,
+            entry.visited_at_utc,
+            &[],
+        );
+        if let Some(known) = save
+            .visitors
+            .known
+            .iter_mut()
+            .find(|known| known.origin == entry.origin)
+        {
+            known.first_met_utc = known.first_met_utc.min(entry.visited_at_utc);
+        }
+    }
+}
 
 /// The version a raw file says it is, or 0 when it names none.
 pub(super) fn version_of(value: &Value) -> u32 {

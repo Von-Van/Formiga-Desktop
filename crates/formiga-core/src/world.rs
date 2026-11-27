@@ -22,6 +22,7 @@ mod generation;
 mod habits;
 mod home;
 mod house_visits;
+mod housing;
 mod interaction;
 mod journeys;
 mod meals;
@@ -55,6 +56,8 @@ pub(crate) use colony::normalize_colony_roles;
 use colony::*;
 use generation::*;
 use habits::*;
+pub(crate) use housing::normalize_housing;
+pub use housing::{HOUSE_ROOM, HousingError, house_residents, rehoming_host};
 use interaction::*;
 use journeys::*;
 pub use journeys::{

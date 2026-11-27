@@ -854,47 +854,71 @@ impl Cottages {
     }
 }
 
+/// The companion whose house `creature` lodges in, if the one it names is somebody else who
+/// lives here. A lodging that names itself or someone who has left is no lodging at all.
+fn lodging_host<'a>(creature: &Creature, creatures: &'a [Creature]) -> Option<&'a Creature> {
+    let host = creature.lodges_with.filter(|id| *id != creature.id)?;
+    creatures.iter().find(|candidate| candidate.id == host)
+}
+
+/// A full-size companion who lodges with nobody.
+fn keeps_by_itself(creature: &Creature, creatures: &[Creature]) -> bool {
+    creature.role.is_adult() && lodging_host(creature, creatures).is_none()
+}
+
+/// The full-size companion who arrived first, who keeps the colony house unless somebody else
+/// was given it.
+fn first_arrival(creatures: &[Creature]) -> Option<&Creature> {
+    creatures
+        .iter()
+        .filter(|creature| creature.role.is_adult())
+        .min_by_key(|creature| (creature.colony_order, creature.id))
+}
+
+/// Whether this companion keeps a house: every full-size companion does unless it lodges in
+/// somebody else's, and a mini never does. A village always has at least one house, so when every
+/// full-size companion lodges somewhere — which only a damaged file can say — the first to arrive
+/// keeps one regardless.
+pub fn keeps_house(creature: &Creature, creatures: &[Creature]) -> bool {
+    if keeps_by_itself(creature, creatures) {
+        return true;
+    }
+    creature.role.is_adult()
+        && first_arrival(creatures).is_some_and(|first| first.id == creature.id)
+        && !creatures
+            .iter()
+            .any(|other| keeps_by_itself(other, creatures))
+}
+
 /// Companion houses for the colony, in stable colony order, without touching the allocator. The
-/// first full-size member shares the colony house, every later full-size arrival gets a cottage
-/// of its own, and a mini lives in its big version's, so the corner grows into a small village as
-/// the colony does.
+/// first full-size member who keeps a house shares the colony house, every later one gets a
+/// cottage of its own, and a mini — or anyone who lodges with somebody — lives in someone else's,
+/// so the corner grows into a small village as the colony does.
 ///
 /// A colony is never more than six, so the six smallest `(colony_order, id)` keys are picked out
 /// one at a time rather than by sorting the whole list into a fresh `Vec` — which this used to do
 /// twice, on a path the simulation walks for every belonging on every tick.
 pub fn colony_cottage_list(creatures: &[Creature]) -> Cottages {
     let mut cottages = Cottages::default();
-    let mut taken: Option<(u8, crate::CreatureId)> = None;
-    let mut houses = 0;
-    for _ in 0..crate::MAX_COLONY_CREATURES {
-        let Some(next) = creatures
-            .iter()
-            .filter(|creature| taken.is_none_or(|last| (creature.colony_order, creature.id) > last))
-            .min_by_key(|creature| (creature.colony_order, creature.id))
-        else {
-            break;
-        };
-        taken = Some((next.colony_order, next.id));
-        // A house belongs to whoever arrived full-size. A mini has no house of its own: it lives
-        // in the one its big version already keeps, which is why the village grows a house at a
-        // time rather than one per companion.
-        if !next.role.is_adult() {
-            continue;
-        }
-        // The founder shares the colony house; every later full-size arrival gets one of its own.
-        if houses > 0 {
-            cottages.kinds[houses - 1] = DwellingKind::Cottage;
-            cottages.len = houses;
-        }
-        houses += 1;
+    let houses = creatures
+        .iter()
+        .filter(|creature| keeps_house(creature, creatures))
+        .count()
+        .min(crate::MAX_COLONY_CREATURES);
+    // The colony house is the first of them; every other is a cottage.
+    for slot in 1..houses {
+        cottages.kinds[slot - 1] = DwellingKind::Cottage;
+        cottages.len = slot;
     }
     cottages
 }
 
-/// Who keeps each house, in the order they stand along the village: the founder in the colony
-/// house, then the cottages as the owner arranged them, and any cottage never arranged in the
-/// order its keeper arrived. Only full-size companions keep a house; a mini lives in its big
-/// version's. Held in place, like `Cottages`, since the homebound walk asks every tick.
+/// Who keeps each house, in the order they stand along the village: the keeper of the colony
+/// house — the founder, unless the colony house was handed to someone else — then the cottages
+/// as the owner arranged them, and any cottage never arranged in the order its keeper arrived.
+/// Only a full-size companion who lodges with nobody keeps a house; a mini lives in its big
+/// version's, and a lodger in its host's. Held in place, like `Cottages`, since the homebound walk
+/// asks every tick.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct HouseOwners {
     ids: [crate::CreatureId; crate::MAX_COLONY_CREATURES],
@@ -916,19 +940,27 @@ impl HouseOwners {
 
 pub fn house_owners(creatures: &[Creature], cottage_order: &[crate::CreatureId]) -> HouseOwners {
     let mut owners = HouseOwners::default();
-    let adults = || creatures.iter().filter(|creature| creature.role.is_adult());
-    let Some(founder) = adults().min_by_key(|creature| (creature.colony_order, creature.id)) else {
+    let keepers = || {
+        creatures
+            .iter()
+            .filter(|creature| keeps_house(creature, creatures))
+    };
+    let colony_house = keepers()
+        .filter(|creature| creature.keeps_colony_house)
+        .min_by_key(|creature| (creature.colony_order, creature.id))
+        .or_else(|| keepers().min_by_key(|creature| (creature.colony_order, creature.id)));
+    let Some(founder) = colony_house else {
         return owners;
     };
     owners.push(founder.id);
     for id in cottage_order {
-        if adults().any(|creature| creature.id == *id) {
+        if keepers().any(|creature| creature.id == *id) {
             owners.push(*id);
         }
     }
     // Everyone else in the order they arrived, picked in place.
     let mut taken: Option<(u8, crate::CreatureId)> = None;
-    while let Some(next) = adults()
+    while let Some(next) = keepers()
         .filter(|creature| taken.is_none_or(|last| (creature.colony_order, creature.id) > last))
         .min_by_key(|creature| (creature.colony_order, creature.id))
     {
@@ -938,14 +970,41 @@ pub fn house_owners(creatures: &[Creature], cottage_order: &[crate::CreatureId])
     owners
 }
 
-/// Which house a companion belongs to, counting the colony house as slot zero. A mini takes its
-/// big version's. The founder keeps the colony house; the cottages stand in the order the owner
-/// arranged them, or the order their keepers arrived.
+/// The companion who keeps the house `creature` lives in: itself if it keeps one, else whoever
+/// it lodges with, else — for a mini — wherever its big version lives, followed as far as it goes.
+/// `None` only for a mini whose big version has gone, or a lodging that goes round in a circle.
+pub fn house_keeper_of(creature: &Creature, creatures: &[Creature]) -> Option<crate::CreatureId> {
+    let mut at = creature;
+    for _ in 0..=crate::MAX_COLONY_CREATURES {
+        if keeps_house(at, creatures) {
+            return Some(at.id);
+        }
+        at = match (lodging_host(at, creatures), at.role) {
+            (Some(host), _) => host,
+            (None, CreatureRole::Mini { parent_id }) => creatures
+                .iter()
+                .find(|candidate| candidate.id == parent_id)?,
+            (None, CreatureRole::Adult) => return None,
+        };
+    }
+    None
+}
+
+/// Which house a companion belongs to, counting the colony house as slot zero: the house of
+/// [`house_keeper_of`]. The founder keeps the colony house unless it was handed on; the cottages
+/// stand in the order the owner arranged them, or the order their keepers arrived.
 pub fn house_slot_for(
     creature: &Creature,
     creatures: &[Creature],
     cottage_order: &[crate::CreatureId],
 ) -> usize {
+    let owners = house_owners(creatures, cottage_order);
+    let owners = owners.as_slice();
+    if let Some(keeper) = house_keeper_of(creature, creatures)
+        && let Some(slot) = owners.iter().position(|id| *id == keeper)
+    {
+        return slot;
+    }
     let of_interest = match creature.role {
         CreatureRole::Mini { parent_id } => creatures
             .iter()
@@ -953,11 +1012,6 @@ pub fn house_slot_for(
             .unwrap_or(creature),
         CreatureRole::Adult => creature,
     };
-    let owners = house_owners(creatures, cottage_order);
-    let owners = owners.as_slice();
-    if let Some(slot) = owners.iter().position(|id| *id == of_interest.id) {
-        return slot;
-    }
     // A mini whose big version has gone: the house of the last companion to arrive before it.
     let before = owners
         .iter()

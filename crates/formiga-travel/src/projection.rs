@@ -271,6 +271,8 @@ impl Traveler {
                     parent_id: parent_id.0,
                 },
             },
+            lodges_with: None,
+            keeps_colony_house: false,
             kept: true,
             mini_arrivals: core::MiniArrivalState::default(),
             name: self.name.clone(),
