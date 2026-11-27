@@ -2,6 +2,7 @@
 //! original family that most of them start from and vary one gene at a time.
 use super::*;
 
+mod anatomy;
 mod belongings;
 mod bridge;
 mod effects;

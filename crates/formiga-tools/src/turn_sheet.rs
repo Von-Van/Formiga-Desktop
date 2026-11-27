@@ -14,7 +14,10 @@ use formiga_art::{
     AnimationSpec, BodyClip, CreatureRenderer, ExpressionKind, EyelidPose, FRAME_SIZE,
     FaceRenderState, GazeDirection, TURNED_STRIDE_FRAMES, View,
 };
-use formiga_core::{ActionKind, Creature, Gesture};
+use formiga_core::{
+    ActionKind, Anatomy, BodyPlan, Creature, CreatureDesign, EarStyle, Gesture,
+    apply_creature_design,
+};
 use std::path::PathBuf;
 
 const SCALE: u32 = 4;
@@ -243,6 +246,120 @@ pub fn animate(output: PathBuf, args: &[String]) -> Result<()> {
         gif_frame.delay = 100 / FPS;
         encoder.write_frame(&gif_frame)?;
     }
+    println!("wrote {}", output.display());
+    Ok(())
+}
+
+/// The bodies a turn-sheet shows each part of a companion's anatomy on, in the order of their
+/// plans, as a companion of each plan the generator draws.
+fn subject(plan: BodyPlan, ears: EarStyle) -> CreatureDesign {
+    let design = (0_u8..=255)
+        .map(|index| CreatureDesign::drawn([index; 32], 0).0)
+        .find(|design| design.body == plan && design.classic.is_modular())
+        .unwrap_or_else(|| CreatureDesign::drawn([0; 32], 0).0);
+    CreatureDesign {
+        body: plan,
+        ears,
+        ear_size: design.ear_size.max(5),
+        details: Default::default(),
+        ..design
+    }
+    .bounded()
+}
+
+/// `turn-sheet --anatomy`: each part of the anatomy added in 0.69.1 on every body it fits, a row
+/// each — standing facing the screen, side-on and turned away; the side-on walk and run and the
+/// walk away; the walk facing the screen; and a mini of it side-on — so a part can be judged in
+/// every view a companion wearing it is drawn in.
+pub fn anatomy(output: PathBuf) -> Result<()> {
+    const COLUMNS: u32 = 8;
+    let face = FaceRenderState {
+        expression: ExpressionKind::Neutral,
+        eyelids: EyelidPose::Open,
+        gaze: GazeDirection::default(),
+    };
+    let base = reference_creatures().remove(0);
+    let mut rows = Vec::new();
+    for part in Anatomy::ALL {
+        for plan in BodyPlan::ALL {
+            let ears = if part == Anatomy::EarTufts {
+                [EarStyle::Pointed, EarStyle::Long][rows.len() % 2]
+            } else {
+                EarStyle::Round
+            };
+            let design = subject(plan, ears);
+            if !part.fits(&design) {
+                continue;
+            }
+            let color = match part {
+                Anatomy::Ruff => [246, 232, 204],
+                Anatomy::Brush => [252, 248, 238],
+                _ => [255, 196, 120],
+            };
+            rows.push(part.put_on(design, color));
+        }
+    }
+    let (width, height) = (CELL * COLUMNS, CELL * rows.len() as u32);
+    let mut pixels = vec![0; (width * height * 4) as usize];
+    fill_gradient(
+        &mut pixels,
+        width,
+        height,
+        [240, 236, 226, 255],
+        [214, 228, 221, 255],
+    );
+    for (row, design) in rows.into_iter().enumerate() {
+        let mut creature = base.clone();
+        apply_creature_design(&mut creature, Some(design));
+        let genome = &creature.appearance;
+        let mut mini = genome.clone();
+        mini.logical_size = 26;
+        let top = row as u32 * CELL;
+        fill_rect(
+            &mut pixels,
+            width,
+            0,
+            top + 41 * SCALE,
+            width,
+            1,
+            [120, 130, 120, 70],
+        );
+        let mut put = |column: u32, canvas: Option<formiga_art::Canvas>| {
+            if let Some(canvas) = canvas {
+                blit_canvas_scaled(&mut pixels, width, column * CELL, top, &canvas, SCALE);
+            }
+        };
+        put(
+            0,
+            CreatureRenderer::render_turned_frame(genome, View::Front, None, true, face),
+        );
+        put(
+            1,
+            CreatureRenderer::render_turned_frame(genome, View::Side, None, true, face),
+        );
+        put(
+            2,
+            CreatureRenderer::render_turned_frame(genome, View::Back, None, true, face),
+        );
+        for (column, clip, frame) in [
+            (3, BodyClip::Gesture(Gesture::Stride), 1),
+            (4, BodyClip::Gesture(Gesture::Dash), 2),
+            (5, BodyClip::Gesture(Gesture::Depart), 4),
+            (6, BodyClip::Action(ActionKind::Traverse), 1),
+        ] {
+            put(
+                column,
+                Some(CreatureRenderer::render_composited_frame(
+                    genome, clip, frame, true, false, face,
+                )),
+            );
+        }
+        put(
+            7,
+            CreatureRenderer::render_turned_frame(&mini, View::Side, None, true, face),
+        );
+    }
+    write_png(&output, width, height, &pixels)?;
     println!("wrote {}", output.display());
     Ok(())
 }

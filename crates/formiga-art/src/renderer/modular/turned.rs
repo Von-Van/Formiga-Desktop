@@ -1182,13 +1182,21 @@ fn recipe_turned(
         } else {
             shaded(c, p, |far| {
                 ear_at(far, d, p, pose, ear_cx + 2, 0, ear_top, ear, 1);
+                ear_tuft(far, d, p, ear_cx + 2, 0, ear_top, ear, 1);
             });
             if !floppy {
                 ear_at(c, d, p, pose, ear_cx - 1, 0, ear_top, ear, -1);
+                ear_tuft(c, d, p, ear_cx - 1, 0, ear_top, ear, -1);
             }
         }
-        if d.details.horns > 0 {
-            for (dx, near) in [(4, false), (1, true)] {
+        if (1..=3).contains(&d.details.horns) {
+            // Antlers branch, so the far one stands well clear of the near one.
+            let pair = if d.details.horns == 3 {
+                [(5, false), (0, true)]
+            } else {
+                [(4, false), (1, true)]
+            };
+            for (dx, near) in pair {
                 let root = PixelPoint {
                     x: ear_cx + dx,
                     y: ear_top,
@@ -1290,7 +1298,7 @@ fn recipe_turned(
             (mass.front(hy + 3) - half + i32::from(!blob), half)
         });
         trunk(c, d, p, body, 1);
-        if d.details.belly > 0 {
+        if d.details.belly == 1 {
             // Down its front.
             inside(c, p, body, |layer| {
                 layer.fill_ellipse(
@@ -1319,6 +1327,10 @@ fn recipe_turned(
             && !blob
         {
             c.fill_ellipse(mx, hy + 3, half + 1, 4, p.outline);
+        }
+        // A ruff stands out under the chin, round the front of the neck.
+        if d.details.belly == 2 && !blob {
+            ruff(c, d, p, hx - 1, hy + head - 2, head - 2, 1);
         }
         head_oval(c, hx);
         if let Some((mx, half)) = muzzle {
@@ -1379,12 +1391,19 @@ fn recipe_turned(
     } else {
         for side in [-1, 1] {
             ear_at(c, d, p, pose, ear_cx, ear_span, ear_top, ear, side);
+            ear_tuft(c, d, p, ear_cx, ear_span, ear_top, ear, side);
         }
     }
-    if d.details.horns > 0 {
+    if (1..=3).contains(&d.details.horns) {
         for side in [-1, 1] {
             let root = PixelPoint {
-                x: ear_cx + side * (ear_span - 4).max(2),
+                x: ear_cx
+                    + side
+                        * if d.details.horns == 3 {
+                            (ear_span - 1).max(3)
+                        } else {
+                            (ear_span - 4).max(2)
+                        },
                 y: ear_top,
             };
             horn(c, p, horn_shade, d.details.horns, root, side);
@@ -1491,6 +1510,10 @@ fn recipe_turned(
             paws_out(c, cling);
         }
     }
+    // A ruff shows round the back of the neck, under the head.
+    if d.details.belly == 2 && !blob {
+        ruff(c, d, p, x, hy + head - 2, head - 1, -1);
+    }
     head_oval(c, x);
     if k.coat == 0 {
         c.fill_ellipse(x + 2, top + 3, 3, 1, p.highlight);
@@ -1502,6 +1525,11 @@ fn recipe_turned(
     } else {
         match d.tail {
             1 => oval(c, p, x, y + ry - 3, 3, 3, p.highlight),
+            // A plume stands up the middle of the back, over it, its end curled over at the top.
+            2 | 3 if d.details.tip == 4 => {
+                let tip = crate::palette::detail_color(&d, d.details.tip_color);
+                plume_from_behind(c, p, tip, x - 1 + sway, y, ry);
+            }
             2 | 3 => {
                 let root = PixelPoint { x, y: y + ry - 3 };
                 let end = PixelPoint {
