@@ -46,6 +46,14 @@ pub enum ColonyEdit {
     TreeKeepsakes,
     /// The keepsakes rearranged.
     RearrangedKeepsakes,
+    /// A house taken down, its household moving in elsewhere, by the name of its keeper.
+    TookDownHouse { name: String },
+    /// A companion moved into another house, or given its own again, by name.
+    MovedIn { name: String },
+    /// Two households swapped houses.
+    SwappedHouses,
+    /// A companion's look changed in the creature studio, by name.
+    Restyled { name: String },
 }
 
 impl ColonyEdit {
@@ -69,6 +77,10 @@ impl ColonyEdit {
             Self::Ornament(kind) => format!("changing the {}", kind.label().to_lowercase()),
             Self::TreeKeepsakes => "choosing the keepsakes in the trees".to_owned(),
             Self::RearrangedKeepsakes => "rearranging the keepsakes".to_owned(),
+            Self::TookDownHouse { name } => format!("taking down {name}'s house"),
+            Self::MovedIn { name } => format!("moving {name}"),
+            Self::SwappedHouses => "swapping houses".to_owned(),
+            Self::Restyled { name } => format!("restyling {name}"),
         }
     }
 
@@ -88,6 +100,8 @@ pub enum UndoError {
     NothingToUndo,
     #[error("there is no room to bring everyone back")]
     NoRoom,
+    #[error("a house is open in Formiga Home; bring its household back first")]
+    HouseOpen,
 }
 
 /// The colony as it stood just before the last change, and what that change brought in.
@@ -102,6 +116,8 @@ pub(super) struct UndoPoint {
     day_book: DayBook,
     home: ColonyHome,
     objects: Vec<ColonyObject>,
+    /// Who lived in which house.
+    housing: Vec<housing::Housing>,
     /// Companions the change itself brought in, which taking it back sends away again. Anyone
     /// who arrived on their own since stays.
     added: Vec<CreatureId>,
@@ -121,6 +137,7 @@ impl World {
             day_book: self.save.day_book.clone(),
             home: self.save.home.clone(),
             objects: self.save.objects.objects.clone(),
+            housing: housing::housing_of(&self.save.creatures),
             added: Vec::new(),
         };
         let result = change(self);
@@ -130,8 +147,16 @@ impl World {
         let object_ids = |objects: &[ColonyObject]| -> Vec<u64> {
             objects.iter().map(|object| object.id).collect()
         };
+        // A companion restyled has changed too, though everyone is still here.
+        let restyled = before
+            .creatures
+            .iter()
+            .zip(&self.save.creatures)
+            .any(|(was, now)| was.appearance != now.appearance);
         let changed = ids(&before.creatures) != ids(&self.save.creatures)
+            || restyled
             || before.home != self.save.home
+            || before.housing != housing::housing_of(&self.save.creatures)
             || object_ids(&before.objects) != object_ids(&self.save.objects.objects);
         if changed {
             let added = self
@@ -171,6 +196,33 @@ impl World {
             .undo_history
             .pop_back()
             .ok_or(UndoError::NothingToUndo)?;
+        // A restyle takes back the look, and nothing the companion has done since.
+        if matches!(point.edit, ColonyEdit::Restyled { .. }) {
+            for creature in &mut self.save.creatures {
+                if let Some(was) = point.creatures.iter().find(|was| was.id == creature.id) {
+                    creature.appearance = was.appearance.clone();
+                    creature.origin.design = was.origin.design;
+                }
+            }
+            return Ok(point.edit);
+        }
+        // Taking a change back never moves anybody between houses while a house is open in
+        // Formiga Home, any more than making one does: the household indoors is the one that
+        // went in. The change stays to be taken back once it is home.
+        let rehouses = self.save.creatures.iter().any(|creature| {
+            point
+                .housing
+                .iter()
+                .any(|(id, lodges_with, keeps_colony_house)| {
+                    *id == creature.id
+                        && (*lodges_with, *keeps_colony_house)
+                            != (creature.lodges_with, creature.keeps_colony_house)
+                })
+        });
+        if rehouses && !self.house_visit.is_empty() {
+            self.undo_history.push_back(point);
+            return Err(UndoError::HouseOpen);
+        }
         if point.edit.is_about_companions() {
             if let Err(error) = self.restore_companions(&point) {
                 self.undo_history.push_back(point);
@@ -215,6 +267,17 @@ impl World {
             }
             self.save.objects.objects = objects;
         }
+        // Everyone still here lives where they lived before the change; anyone who arrived since
+        // keeps the house it has.
+        for creature in &mut self.save.creatures {
+            if let Some((_, lodges_with, keeps_colony_house)) =
+                point.housing.iter().find(|(id, _, _)| *id == creature.id)
+            {
+                creature.lodges_with = *lodges_with;
+                creature.keeps_colony_house = *keeps_colony_house;
+            }
+        }
+        normalize_housing(&mut self.save.creatures);
         self.save.home.normalize_village();
         self.clear_runtime_plans();
         Ok(point.edit)

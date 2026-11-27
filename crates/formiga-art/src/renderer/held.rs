@@ -50,7 +50,7 @@ pub enum HeldThing {
 const SNACK_CELLS: u32 = SNACK_KINDS as u32 * 4;
 const TOY_CELLS: u32 = TOY_KINDS as u32 * TOY_COLOURWAYS as u32 * 4;
 const CUP_CELLS: u32 = DRINK_KINDS as u32 * 4;
-const FOOD_CELLS: u32 = Food::ALL.len() as u32 * 4;
+const FOOD_CELLS: u32 = Food::DRAWN.len() as u32 * 4;
 const PLAY_CELLS: u32 = Plaything::ALL.len() as u32;
 /// The empty bowl and the string colour, on cells of their own after everything else so nothing
 /// before them moves.
@@ -81,7 +81,7 @@ impl HeldThing {
                 .into_iter()
                 .flat_map(move |tipped| (0..2).map(move |sip| Self::Cup { kind, tipped, sip }))
         });
-        let foods = Food::ALL
+        let foods = Food::DRAWN
             .into_iter()
             .flat_map(|food| (0..4).map(move |bite| Self::Food { food, bite }));
         let play = Plaything::ALL.into_iter().map(Self::Play);
@@ -542,7 +542,7 @@ mod tests {
     /// Every food goes down mouthful by mouthful: the last of it is less than all of it.
     #[test]
     fn every_food_is_eaten_down() {
-        for food in Food::ALL {
+        for food in Food::DRAWN {
             let opaque = |bite| {
                 HeldThing::Food { food, bite }
                     .cell()

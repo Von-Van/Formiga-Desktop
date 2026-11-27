@@ -658,6 +658,119 @@ fn collect_labels(shape: &egui::Shape, labels: &mut Vec<(String, egui::Rect)>) {
     }
 }
 
+/// Restyling a companion in the studio: its look is loaded only once it is chosen, offered back
+/// only once it changes, and let go of as soon as another page is shown.
+/// The companion being restyled stays in view the whole time its choices are scrolled through:
+/// beside them on a wide page, above them on a narrow one or with large text, at every scroll
+/// offset down to the face, never moving and never outside the window. The review pictures show
+/// each arrangement at the top of the choices and scrolled down to the face.
+#[test]
+fn the_restyled_companion_stays_in_view_while_its_choices_scroll() {
+    let review = std::env::var_os("FORMIGA_UI_REVIEW_DIR").map(std::path::PathBuf::from);
+    for width in [940.0, 760.0] {
+        for theme in [ThemeChoice::Light, ThemeChoice::Dark] {
+            for text_scale in [100, 150] {
+                let mut h = Harness::new(SettingsTab::Studio);
+                h.screen = egui::vec2(width, 720.0);
+                configure_style(
+                    &h.context,
+                    AppearancePreferences {
+                        theme,
+                        text_scale,
+                        ..AppearancePreferences::default()
+                    },
+                );
+                h.scroll_page(200.0);
+                h.click("Restyle a companion");
+                // The choice of companion is under the fold of a short window.
+                h.scroll_page(260.0);
+                h.click("Choose a companion");
+                let name = h.save.creatures[0].name.clone();
+                h.click(&name);
+                h.frame(Vec::new());
+                let pinned = h
+                    .clubhouse
+                    .studio
+                    .restyle
+                    .preview_rect
+                    .expect("the companion is pictured");
+                let window = egui::Rect::from_min_size(egui::Pos2::ZERO, h.screen);
+                assert!(
+                    window.contains_rect(pinned),
+                    "{width} {text_scale}: {pinned:?}"
+                );
+                let label = format!("{width}-{text_scale}");
+                let shade = if theme == ThemeChoice::Dark {
+                    "charcoal"
+                } else {
+                    "cream"
+                };
+                if let Some(path) = &review {
+                    std::fs::create_dir_all(path).unwrap();
+                    h.picture()
+                        .save(path.join(format!("Studio-{width}-{shade}-{text_scale}-restyle.png")))
+                        .unwrap();
+                }
+                // Down through every choice to the face, a little at a time.
+                for step in 0..48 {
+                    h.scroll_page(90.0);
+                    let now = h.clubhouse.studio.restyle.preview_rect.unwrap();
+                    assert_eq!(now, pinned, "{label}: moved at step {step}");
+                    assert!(
+                        h.labels.iter().any(|(text, _)| text == "Keep this look"),
+                        "{label}: its buttons went with the scroll at step {step}"
+                    );
+                }
+                assert!(
+                    h.labels
+                        .iter()
+                        .any(|(text, _)| text == "Cheeks" || text == "Mouth"),
+                    "{label}: the face was reached"
+                );
+                if let Some(path) = &review {
+                    h.picture()
+                        .save(path.join(format!(
+                            "Studio-{width}-{shade}-{text_scale}-restyle-face.png"
+                        )))
+                        .unwrap();
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn studio_restyles_a_companion_and_lets_go_of_it_off_the_page() {
+    let mut h = Harness::new(SettingsTab::Studio);
+    h.screen = egui::vec2(940.0, 2200.0);
+    let before = h.artwork_bytes();
+    h.click("Restyle a companion");
+    assert_eq!(
+        h.artwork_bytes(),
+        before,
+        "nothing is drawn until a companion is chosen"
+    );
+    h.click("Choose a companion");
+    let name = h.save.creatures[0].name.clone();
+    h.click(&name);
+    h.frame(Vec::new());
+    assert!(
+        h.artwork_bytes() > before,
+        "the chosen companion is previewed"
+    );
+    assert!(
+        h.click("Keep this look").restyle.is_none(),
+        "nothing has changed yet"
+    );
+    h.tab = SettingsTab::Colony;
+    h.frame(Vec::new());
+    assert_eq!(
+        h.clubhouse.studio.restyle.texture_ids().count(),
+        0,
+        "the working copy goes with the page"
+    );
+}
+
 #[test]
 fn studio_clicks_preview_before_adoption_and_protect_replacement() {
     let mut h = Harness::new(SettingsTab::Studio);
@@ -1597,18 +1710,28 @@ fn the_ruling_is_where_the_writing_is_however_far_the_page_is_scrolled() {
                 .save(path.join(format!("{tab:?}-940-cream-100-scrolled.png")))
                 .unwrap();
         }
-        // A section open, as it reads on its own.
-        for (tab, section) in [
-            (SettingsTab::Colony, "care"),
-            (SettingsTab::General, "desktop"),
+        // A section open, as it reads on its own, with its way back at the foot of the page at
+        // the default and the largest size of text.
+        for (tab, section, text_scale) in [
+            (SettingsTab::Colony, "care", 100),
+            (SettingsTab::General, "desktop", 100),
+            (SettingsTab::Colony, "care", 150),
         ] {
             let mut h = Harness::new(tab);
             h.screen = egui::vec2(940.0, 720.0);
+            configure_style(
+                &h.context,
+                AppearancePreferences {
+                    text_scale,
+                    ..Default::default()
+                },
+            );
             h.clubhouse.shell.sections.open_section(tab, section);
             h.frame(Vec::new());
             h.picture()
-                .save(path.join(format!("{tab:?}-940-cream-100-{section}.png")))
+                .save(path.join(format!("{tab:?}-940-cream-{text_scale}-{section}.png")))
                 .unwrap();
+            configure_style(&h.context, AppearancePreferences::default());
         }
         // The wardrobe and the Collection with everything found, so every choice has its picture
         // and every keepsake its colours; the wardrobe trying something on.
@@ -2820,7 +2943,7 @@ fn the_guest_book_remembers_how_often_a_visitor_has_come() {
     assert!(
         h.labels
             .iter()
-            .any(|(text, _)| text.ends_with("· 2 visits in the book")),
+            .any(|(text, _)| text.ends_with("· 2 visits")),
         "{:?}",
         h.labels.iter().map(|x| &x.0).collect::<Vec<_>>()
     );
@@ -3991,5 +4114,120 @@ fn the_journal_has_pictures_taped_in() {
         std::fs::create_dir_all(&path).unwrap();
         h.screen = egui::vec2(940.0, 1600.0);
         h.picture().save(path.join("Journal-pictures.png")).unwrap();
+    }
+}
+
+/// A house picked out on the Home page can be taken down only once that is confirmed, saying who
+/// moves where; nothing about who lives where is offered while a house is open in Formiga Home.
+#[test]
+fn a_picked_house_is_taken_down_only_once_confirmed() {
+    use crate::clubhouse::{FormigaHomeView, arrange::Picked};
+    let mut h = Harness::new(SettingsTab::Home);
+    h.screen = egui::vec2(1000.0, 3000.0);
+    let owners: Vec<CreatureId> =
+        formiga_core::house_owners(&h.save.creatures, &h.save.home.cottage_order)
+            .as_slice()
+            .to_vec();
+    assert!(owners.len() >= 2, "the review colony has cottages");
+    let keeper = owners[1];
+    h.clubhouse.home.arrange.picked = Some(Picked::House(keeper));
+    h.frame(Vec::new());
+    h.frame(Vec::new());
+    assert!(shown(&h, "Who lives here:"));
+    let asked = h.click("Take down this house…");
+    assert_eq!(asked.take_down_house, None, "asked first");
+    h.frame(Vec::new());
+    assert!(shown(&h, "Keep it"));
+    assert_eq!(h.click("Take down house").take_down_house, Some(keeper));
+    h.clubhouse.formiga_home = FormigaHomeView {
+        installed: true,
+        open: Some(owners[0]),
+        can_open: false,
+    };
+    h.frame(Vec::new());
+    let outcome = h.click("Take down this house…");
+    assert_eq!(outcome.take_down_house, None);
+    h.frame(Vec::new());
+    assert!(!shown(&h, "Keep it"), "not while a house is open");
+}
+
+/// The housing controls on a picked house, drawn for review in every theme, at both text sizes
+/// and at both window widths: who lives there with somewhere to move each to, the swap, the way
+/// to take the house down, and the question it asks first. Nothing it draws is cut off.
+#[test]
+fn the_housing_controls_render_for_review_in_every_appearance() {
+    use crate::clubhouse::arrange::Picked;
+    let output = std::env::var_os("FORMIGA_UI_REVIEW_DIR").map(std::path::PathBuf::from);
+    if let Some(path) = &output {
+        std::fs::create_dir_all(path).unwrap();
+    }
+    for theme in [ThemeChoice::Light, ThemeChoice::Dark] {
+        for text_scale in [100, 150] {
+            for width in [940.0, 760.0] {
+                let mut h = Harness::new(SettingsTab::Home);
+                configure_style(
+                    &h.context,
+                    AppearancePreferences {
+                        theme,
+                        text_scale,
+                        sprite_outline: false,
+                    },
+                );
+                let owners: Vec<CreatureId> =
+                    formiga_core::house_owners(&h.save.creatures, &h.save.home.cottage_order)
+                        .as_slice()
+                        .to_vec();
+                assert!(owners.len() >= 2, "the review colony has cottages");
+                // Somebody lodging with the house picked out, so it has a household to list.
+                if let Some(lodger) = owners.get(2).copied() {
+                    for creature in &mut h.save.creatures {
+                        if creature.id == lodger {
+                            creature.lodges_with = Some(owners[1]);
+                        }
+                    }
+                }
+                let keeper = owners[1];
+                h.clubhouse.home.arrange.picked = Some(Picked::House(keeper));
+                h.screen = egui::vec2(width, 2600.0);
+                h.frame(Vec::new());
+                h.frame(Vec::new());
+                assert!(shown(&h, "Who lives here:"));
+                let tag = format!(
+                    "{}-{}-{text_scale}",
+                    width as u32,
+                    if theme == ThemeChoice::Dark {
+                        "charcoal"
+                    } else {
+                        "cream"
+                    }
+                );
+                let save = |h: &mut Harness, state: &str| {
+                    // Drawn into a picture only when one is asked for: the check needs only the frame.
+                    if let Some(path) = &output {
+                        h.picture()
+                            .save(path.join(format!("Home-housing-{state}-{tag}.png")))
+                            .unwrap();
+                    } else {
+                        h.frame(Vec::new());
+                    }
+                    assert!(h.cut.is_empty(), "{state} {tag}: cut off {:?}", h.cut);
+                };
+                save(&mut h, "picked");
+                h.click("Move to…");
+                h.frame(Vec::new());
+                save(&mut h, "move-menu");
+                h.frame(vec![egui::Event::Key {
+                    key: egui::Key::Escape,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: Default::default(),
+                }]);
+                h.click("Take down this house…");
+                h.frame(Vec::new());
+                assert!(shown(&h, "Keep it"));
+                save(&mut h, "confirm");
+            }
+        }
     }
 }

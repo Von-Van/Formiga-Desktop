@@ -22,8 +22,10 @@ mod generation;
 mod habits;
 mod home;
 mod house_visits;
+mod housing;
 mod interaction;
 mod journeys;
+mod magic;
 mod meals;
 mod moments;
 mod movement;
@@ -38,6 +40,7 @@ mod routine;
 mod spacing;
 mod step;
 mod surfaces;
+mod surroundings;
 mod talk;
 mod tows;
 mod trips;
@@ -55,6 +58,8 @@ pub(crate) use colony::normalize_colony_roles;
 use colony::*;
 use generation::*;
 use habits::*;
+pub(crate) use housing::normalize_housing;
+pub use housing::{HOUSE_ROOM, HousingError, house_residents, rehoming_host};
 use interaction::*;
 use journeys::*;
 pub use journeys::{
@@ -165,6 +170,12 @@ pub struct World {
     /// A wonder out somewhere for a companion or two to play on, and when the next is due.
     /// Runtime only: the notebook's page of them is all a save keeps.
     wonders: wonders::Wonders,
+    /// When the next magic fruit is ripe, and who is eating one. Runtime only, like the spells
+    /// themselves.
+    magic: magic::MagicFruit,
+    /// The little things companions do about the windows and ledges around them, and when the
+    /// next is due. Runtime only.
+    surroundings: surroundings::Surroundings,
     /// Whether it is dark by the wall clock, for tests that cannot depend on the local time zone.
     #[cfg(test)]
     dark_at_home_for_tests: Option<bool>,
@@ -309,6 +320,17 @@ impl World {
         Self::new_from(colony_seed, now, desktop, Edition::LATEST)
     }
 
+    /// A new colony whose first companion comes from `generator`: for sample colonies and fixtures
+    /// that must go on being written exactly as they were when an older generator was the newest.
+    pub fn new_by(
+        colony_seed: [u8; 32],
+        now: OffsetDateTime,
+        desktop: &DesktopSnapshot,
+        generator: Edition,
+    ) -> Self {
+        Self::new_from(colony_seed, now, desktop, generator)
+    }
+
     /// A new colony whose companions all come from the original generator: for the scenes tests
     /// tuned on the companions it made.
     #[cfg(test)]
@@ -402,6 +424,7 @@ impl World {
             creature.state.velocity = Point::default();
             creature.state.activity_variant = 0;
             creature.state.attention = None;
+            creature.state.magic = None;
         }
         let rngs = save
             .creatures
@@ -478,6 +501,8 @@ impl World {
             moment_rng: streams.rng("village-moments", 0),
             colony_plan: None,
             wonders: wonders::Wonders::new(&streams),
+            magic: magic::MagicFruit::new(&streams),
+            surroundings: surroundings::Surroundings::new(&streams),
             #[cfg(test)]
             dark_at_home_for_tests: None,
             house_visit: BTreeSet::new(),
@@ -510,6 +535,7 @@ impl World {
         self.carry_facing(presence_dt);
         self.carry_presence(presence_dt, desktop);
         self.carry_meals(now, dt);
+        self.carry_magic(dt);
         self.carry_play(now, dt);
         self.carry_talk(now, dt);
     }
@@ -749,6 +775,7 @@ impl World {
             .update(&self.save.creatures, desktop, dt, observations_ready);
         self.advance_attention(desktop, dt, observations_ready);
         self.advance_wonders(dt, desktop, false);
+        self.advance_surroundings(dt, desktop);
         self.creature_views.clear();
         self.creature_views.extend_from_slice(&self.save.creatures);
         self.relationship_views.clear();

@@ -58,6 +58,16 @@ pub(super) fn world_has_spatial_motion(world: &World) -> bool {
     if world.wonder().is_some() || world.placed_wonder_playing() {
         return true;
     }
+    // A magic spell lasts a minute or two, every few days: its lights twinkle and a floating
+    // companion bobs, so it is drawn as often as a walk. The still kind for reduced motion is not.
+    if world
+        .save
+        .creatures
+        .iter()
+        .any(|creature| creature.state.magic.is_some_and(|spell| spell.moving()))
+    {
+        return true;
+    }
     // Something tossed, bounced, thrown or flown moves through the air while its owner may be
     // standing quite still, and is drawn as often as anything walking until it is back in hand.
     if world

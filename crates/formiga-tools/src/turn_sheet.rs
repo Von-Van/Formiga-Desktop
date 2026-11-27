@@ -11,10 +11,13 @@ use crate::fixtures::reference_creatures;
 use crate::pixels::{blit_canvas_scaled, fill_gradient, fill_rect, write_png};
 use anyhow::Result;
 use formiga_art::{
-    AnimationSpec, BodyClip, CreatureRenderer, ExpressionKind, EyelidPose, FRAME_SIZE,
-    FaceRenderState, GazeDirection, TURNED_STRIDE_FRAMES, View,
+    AccessoryArt, AnimationSpec, BodyClip, CreatureRenderer, ExpressionKind, EyelidPose,
+    FRAME_SIZE, FaceRenderState, GazeDirection, TURNED_STRIDE_FRAMES, View,
 };
-use formiga_core::{ActionKind, Creature, Gesture};
+use formiga_core::{
+    Accessory, AccessoryKind, ActionKind, Anatomy, BodyPlan, Creature, CreatureDesign, EarStyle,
+    Gesture, apply_creature_design,
+};
 use std::path::PathBuf;
 
 const SCALE: u32 = 4;
@@ -28,6 +31,13 @@ pub fn run(output: PathBuf, args: &[String]) -> Result<()> {
     companions.extend(cast::cast_argument(args)?);
     if companions.is_empty() {
         companions = reference_creatures();
+    }
+    // `--fox`: the same companions with Echo Fox Mode on, the fox standing in for each of them.
+    if args.iter().any(|arg| arg == "--fox") {
+        companions.truncate(1);
+        for companion in &mut companions {
+            companion.appearance.echo_fox = true;
+        }
     }
     let (width, height) = (CELL * COLUMNS, CELL * ROWS * companions.len() as u32);
     let mut pixels = vec![0; (width * height * 4) as usize];
@@ -243,6 +253,193 @@ pub fn animate(output: PathBuf, args: &[String]) -> Result<()> {
         gif_frame.delay = 100 / FPS;
         encoder.write_frame(&gif_frame)?;
     }
+    println!("wrote {}", output.display());
+    Ok(())
+}
+
+/// The bodies a turn-sheet shows each part of a companion's anatomy on, in the order of their
+/// plans, as a companion of each plan the generator draws.
+fn subject(plan: BodyPlan, ears: EarStyle) -> CreatureDesign {
+    let design = (0_u8..=255)
+        .map(|index| CreatureDesign::drawn([index; 32], 0).0)
+        .find(|design| design.body == plan && design.classic.is_modular())
+        .unwrap_or_else(|| CreatureDesign::drawn([0; 32], 0).0);
+    CreatureDesign {
+        body: plan,
+        ears,
+        ear_size: design.ear_size.max(5),
+        details: Default::default(),
+        ..design
+    }
+    .bounded()
+}
+
+/// `turn-sheet --anatomy`: each part of the anatomy added in 0.69.1 on every body it fits, a row
+/// each — standing facing the screen, side-on and turned away; the side-on walk and run and the
+/// walk away; the walk facing the screen; and a mini of it side-on — so a part can be judged in
+/// every view a companion wearing it is drawn in.
+pub fn anatomy(output: PathBuf) -> Result<()> {
+    const COLUMNS: u32 = 8;
+    let face = FaceRenderState {
+        expression: ExpressionKind::Neutral,
+        eyelids: EyelidPose::Open,
+        gaze: GazeDirection::default(),
+    };
+    let base = reference_creatures().remove(0);
+    let mut rows = Vec::new();
+    for part in Anatomy::ALL {
+        for plan in BodyPlan::ALL {
+            let ears = if part == Anatomy::EarTufts {
+                [EarStyle::Pointed, EarStyle::Long][rows.len() % 2]
+            } else {
+                EarStyle::Round
+            };
+            let design = subject(plan, ears);
+            if !part.fits(&design) {
+                continue;
+            }
+            let color = match part {
+                Anatomy::Ruff => [246, 232, 204],
+                Anatomy::Brush => [252, 248, 238],
+                _ => [255, 196, 120],
+            };
+            rows.push(part.put_on(design, color));
+        }
+    }
+    let (width, height) = (CELL * COLUMNS, CELL * rows.len() as u32);
+    let mut pixels = vec![0; (width * height * 4) as usize];
+    fill_gradient(
+        &mut pixels,
+        width,
+        height,
+        [240, 236, 226, 255],
+        [214, 228, 221, 255],
+    );
+    for (row, design) in rows.into_iter().enumerate() {
+        let mut creature = base.clone();
+        apply_creature_design(&mut creature, Some(design));
+        let genome = &creature.appearance;
+        let mut mini = genome.clone();
+        mini.logical_size = 26;
+        let top = row as u32 * CELL;
+        fill_rect(
+            &mut pixels,
+            width,
+            0,
+            top + 41 * SCALE,
+            width,
+            1,
+            [120, 130, 120, 70],
+        );
+        let mut put = |column: u32, canvas: Option<formiga_art::Canvas>| {
+            if let Some(canvas) = canvas {
+                blit_canvas_scaled(&mut pixels, width, column * CELL, top, &canvas, SCALE);
+            }
+        };
+        put(
+            0,
+            CreatureRenderer::render_turned_frame(genome, View::Front, None, true, face),
+        );
+        put(
+            1,
+            CreatureRenderer::render_turned_frame(genome, View::Side, None, true, face),
+        );
+        put(
+            2,
+            CreatureRenderer::render_turned_frame(genome, View::Back, None, true, face),
+        );
+        for (column, clip, frame) in [
+            (3, BodyClip::Gesture(Gesture::Stride), 1),
+            (4, BodyClip::Gesture(Gesture::Dash), 2),
+            (5, BodyClip::Gesture(Gesture::Depart), 4),
+            (6, BodyClip::Action(ActionKind::Traverse), 1),
+        ] {
+            put(
+                column,
+                Some(CreatureRenderer::render_composited_frame(
+                    genome, clip, frame, true, false, face,
+                )),
+            );
+        }
+        put(
+            7,
+            CreatureRenderer::render_turned_frame(&mini, View::Side, None, true, face),
+        );
+    }
+    write_png(&output, width, height, &pixels)?;
+    println!("wrote {}", output.display());
+    Ok(())
+}
+
+/// `turn-sheet --wearables`: everything a companion can wear on every turned view, a row a
+/// piece. Along each row, bodies of each plan that turns at three statures, an original blob, a
+/// mini and the Echo Fox, each standing facing the screen, side-on and turned away, so a piece
+/// can be judged following the body round.
+pub fn wearables(output: PathBuf) -> Result<()> {
+    const SCALE: u32 = 2;
+    let cell = FRAME_SIZE * SCALE;
+    let face = FaceRenderState {
+        expression: ExpressionKind::Neutral,
+        eyelids: EyelidPose::Open,
+        gaze: GazeDirection::default(),
+    };
+    let base = reference_creatures().remove(0);
+    let mut subjects = Vec::new();
+    for (plan, size) in [
+        (BodyPlan::Round, 44),
+        (BodyPlan::Upright, 33),
+        (BodyPlan::Winged, 38),
+        (BodyPlan::Blob, 38),
+        (BodyPlan::Round, 26),
+    ] {
+        let mut creature = base.clone();
+        apply_creature_design(&mut creature, Some(subject(plan, EarStyle::Round)));
+        creature.appearance.logical_size = size;
+        subjects.push(creature.appearance);
+    }
+    let mut original = base.appearance.clone();
+    original.design = None;
+    subjects.push(original);
+    let mut fox = base.appearance.clone();
+    fox.echo_fox = true;
+    subjects.push(fox);
+    let members: Vec<formiga_art::Palette> =
+        subjects.iter().map(formiga_art::palette_for).collect();
+    let mut rows: Vec<Option<Accessory>> = vec![None];
+    rows.extend(AccessoryKind::ALL.map(|kind| Some(Accessory::Worn(kind))));
+    rows.extend([0_u8, 58].map(|variant| Some(Accessory::Pin(variant))));
+    let views = [View::Front, View::Side, View::Back];
+    let width = cell * (subjects.len() * views.len()) as u32;
+    let height = cell * rows.len() as u32;
+    let mut pixels = vec![0; (width * height * 4) as usize];
+    for (row, accessory) in rows.iter().enumerate() {
+        let band = if row % 2 == 0 {
+            [236, 232, 222, 255]
+        } else {
+            [196, 206, 200, 255]
+        };
+        fill_rect(&mut pixels, width, 0, row as u32 * cell, width, cell, band);
+        let dress = accessory.map(|accessory| AccessoryArt::resolve(accessory, [61; 32], &members));
+        for (index, genome) in subjects.iter().enumerate() {
+            for (turn, view) in views.into_iter().enumerate() {
+                let Some(canvas) = CreatureRenderer::render_dressed_turned_frame(
+                    genome, dress, view, None, true, face,
+                ) else {
+                    continue;
+                };
+                let column = (index * views.len() + turn) as u32;
+                blit_canvas_scaled(
+                    &mut pixels,
+                    width,
+                    column * cell,
+                    row as u32 * cell,
+                    &canvas,
+                    SCALE,
+                );
+            }
+        }
+    }
+    write_png(&output, width, height, &pixels)?;
     println!("wrote {}", output.display());
     Ok(())
 }

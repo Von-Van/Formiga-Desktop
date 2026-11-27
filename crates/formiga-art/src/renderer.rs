@@ -42,7 +42,7 @@ pub use meals::{
     MealPose, held_now, meal_eyelids, meal_face, meal_held, meal_offset, meal_pose,
     shows_held_by_default,
 };
-pub use modular::{TURNED_STRIDE_FRAMES, View, can_turn};
+pub use modular::{TURNED_STRIDE_FRAMES, View, can_turn, walks_turned};
 pub use play::{held_tether, play_face, play_held, play_offset, play_pose, prop_in_motion};
 pub use playthings::Plaything as PlayPicture;
 use pose::*;
@@ -1129,7 +1129,7 @@ impl BodyPresentation {
             let frame = motion.stride_frame(presence.stride);
             // Going along, it is seen from the side; going back into the village, from behind.
             // Coming forward it faces the screen, as it does standing.
-            if modular::can_turn(&creature.appearance) && !presence.reduced {
+            if modular::walks_turned(&creature.appearance) && !presence.reduced {
                 let turned = match presence.turn {
                     formiga_core::Turn::Side if walk == ActionKind::Sprint => Some(Gesture::Dash),
                     formiga_core::Turn::Side => Some(Gesture::Stride),
@@ -1588,7 +1588,7 @@ impl CreatureRenderer {
         // that can be; for one that cannot, the walk it has facing the screen with its face
         // drawn in, since nothing draws a face over a turned clip.
         let turned = modular::turned_clip(clip);
-        let drawn_turned = turned.filter(|_| modular::can_turn(genome));
+        let drawn_turned = turned.filter(|_| modular::walks_turned(genome));
         let clip = match turned {
             Some((_, gait)) if drawn_turned.is_none() => gait.facing_the_screen(),
             _ => clip,
@@ -1620,7 +1620,13 @@ impl CreatureRenderer {
         let face_genome;
         // The body as painted, before anything is drawn on it, and the same body painted finely.
         let mut fine = None;
-        let (genome, mut canvas, figure) = if genome.echo_fox {
+        let (genome, mut canvas, figure) = if let Some((view, gait)) =
+            drawn_turned.filter(|_| genome.echo_fox)
+        {
+            // The fox walks and runs turned as every body that turns does.
+            let (canvas, figure) = modular::turned_body(genome, view, gait, frame);
+            (genome, canvas, figure)
+        } else if genome.echo_fox {
             let mut canvas = Canvas::new(FRAME_SIZE, FRAME_SIZE);
             let pose = Pose::new(&fox::posing(genome), clip, frame, reduce_motion);
             let figure = fox::draw(&mut canvas, pose, clip, frame);
@@ -1658,7 +1664,15 @@ impl CreatureRenderer {
         };
         let mut face_anchor = figure.face;
         if let Some(dress) = dress {
-            accessories::draw_accessory(&mut canvas, dress, figure, genome.logical_size);
+            // Worn the way the body is turned: side-on or from behind for a walk or a climb
+            // drawn turned, and facing the screen in every other frame.
+            let view = match drawn_turned {
+                Some((view, _)) => view,
+                None if clinging && away => View::Back,
+                None if clinging => View::Side,
+                None => View::Front,
+            };
+            accessories::draw_accessory_seen(&mut canvas, dress, figure, genome.logical_size, view);
         }
         // Turned whole, with whatever it wears, and a sculpted form's fine painting with it.
         if let Some(turn) = tumble(clip, frame).and_then(|angle| Turn::about_middle(&canvas, angle))

@@ -300,6 +300,33 @@ impl World {
             .as_slice()
             .first()
             .copied();
+        // Anyone lodging in the leaving companion's house moves, together, into another house
+        // as a household displaced by a house coming down would; its own minis are given a big
+        // version below and live with them.
+        let lodgers: Vec<CreatureId> = house_residents(&self.save.creatures, creature_id)
+            .into_iter()
+            .filter(|id| {
+                *id != creature_id
+                    && self.save.creatures.iter().any(|creature| {
+                        creature.id == *id && creature.role.parent_id() != Some(creature_id)
+                    })
+            })
+            .collect();
+        let host = (!lodgers.is_empty())
+            .then(|| {
+                rehoming_host(
+                    &self.save.creatures,
+                    &self.save.home.cottage_order,
+                    creature_id,
+                    lodgers.len(),
+                )
+            })
+            .flatten();
+        for creature in &mut self.save.creatures {
+            if lodgers.contains(&creature.id) {
+                creature.lodges_with = host;
+            }
+        }
         self.save.creatures.remove(index);
         self.save.home.cottage_order.retain(|id| *id != creature_id);
         self.save
@@ -334,6 +361,7 @@ impl World {
             .retain(|dressing| dressing.keeper != creature_id);
         self.remove_creature_runtime(creature_id);
         rebalance_minis(&mut self.save.creatures);
+        normalize_housing(&mut self.save.creatures);
         normalize_relationships(&mut self.save);
         Ok(())
     }
@@ -392,9 +420,15 @@ impl World {
         let new_id = replacement.id;
         replacement.state.position = old.state.position;
         replacement.state.surface = old.state.surface.clone();
+        // And lives where it lived, in the house it kept or with whoever it lodged with.
+        replacement.lodges_with = old.lodges_with;
+        replacement.keeps_colony_house = old.keeps_colony_house;
         for creature in &mut self.save.creatures {
             if creature.role.parent_id() == Some(old_id) {
                 creature.role = CreatureRole::Mini { parent_id: new_id };
+            }
+            if creature.lodges_with == Some(old_id) {
+                creature.lodges_with = Some(new_id);
             }
         }
         // The newcomer keeps the cottage where it stood, as far back as it stood, and whatever it was built as.
@@ -452,6 +486,8 @@ impl World {
         self.end_village_life();
         self.clear_beats();
         self.send_wonder_away(None);
+        self.end_all_magic();
+        self.clear_surroundings();
     }
 
     pub(super) fn register_creature_runtime(&mut self, creature: &Creature) {

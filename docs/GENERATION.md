@@ -1,4 +1,4 @@
-# Modular creature generation · v0.69.0
+# Modular creature generation · v0.69.1
 
 The design goal is a cute reinterpretation, never image tracing. A photo, illustration, logo,
 or unusual reference should resolve to a readable pixel companion with a connected rounded body,
@@ -200,6 +200,37 @@ coat; a flame is a warm orange to gold, a bobble a brighter accent. A mini keeps
 details, and a mini of a parent without any is drawn exactly as before. Pictures reach the same
 details, in the picture's own colours, with a tip made vivid enough to stand out from the coat.
 
+## Anatomy
+
+Since 0.69.1 a recipe can carry five more parts, each in a place a detail already has, so they
+travel in the same eight bytes: **antlers**, a single-pixel beam and one tine either side of the
+head in a pale shade of the coat, outlined once (side-on only the near one shows), and
+**ear tufts**, a dark tuft standing up from the tip of each ear, in the place horns go; a fluffy
+**ruff**, a soft collar of uneven tufts on the shoulders, wider than the head, in a shade between
+the coat's light and the belly colour; and a **brush**, a long fluffy tuft at the
+end of a tapering tail, or a whole **plume**, the tail a soft oval curled up behind the back with
+its end turned over, in the tip's place and colour. `formiga_core::Anatomy` names them.
+
+Not every body can carry every part, and `Anatomy::fits` says which: a blob has no head apart from
+its one mass for antlers and no neck for a ruff; tufts need an ear that comes to a tip — pointed,
+long or tufted; a plume needs a back to curl up behind, which a winged body's wings take; and
+nothing grows where a classic crown or a classic tail already is. A recipe carrying a part its
+body cannot is bounded without it, so a mini whose ears are not its parent's loses its parent's
+tufts and nothing else. Each part is drawn facing the screen, side-on and from behind, from the
+same measurements the rest of the body is, and keeps inside its frame in every clip at every size;
+a plume on a four-pawed body sits closer in, reaching no further back than a stalk tail, so it
+still fits when the body is turned upright against a wall. `turn-sheet --anatomy` shows each part
+on every body it fits in every view.
+
+A new companion draws its anatomy last, from a `creature-anatomy-v1` stream of its own, so the
+recipe and the details under it are exactly what `Edition::Details` draws (`Edition::Anatomy`,
+`CreatureDesign::anatomical`), and only into a place its details left empty. Each part comes to a
+few companions in a hundred, leaning toward the archetypes it suits — tufts and brushes toward
+critters and whelps, ruffs toward puffs, antlers toward whelps: over four thousand new companions,
+antlers 3.3%, tufts 2.8%, a ruff 4.9%, a brush 4.8% and a plume 2.7%, and about one in six has at
+least one. A ruff is cream or a pale shade of the coat, a brush paler still, a plume's end a
+brighter accent. A mini keeps its parent's anatomy wherever its own recipe can carry it.
+
 ## Size
 
 Since 0.63.1 companions come in different sizes. Every adult has a stature, from 85% to 115% of the
@@ -291,7 +322,12 @@ version 20 adds temperaments and archetype recipes and migrates nothing, for the
 recipe with details travels as a version 5 code, eight bytes longer — the four parts two to a byte,
 then the belly and tip colours — so it is twenty-six groups rather than twenty-three; a version 5
 code without details is rejected, and one needs v0.63.0 or newer. A recipe without details is still
-written as version 4 or older exactly as before. Save version 21 adds details and migrates nothing. Save version 22 gives every companion already
+written as version 4 or older exactly as before. Save version 21 adds details and migrates nothing.
+A recipe with anatomy travels as a version 6 code, laid out exactly as version 5; a version 5 code
+carrying anatomy, or a version 6 code without any, is rejected, and one needs v0.69.1 or newer. The
+values anatomy takes were out of range before, so an older build refuses such a recipe, in a code
+or in a colony file, rather than drawing it without; no save version moves for them, and a trip to Formiga Hill with such a
+companion asks for travel version 7. Save version 22 gives every companion already
 in a colony its stature, as above; it adds no field. Incompatible recipe changes require a new format,
 not reinterpretation of existing codes. Source provenance duplicates the bounded recipe so sharing
 does not depend on a reference file or a temporary preview.

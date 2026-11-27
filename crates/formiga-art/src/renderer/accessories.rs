@@ -80,23 +80,84 @@ struct Layers {
     solid: Canvas,
     bare: Canvas,
     speck: bool,
+    /// Which way the body wearing it is turned. Facing the screen every piece is drawn as it
+    /// always was; side-on what hangs at the front of the neck hangs off the front of the chest
+    /// and earmuffs show one puff; from behind whatever is on the front of the head or the chest
+    /// is hidden by the body, a bow and a pack are seen square on, and a kerchief shows its knot.
+    view: View,
+}
+
+/// `figure` as a piece worn on a body turned to `view` is placed against it. Facing the screen it
+/// is the figure itself. Side-on, the collar is the narrower band a neck is from the side, at the
+/// front of the body under the face, so what hangs from it hangs at the front of the chest, where
+/// a pin goes too. From behind, a pack rides the middle of the back.
+fn seen(figure: Figure, view: View) -> Figure {
+    match view {
+        View::Front => figure,
+        View::Side => {
+            let neck_half = (figure.neck_half * 2 / 3).max(3);
+            let front = figure.face.x + 1;
+            Figure {
+                neck: PixelPoint {
+                    x: front - neck_half + 1,
+                    ..figure.neck
+                },
+                neck_half,
+                chest: PixelPoint {
+                    x: front - 1,
+                    ..figure.chest
+                },
+                ..figure
+            }
+        }
+        View::Back => Figure {
+            back: PixelPoint {
+                x: figure.crown.x,
+                y: figure.neck.y + 4,
+            },
+            ..figure
+        },
+    }
 }
 
 /// Draw `art` onto a body frame. `logical_size` is the wearer's, which is the same in every frame,
 /// so a piece never switches between its speck and full drawings mid-clip.
+#[cfg(test)]
 pub(super) fn draw_accessory(
     canvas: &mut Canvas,
     art: AccessoryArt,
     figure: Figure,
     logical_size: u8,
 ) {
+    draw_accessory_seen(canvas, art, figure, logical_size, View::Front);
+}
+
+/// [`draw_accessory`] on a body turned to `view`.
+pub(super) fn draw_accessory_seen(
+    canvas: &mut Canvas,
+    art: AccessoryArt,
+    figure: Figure,
+    logical_size: u8,
+    view: View,
+) {
+    let figure = seen(figure, view);
     let (width, height) = (canvas.width(), canvas.height());
     let mut layers = Layers {
         solid: Canvas::new(width, height),
         bare: Canvas::new(width, height),
         speck: logical_size <= SPECK_SIZE,
+        view,
     };
     let ink = art.ink;
+    // From behind, the body hides what is on the front of its head and its chest.
+    let hidden = view == View::Back
+        && matches!(
+            art.accessory,
+            Accessory::Pin(_) | Accessory::Worn(AccessoryKind::StarClip | AccessoryKind::MoonClip)
+        );
+    if hidden {
+        return;
+    }
     match art.accessory {
         Accessory::Pin(variant) => pin(&mut layers.bare, ink, variant, figure),
         Accessory::Worn(kind) => {
@@ -361,7 +422,12 @@ fn mushroom_cap(l: &mut Layers, ink: TrinketInk, figure: Figure) {
 /// A bow of ribbon tied at the back of the head.
 fn ribbon_bow(l: &mut Layers, ink: TrinketInk, figure: Figure) {
     let ribbon = Tones::of(materials::DYE, ink);
-    let (x, y) = (figure.crown.x - figure.head_half / 2 - 1, figure.crown.y);
+    // Tied at the back of the head: from behind, in the middle of it.
+    let (x, y) = if l.view == View::Back {
+        (figure.crown.x, figure.crown.y + 2)
+    } else {
+        (figure.crown.x - figure.head_half / 2 - 1, figure.crown.y)
+    };
     for side in [-1, 1] {
         let lx = x + side * 2;
         l.solid.fill_rect(lx - 1, y - 2, 3, 3, ribbon.base);
@@ -473,13 +539,25 @@ fn earmuffs(l: &mut Layers, ink: TrinketInk, figure: Figure) {
     let strap = Tones::of(materials::DYE, ink);
     let half = figure.head_half.clamp(4, 10);
     let (cx, top) = (figure.crown.x, figure.crown.y);
-    for x in cx - half + 1..=cx + half - 1 {
-        let t = (x - cx) as f32 / half as f32;
-        let lift = ((1.0 - t * t) * 2.0).round() as i32;
-        l.bare.set(x, top - lift, strap.shadow);
+    if l.view == View::Side {
+        // Side-on the band runs over the crown from front to back, down to the one puff.
+        for x in cx - 3..=cx + 1 {
+            l.bare.set(x, top - 1, strap.shadow);
+        }
+        l.bare.set(cx - 1, top, strap.shadow);
+    } else {
+        for x in cx - half + 1..=cx + half - 1 {
+            let t = (x - cx) as f32 / half as f32;
+            let lift = ((1.0 - t * t) * 2.0).round() as i32;
+            l.bare.set(x, top - lift, strap.shadow);
+        }
     }
-    for side in [-1, 1] {
-        let (x, y) = (cx + side * half, top + 3);
+    // Side-on, one puff over the near ear in the middle of the side of the head, the band over
+    // the top to it.
+    let puffs: &[i32] = if l.view == View::Side { &[0] } else { &[-1, 1] };
+    for &side in puffs {
+        let x = if side == 0 { cx - 1 } else { cx + side * half };
+        let y = top + 3;
         l.solid.fill_circle(x, y, 2, cloud.base);
         l.solid.set(x - 1, y - 1, cloud.shine);
         l.solid.set(x, y - 1, cloud.light);
@@ -545,8 +623,17 @@ fn scarf(l: &mut Layers, ink: TrinketInk, figure: Figure) {
         l.solid.set(column, y, stripe.base);
         l.solid.set(column, y + 1, stripe.shadow);
     }
-    // The hanging end, on the front, with a stripe across it.
-    let (end_x, end_top) = (x + half / 2, y + 2);
+    // The hanging end, on the front, with a stripe across it: off the front of the chest
+    // side-on, and out of sight behind the body from behind.
+    if l.view == View::Back {
+        return;
+    }
+    let end_x = if l.view == View::Side {
+        x + half - 2
+    } else {
+        x + half / 2
+    };
+    let end_top = y + 2;
     l.solid.fill_rect(end_x, end_top, 3, 4, wool.base);
     l.solid.fill_rect(end_x + 2, end_top, 1, 4, wool.shadow);
     l.solid.fill_rect(end_x, end_top + 2, 3, 1, stripe.base);
@@ -563,9 +650,29 @@ fn bandana(l: &mut Layers, ink: TrinketInk, figure: Figure) {
     let half = figure.neck_half.clamp(3, 10);
     let (x, y) = (figure.neck.x, figure.neck.y);
     band(&mut l.solid, x, y, half, 1, cloth);
-    let (point_x, depth) = (x + 1, (half / 2 + 3).clamp(3, 6));
+    // From behind, the knot it is tied with, its two ends hanging.
+    if l.view == View::Back {
+        l.solid.fill_rect(x - 1, y, 3, 2, cloth.shadow);
+        l.solid.set(x - 2, y + 2, cloth.base);
+        l.solid.set(x - 2, y + 3, cloth.shadow);
+        l.solid.set(x + 2, y + 2, cloth.base);
+        l.solid.set(x + 2, y + 3, cloth.shadow);
+        return;
+    }
+    let point_x = if l.view == View::Side {
+        x + half - 3
+    } else {
+        x + 1
+    };
+    let depth = (half / 2 + 3).clamp(3, 6);
     for row in 0..depth {
-        let reach = (half - 1) * (depth - row) / depth;
+        // Side-on only the edge of the point shows, down the front of the chest.
+        let full = (half - 1) * (depth - row) / depth;
+        let reach = if l.view == View::Side {
+            full.min(2)
+        } else {
+            full
+        };
         for column in point_x - reach..=point_x + reach {
             let color = if column == point_x + reach {
                 cloth.shadow
@@ -590,7 +697,14 @@ fn bell_collar(l: &mut Layers, ink: TrinketInk, figure: Figure) {
     let half = figure.neck_half.clamp(3, 10);
     let (x, y) = (figure.neck.x, figure.neck.y);
     band(&mut l.solid, x, y, half, 1, strap);
-    let bell_x = x + 1;
+    if l.view == View::Back {
+        return;
+    }
+    let bell_x = if l.view == View::Side {
+        x + half - 1
+    } else {
+        x + 1
+    };
     l.solid.fill_circle(bell_x, y + 3, 2, brass.base);
     l.solid.set(bell_x - 1, y + 2, brass.shine);
     l.solid.set(bell_x - 1, y + 3, brass.light);
@@ -607,15 +721,25 @@ fn shell_necklace(l: &mut Layers, ink: TrinketInk, figure: Figure) {
     );
     let half = figure.neck_half.clamp(3, 10);
     let (x, y) = (figure.neck.x, figure.neck.y);
+    if l.view == View::Back {
+        cord(l, x, y, half, twine.shadow);
+        return;
+    }
+    // The fan hangs at the front of the chest, which side-on is the front of the body.
+    let fan_x = if l.view == View::Side {
+        x + half - 2
+    } else {
+        x
+    };
     if l.speck {
         // Ridges in light and shadow side by side, a row higher and on a darker cord: the soft
         // shading of the full fan is one pale blob at a mini's size.
         const SPECK: [&str; 4] = [".lsl.", "lslsl", "lslsl", "..b.."];
-        stamp(&mut l.solid, x - 1, y + 1, &SPECK, shell);
+        stamp(&mut l.solid, fan_x - 1, y + 1, &SPECK, shell);
         cord(l, x, y, half, twine.edge);
         return;
     }
-    let (sx, sy) = (x + 1, y + 3);
+    let (sx, sy) = (fan_x + 1, y + 3);
     const FAN: [&str; 4] = [".lll.", "lbbbs", "lbsbs", ".bss."];
     for (row, line) in FAN.iter().enumerate() {
         for (column, letter) in line.chars().enumerate() {
@@ -692,6 +816,10 @@ fn friendship_cord(l: &mut Layers, ink: TrinketInk, figure: Figure) {
         l.solid.set(x + dx, y, top);
         l.solid.set(x + dx, y + 1, bottom);
     }
+    // Tied at the front, so from behind only the twist round the neck shows.
+    if l.view == View::Back {
+        return;
+    }
     l.solid.fill_rect(x, y + 2, 2, 1, one.base);
     l.bare.set(x, y + 3, one.shadow);
     l.bare.set(x + 1, y + 4, two.shadow);
@@ -760,6 +888,20 @@ fn snail_pack(l: &mut Layers, ink: TrinketInk, figure: Figure) {
     }
     l.solid.set(x, y, whorl.base);
     let strap = Tones::of(LEATHER, ink);
+    // From behind, a strap up over each shoulder.
+    if l.view == View::Back {
+        for side in [-1, 1] {
+            l.bare.line(
+                x + side * 2,
+                y - 3,
+                figure.neck.x + side * (figure.neck_half / 2 + 1),
+                figure.neck.y + 1,
+                1,
+                strap.shadow,
+            );
+        }
+        return;
+    }
     l.bare.line(
         x + 3,
         y - 1,

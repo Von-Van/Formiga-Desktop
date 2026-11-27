@@ -611,7 +611,7 @@ mod tests {
         for frame in 0..4 {
             let mask = body_mask(&appearance, clip, frame, true, false, face());
             assert!(mask.iter().any(|opaque| *opaque));
-            for food in formiga_core::meals::Food::ALL {
+            for food in formiga_core::meals::Food::DRAWN {
                 let drawn = CreatureRenderer::render_composited_frame_holding(
                     &appearance,
                     None,

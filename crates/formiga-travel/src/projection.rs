@@ -30,6 +30,7 @@ pub enum ProjectionError {
 const fn reader_for(edition: core::Edition) -> u32 {
     match edition {
         core::Edition::Original | core::Edition::Archetypes | core::Edition::Details => 1,
+        core::Edition::Anatomy => 7,
     }
 }
 
@@ -271,6 +272,8 @@ impl Traveler {
                     parent_id: parent_id.0,
                 },
             },
+            lodges_with: None,
+            keeps_colony_house: false,
             kept: true,
             mini_arrivals: core::MiniArrivalState::default(),
             name: self.name.clone(),
@@ -312,6 +315,7 @@ impl Traveler {
                 presence: core::Presence::default(),
                 meal: None,
                 play: None,
+                magic: None,
             },
             leaning: core::RoamingLeaning::default(),
             accessory: self.accessory.map(|accessory| accessory.to_accessory()),
@@ -329,6 +333,7 @@ mod tests {
             core::Edition::Original,
             core::Edition::Archetypes,
             core::Edition::Details,
+            core::Edition::Anatomy,
         ] {
             assert!(reader_for(edition) <= crate::TRAVEL_FORMAT_VERSION);
         }

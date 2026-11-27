@@ -847,7 +847,6 @@ pub(crate) fn conditions(save: &SaveFile, monitors: &[MonitorInfo]) -> Vec<Strin
         1 => "Just the one.".to_owned(),
         count => format!("{} in the colony.", super::today::count_word(count)),
     });
-    lines.push("Entirely on this computer.".to_owned());
     lines
 }
 

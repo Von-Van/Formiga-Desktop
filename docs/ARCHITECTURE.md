@@ -233,9 +233,9 @@ they are not part of validation.
 belong to none of the themes. Everything else lives in a child module named after what it is about —
 `world/antics.rs`, `arrivals.rs`, `battle.rs`, `beats.rs`, `bonds.rs`, `bubbles.rs`, `colony.rs`,
 `discovery.rs`, `echo_fox.rs`, `experience.rs`, `generation.rs`, `habits.rs`, `home.rs`,
-`house_visits.rs`, `interaction.rs`, `journeys.rs`, `moments.rs`, `movement.rs`, `new_looks.rs`,
-`objects.rs`, `offers.rs`, `rides.rs`, `rituals.rs`, `routine.rs`, `spacing.rs`, `step.rs`,
-`surfaces.rs`, `tows.rs`, `trips.rs`, `undo.rs`, `village_life.rs`, `visitors.rs`, `wonders.rs`, and
+`house_visits.rs`, `interaction.rs`, `journeys.rs`, `magic.rs`, `moments.rs`, `movement.rs`,
+`new_looks.rs`, `objects.rs`, `offers.rs`, `rides.rs`, `rituals.rs`, `routine.rs`, `spacing.rs`,
+`step.rs`, `surfaces.rs`, `surroundings.rs`, `tows.rs`, `trips.rs`, `undo.rs`, `village_life.rs`, `visitors.rs`, `wonders.rs`, and
 the `attention/` family. Each module adds methods to the one `World` type rather than owning state
 of its own, so there is still a single simulation object and a single tick.
 
@@ -258,17 +258,17 @@ counts the roofs climbed, carries out the asides and has the neighbours wave bac
 
 The values that decide how a feature feels — how often something happens, how long it lasts, how
 far a companion goes for it, how likely it is — live in `tuning.rs`, one struct per feature:
-`WONDERS`, `FINDS`, `ROAMING`, `VILLAGE_LIFE`, `VISITS`, `OFFERS`, `OBSERVATIONS`, `UNDO` and
-`TODAY_NOTES`. Retuning a feature is a change to that file alone. Limits the save or memory depend
+`WONDERS`, `FINDS`, `ROAMING`, `VILLAGE_LIFE`, `VISITS`, `OFFERS`, `OBSERVATIONS`, `UNDO`,
+`TODAY_NOTES`, `MAGIC` and `SURROUNDINGS`. Retuning a feature is a change to that file alone. Limits the save or memory depend
 on stay beside the data they bound, and the shape of an animation stays with the motion it draws.
 Gathering them there was behaviour-preserving: six colonies of three simulated hours each produced
 the same saves, byte for byte, before and after.
 
 Tests live in `world/tests/`, one file per theme — `ambient`, `antics`, `arrivals`, `bonds`,
 `bubbles`, `colony_management`, `companion`, `discovery`, `echo_fox`, `edges`, `experience`,
-`habits`, `hangouts`, `home`, `house_visits`, `interaction`, `journeys`, `misc`, `moments`,
-`new_looks`, `objects_and_decorations`, `offers`, `perches`, `rituals`, `spacing`,
-`topology_and_attention`, `tows`, `trips`, `undo`, `village`, `village_life`, `visitors`, `wonders`
+`habits`, `hangouts`, `home`, `house_visits`, `interaction`, `journeys`, `magic`, `misc`,
+`moments`, `new_looks`, `objects_and_decorations`, `offers`, `perches`, `rituals`, `spacing`,
+`surroundings`, `topology_and_attention`, `tows`, `trips`, `undo`, `village`, `village_life`, `visitors`, `wonders`
 — with the shared desktop fixtures and colony builders in `world/tests/mod.rs`. The split into modules was
 behaviour-preserving: a differential harness ran five seeds for 18,000 ticks each against 0.57.1
 and compared the event streams and serialized saves byte for byte.
@@ -372,6 +372,18 @@ would be seen from behind, and no belly. The face is drawn into these frames
 walking turned wears `TURNED_FACE`, neutral with its eyes open, and does not blink or change
 expression until it stops. Each frame returns a `Figure` and its `hands` and `mouth` as any
 frame does, so what it wears and carries is placed against the turned body.
+
+The Echo Fox walks turned too. `walks_turned` is `can_turn` or the fox, and it decides the walk,
+run and walk away; `can_turn` alone still decides the climbs, so the fox climbs facing the screen
+as it always has and `formiga_core::climbs_turned` is unchanged. `fox::draw_turned` draws the fox's
+own picture side-on — `SIDE_HEAD` outlined all round over `SIDE_BODY`, its pointed white muzzle,
+one eye and blush, the brush out behind curling up to its white tip, the far foot in shade and the
+forepaw folded on the white bib — and from behind, the sketch's own body in its coat under pointed
+ears with dark backs, its brush out past its side and curling up to a white tip as it does
+side-on. It is moved by the same stride
+every turned body is: feet forward and back or up in turn, the body sinking onto a planted foot,
+the head carried ahead and the ears laid back in a run, the brush a frame late. Its colours are the
+sketch's own, so it is the same fox.
 
 In the side-on walk the near foot is planted and carried back under the body for three frames
 while the far one comes forward through the air, then the other way about; the body sinks a row
@@ -1986,6 +1998,20 @@ companion's standing frame on its own, as it sits on that companion, for a page 
 beside its name. The overlay rebakes a companion's atlas only when what it wears
 changes. `cargo run -p formiga-tools -- accessory-sheet` draws every piece on every body plan.
 
+A piece follows a body turned. `draw_accessory_seen` is told which way the frame's body is turned
+— side-on or from behind for a walk, a run or a climb drawn turned, facing the screen in every
+other frame — and places the piece by `seen(figure, view)`. Facing the screen nothing changes.
+Side-on the collar is the narrower band a neck is from the side, at the front of the body under
+the face, so a bell, a shell fan, a scarf's end and a kerchief's point hang off the front of the
+chest, a pin sits on it, and earmuffs show one puff over the near ear with the band over the
+crown. From behind the body hides what is on the front of the head and the chest — a pin, the star
+and moon clips, a bell, a fan, the ends of a scarf or a cord — a bow tied at the back of the head is
+seen square on in the middle of it, a kerchief shows its knot and two ends, and a snail pack rides
+the middle of the back on a strap over each shoulder. `render_dressed_turned_frame` draws a
+standing companion turned and dressed, and `turn-sheet --wearables` every piece on every turned
+view, on bodies at three statures, an original blob, a mini and the fox; `accessory-sheet` adds a
+side-on walk, a walk away and a climb from behind to each body's poses.
+
 The wardrobe on the Your colony page, in `clubhouse/collection.rs`, pictures each choice beside its
 name as it would sit on the companion — one strip of twenty boxes cut by `render_worn_piece`, drawn
 again only when the companion changes — and shows the companion wearing whatever the pointer is
@@ -2023,7 +2049,10 @@ forelegs are; holding on to a ledge to dangle or climb is the one reach that goe
 behind the cheek, and pulling itself up onto one the other, down onto the ledge. A resting paw stays folded on the belly. The face
 is drawn in the face frame like a companion's, so blinks, gazes and expressions come from the
 same face state. Belongings and effects are still each companion's own. `formiga-tools fox-sheet`
-draws every clip and every face.
+draws every clip and every face, and `turn-sheet --fox` the fox turned. Its walk, run and walk away
+are drawn side-on and from behind like a companion's (see the turned walks under
+[Procedural identity and animation](#procedural-identity-and-animation)), which takes its atlas
+from 1,898,496 to 1,990,656 bytes, one row of cells more.
 
 A fox visiting Formiga Hill or Formiga Home is a fox there too: `TravelAppearance` carries
 `echo_fox` from travel version 5 (household version 9), set only while it is true, and
@@ -2043,6 +2072,67 @@ row, and — up and down — a house a step further back on the ground or nearer
 picked out shows its keeper, anyone else who lives there, its kind, where it stands front to back,
 and its six places to decorate. Nothing is written until something is let go, and every change goes through the same
 outcomes as the rest of the page, so each can be undone.
+
+## Who lives where (save v35)
+
+Every full-size companion keeps a house of its own and a mini lives in its big version's, unless
+the person at the desk has arranged otherwise. Two saved fields on `Creature` say so:
+`lodges_with`, the companion whose house it lives in when that is not where it would live by
+itself, and `keeps_colony_house`, set on the one full-size keeper the colony house was handed to
+when that is not the first to arrive. Both are absent from the file while they say nothing, so a
+colony that never moved anyone writes exactly what it did before. `keeps_house` answers whether a
+companion keeps a house (full-size and lodging with nobody, and the first to arrive regardless if
+a damaged file left nobody keeping one); `house_keeper_of` follows a lodging, or a mini's big
+version, to the keeper of the house a companion lives in; `colony_cottage_list`, `house_owners`
+and `house_slot_for` all read them, so the overlay, the village's plans, Formiga Home's household
+and every other caller follow the arrangement without being told. A house is keyed by its keeper
+throughout — its type, depth, place in the row and decorations — so moving people never moves a
+house, and a house taken down keeps its choices for when it goes up again.
+
+`world/housing.rs` makes the changes, each through `World::edit` and so undoable like the rest of
+the Home page (`ColonyEdit::{TookDownHouse, MovedIn, SwappedHouses}`; an undo point keeps every
+companion's housing fields beside the home):
+
+- `take_down_house(keeper)` moves the whole household — the keeper, its minis and anyone lodging
+  with it — together into another house, and refuses only the village's last house. Where they go
+  is `rehoming_host`: the house with the fewest residents that has room for the whole household
+  (`HOUSE_ROOM`, a keeper and as many minis as a full-size companion can have, four), the nearest
+  along the row on a tie; when none has room, the emptiest, nearest first, shared. The keeper and
+  its lodgers lodge with that house's keeper; its minis follow it. When the colony house comes
+  down, the next house along becomes the colony house.
+- `move_into_house(resident, keeper)` moves a mini or a lodger by itself; a companion that keeps a
+  house brings its household and its house comes down, into the house chosen.
+- `give_own_house(resident)` gives a full-size lodger its house back, in the place in the row it
+  had, with the minis who lived with it. `ColonyHome::arrange_cottages` keeps that place: a
+  written row lists a full-size companion whose house is down after the house it stood behind,
+  and carries it along when the houses left standing are rearranged around it.
+- `swap_households(a, b)` exchanges the people of two houses: each house's drawn type is written
+  down for its new keeper where it would otherwise change, depths and decorations change keys, and
+  the row is written out in full with the two swapped, so every house stands where it stood.
+
+Taking a change back follows the same rule as making one: `undo_last_edit` refuses
+(`UndoError::HouseOpen`) while a house is open in Formiga Home whenever it would move anybody
+between houses, and keeps the undo point for when the household is home.
+
+Nothing else is touched: no companion is removed, replaced or regenerated, and its memories, bonds,
+tallies, belongings, wear and progress stay as they were — a property test runs long random runs
+of all four changes and undo over several colonies and holds all of that, and that everybody lives
+in a house the village has, after every step and across a save and load. `normalize_housing`
+tidies the fields on every colony opened and after every change: a lodging names a house's keeper
+directly, or nothing when it says only what the colony would do anyway, and a lodging to somebody
+who has gone or round in a circle is dropped. A companion leaving the colony takes nobody's house
+with it: anyone lodging with it moves on by the same rule.
+
+Whatever was under way about the houses resolves as the change is made. Every plan in the village
+(a call next door, a walk to a doorstep, somebody indoors, a game) is let go, the residents' turns
+are given back, and a guest on its walk round works its tour out again; everyone then walks home
+to the house that is theirs now. While a house is open in Formiga Home its household is indoors,
+so every change is refused (`HousingError::HouseOpen`) and the page offers none. A trip carries
+none of it: housing is kept in the colony file, which a trip leaves alone.
+
+On the Home page, a house picked out lists everyone who lives in it, each with a Move to… choice of
+the other houses (and A house of its own for a full-size lodger), a Swap households with… choice,
+and Take down this house…, which asks once, naming who will move where, before it does anything.
 
 ## The ground the village stands on (save v30)
 
@@ -2250,10 +2340,11 @@ of each run of floor a wonder could stand on.
 
 A dwelling's ground footprint, in shelter pixels, is 84 for the colony house and 68 for a
 companion's — 60 and 46 until 0.61.0, 70 and 56 until 0.65.0. There is no mini's cottage: a house belongs to a full-size companion, and a mini
-lives in its big version's — `house_slot_for` answers which house any companion comes home to,
-and a mini keeps that answer if it ever grows full-size. `house_owners` lists the keepers in the
-order their houses stand: the founder in the colony house, then the cottages in the order the
-owner arranged them, then anyone never arranged in the order they arrived.
+lives in its big version's unless it was moved — `house_slot_for` answers which house any
+companion comes home to (see "Who lives where"). `house_owners` lists the keepers in the
+order their houses stand: the founder in the colony house, or whoever it was handed to, then the
+cottages in the order the owner arranged them, then anyone never arranged in the order they
+arrived.
 
 One walk lays out the whole strip: `Tree(Outward)`, `Dwelling(0)` through `Dwelling(n)` a
 `VILLAGE_GAP` apart, and `Tree(Inward)`. Neither belongings nor standing places are lots any more
@@ -2551,7 +2642,7 @@ answers first where it has something to say: a guardian watches the newcomer und
 bubble, a shy one or a wallflower peeks out from behind its paws and blushes, a vain or
 attention-seeking one or a show-off struts under a Sparkle, and a grumpy or irritable one or a grump
 huffs under a Grumble; the bubble shows once, as the answer starts. Everyone resting at the village
-answers. Nobody leaves the village to follow the guest, and no bond, tendency or memory counter
+answers. Nobody leaves the village to follow the guest (a resident may go over to it within the village; see "A guest in among the village"), and no bond, tendency or memory counter
 changes for having had one: against a control gathering with no visitor, the bonds, sociability,
 trust and the pet, visit, play and sleep counters are asserted to match. Since residents make room
 for a guest out in the village, their own finds and moments can fall on other ticks.
@@ -2587,6 +2678,64 @@ dropping one. Inviting a favorite goes through `invite_visitor` exactly as a pas
 same checks answer and the same visitor, under the same name, comes back. The Creature studio's "Adopt a shared companion from a code" offers "Invite
 for a day" from the same explicit preview that adoption uses, disabled while somebody is visiting or
 when the code names a creature already at home.
+
+### Visitors the colony knows (save v35)
+
+`VisitorState::known` remembers up to `MAX_KNOWN_VISITORS` (twelve) visitors as individuals, each
+once: a `KnownVisitor` with the name it went by, the `CreatureOrigin` that recreates it — recipe,
+seed and generation, the same compact identity a share code carries, and nothing drawn — whether it
+wandered by or was invited, when it was first and last here, how many visits it has paid, and up to
+`MAX_VISITOR_FRIENDS` (three) residents it got on with, the ones it went over to most recently
+first. A visit is remembered when the guest book is signed, and the residents a day-long friend
+meets later in its stay are added as the houses go. A full roster forgets the visitor least often
+here, and of those the one longest away. A colony opened from before version 35 remembers each
+origin in its guest book once, by the name it last went by. At its fullest — twelve visitors, each
+with a recipe, a full-length name and three friends — the roster writes about 16 KiB of the
+pretty-printed colony file, most of it the seeds' digits; a typical visitor is a little over 1 KiB.
+A friend who leaves the colony is dropped from the roster when the colony is next opened. The
+Journal's guest book counts a remembered visitor's visits from the roster, which outlasts the book,
+and says who it gets on with under its name, for the visitor here now and every line before.
+
+A visitor is rebuilt from its origin alone (`World::remembered_visitor`), which gives the same
+look, stature, temperament, leanings, habits and behaviour seed every time — so it also tours a
+village the way it did, since a visit is authored from the guest's own seed — and a test holds a
+visitor drawn from a colony file written and read back to be pixel-identical to the one that was
+here. At a gathering a wanderer is due at, two times in five a wanderer the colony has met comes
+back instead of somebody new (`visitor-return-v1`, from the colony seed and the gathering), under
+its old name unless a resident has taken it.
+
+A returning visitor meets the colony differently. Residents it got on with answer its hello with a
+bounce under a heart, sooner and for longer, whatever their temperament makes of strangers; others
+who were here last time wave as before; and the guest itself says hello with a heart when a friend
+is among those answering. On its walk round it goes over to a friend before anyone else and stays a
+little longer. As it says goodbye, everyone it went over to, and any friend of its who is here,
+waves it off in turn, a friend under a heart; reduced motion keeps every bubble and drops every
+gesture.
+
+### A guest in among the village
+
+A guest takes part in what the residents do, not only in its own walk round. While it stands about
+at a stop (`TourMoment::Resting` or `Looking`), it is somebody a resident may go over to: the
+village's own company (`world/village_company.rs`) offers it among a resident's friends — the only
+one, while a guest is out, as residents keep their company for the guest — weighted by how well the
+two got on (a friend from an earlier visit most, a resident who was here last time next, a stranger
+least), only while nobody else stands within a frame and a half of it, and only ever to say hello and stay a while. The resident's `Call` runs exactly as it does
+for another resident: a look across, the walk over to stand beside it face-clear, the hello and the
+company kept. The guest answers by stopping where it is (`TourMoment::Company`), turning to the
+caller and keeping it company for as long as the caller's plan lasts, forty seconds at most, and
+counts the caller as met, so it is remembered as a friend and waves it goodbye. Each resident goes
+over once a visit at most.
+
+A guest that arrives at a stop beside somebody at work — a garden, a chore on a house — looks on
+(`TourMoment::Watching`), with the residents' own watching gesture. And a returning guest heads for
+a friend's doorstep first, when that door is set back up a path, and greets the friend there first
+if it is home.
+
+Neither keeping company nor looking on is ever done in anybody's face: a guest drawn over a face,
+or with its own face covered, for a second while doing either moves on, and its caller with it.
+`World::covered_faces_with_guest` gives the pairs whose faces are covered with the guest counted,
+which `formiga-tools village-watch` reads — `--visitor` invites a friend for the whole watch and
+reports how a visit is spent: at the spot it walked in to, beside residents, and how many it met.
 
 ## Keeping faces clear
 
@@ -2906,6 +3055,64 @@ hangs "not now" under the cell, as a snack does. Move lifts it: the overlay draw
 the pointer, and its window follows the pointer whole, so the next click anywhere near it reaches
 it and sets it down there; a right click leaves it where it was. Profile turns the notebook to the
 journal.
+
+## Magic fruit
+
+Now and then what a companion sits down to eat out on the desktop is a star fruit, glowing gold,
+and once it has eaten it something odd happens to it for a minute or two. `formiga-core::magic` is
+the pure half — the four `MagicKind`s, a `Spell`'s clock, and everything drawn from it — and
+`world/magic.rs` the runtime: `MagicFruit` on `World` (when the next one is ripe, and who is eating
+one), and `CreatureState::magic`, the spell itself. Nothing about either is saved, counted or
+written down; a relaunch, like `forget_runtime`, finds everybody as they were, and every choice
+comes from a `magic-fruit` stream of its own.
+
+A fruit ripens after `MAGIC.ripe_after_secs`, eight to eighteen hours of the colony out on the
+desktop, visible, unpaused, not in quiet mode and in no ritual — a clock that only runs while
+somebody could see it happen, so in an ordinary colony that comes and goes from its village, once
+every few days. The next companion to start a meal out there then finds its food is
+`Food::Starfruit` (the meal is laid out again for it from the same point, `Meal::plan`), with a
+Surprise bubble. The star fruit is drawn on the held sheet after the everyday foods
+(`Food::DRAWN`); it is not one of `Food::ALL`, so no meal chooses it and it is nobody's favourite.
+If the companion gets through `MAGIC.eaten_enough` of it and nothing took it away — a hand, a
+toss, sleep — the spell comes over it as the meal ends; otherwise another ripens within the hour.
+
+Which spell leans on who it is (`magic::leanings`): a calm one tends to float, a playful one to
+bounce, a lively one to get the zoomies, and a vain or shy one to shimmer. It comes on with a ring
+of lights bursting outward and a moment of delight (`BeatKind::Delight`, the Cheer gesture), a
+show-off's strut, or a shy one's blush behind its paws, and lasts `MAGIC.length_secs`.
+
+- **Float** draws it nine art pixels up, bobbing two and a half either way every 1.8 seconds, with
+  gold dust falling from its feet.
+- **Bounce** turns every two walking frames into a hop and, standing, hops on the spot every 1.3
+  seconds, with a puff of lights each time it comes down.
+- **Zoomies** is the one that changes what the simulation does: every walk it takes is
+  `MAGIC.zoomies_pace` quicker (`execute_action`), trailing sparks.
+- **Shimmer** turns four twinkling lights slowly round it.
+
+A spell is drawn, never walked: `Spell::lift` is how far above its feet the companion is drawn,
+worked out at the end of every tick (`carry_magic`, after the meals), and
+`CreatureState::drawn_lift` adds it to `drawn_position`, so the overlay's quad and the click proxy
+both rise with it while its contact point, its surface and everything the simulation decides stay
+where they were. The overlay keeps its shadow on the ground, shrinking with the lift as a hop's does.
+`strength` goes to nothing at once whenever something else wants the companion's body — an
+attention scene, a journey or climb, a toss, a wonder, a habit, a tow, or any action that is not
+one of its own ordinary ones (`shows_magic`) — and eases back once it is free, so nothing ever
+hangs, climbs or lands in the air. Being picked up or thrown, falling asleep, going indoors or into
+a house open in Formiga Home (at once, from `go_indoors`), the village coming out for a visit home, a
+ritual, quiet mode, hiding, pausing, and `clear_runtime_plans` (a trip to Formiga Hill or Battle
+through `prepare_for_trip`, Gather, a quiet spell, the village appearing) end it outright. Formiga
+Farm never takes a companion away — it goes on living on the desktop while its look is worked on —
+so a spell simply carries on through a new look arriving. With reduced motion a spell is the still kind: a shimmer of three lights that stay where
+they are, no lift, no hurry and no pose, and one already under way turns still the moment motion is
+reduced.
+
+The lights are `Spell::glints`, at most four, in art pixels from the contact point. They are three
+little stars on the contact shadows' own sheet (`glint_cell`, under the shadows), which the overlay
+holds whenever anybody is drawn, so `gpu/magic.rs` adds a few quads at the end of the companion's
+own stretch of the frame and nothing else; with nobody under a spell they cost nothing. While a
+spell moves the colony is ticked and drawn at 20 Hz (`world_has_spatial_motion`).
+`formiga-tools magic-sheet` draws the star fruit, every spell at a few points and the still kind on
+every sheet body, placed, lifted and lit by the same rules.
 
 ## Exact offline seed sharing
 
@@ -3742,6 +3949,69 @@ between 3.5 and seven depending on how steady the pair is; every scene is then f
 45-second play cooldown, and interruption never claims a completed interaction. Reduced motion
 retains stationary looks and expressions. No game writes a journal entry.
 
+### Noticing the desktop
+
+`world/surroundings.rs` gives companions a handful of small, occasional things to do about the
+windows and ledges around them. Every `SURROUNDINGS.interval_secs` (three and a half to seven
+visible minutes) out on the desktop, while no attention scene is live and no colony cooldown is
+running (`AttentionRuntime::settled`), one companion that happens to be in the right place, free for
+a beat and not on its own cooldown (four to eight minutes after its last one) does one, weighed by
+who it is; the kind done last time is left out, so it never does the same twice running. When
+nobody is in the right place it looks again thirty to sixty seconds later. Each is a beat
+(`world/beats.rs`), so it holds the companion where it stands, uses poses and faces the atlas
+already has, and lets go when it is over or when anything bigger comes along:
+
+- **Pointing at a window** (`BeatKind::PointAt`): a window standing beside it at its own height,
+  its side 0.3 to 1.6 frames away. A paw out toward it (Reach), then a long look (Watch), turned to
+  it; now and then a Question bubble. The curious and the nosy are likelier.
+- **Peering round the end of a ledge** (`PeekRound`): within a frame of the end of the window it
+  is on, with air beside it. Down low, then leaning out to look down past the end. The curious and
+  the shy or wary are likelier.
+- **Sitting with its legs over the front** (`LedgeSit`): on any window top with at least
+  `ledge_sit_drop` of clear air below, seven to fourteen seconds sat as on any window (the `Perch`
+  clip) but drawn `ledge_sink` art pixels lower (`Beat::ledge_sink`, through `drawn_lift`), so its
+  feet hang over the window's face, looking down at the desk. No clip shows legs hanging better, so
+  every body uses this one, except the original legless blob, which only looked sunk into the
+  window and does not sit this way. Calm companions are likelier. The ledge going ends it.
+- **A nudge off a ledge** (`Nudge`): a playful companion on a window top with a friend it is fond of
+  (`nudge_affinity`, and not avoiding it) within three frames, nearer the end and within 2.4 frames
+  of it, where the drop beyond the end is 30 to 200 points onto somewhere inside the habitat; the
+  friend only has to be standing or sat and free, whatever it last did itself. Such a pair does not
+  last long, so besides the ordinary turn it is looked for every two seconds
+  (`look_for_a_nudge`), happening a quarter of the times it is found, and after one the colony goes
+  five to ten hours of desktop time (`nudge_rest_secs`) before another. The nudger winds up and puts
+  out a paw; 0.55 seconds in, if both are still where they were and free, the friend tips off in the
+  arc a tumble takes (`TossState`, never counted as a toss by the person), landing on whatever its
+  path crosses, the floor at worst. Once it is down and over the landing it stands a moment and has
+  its say — a grump huffs, a shy one blushes behind its paws, anyone else bounces with glee — and
+  the nudger laughs. Anything that takes either of them first, a hand included, lets the nudge go
+  before the push. The nudger never startles at its own push (`reacted_to_toss`).
+- **Cheering a climb**: when somebody gets up onto a window (`antics::Cue::Climbed`, the cue a
+  show-off's strut answers), a fond friend on the ground below within five frames, free and off its
+  cooldown, cheers it half the time with a Heart.
+- **Watching a fall** (`watch_falls`): when somebody nearby starts to fall — tipped off a ledge,
+  thrown, tumbling — the nearest fond friend within six frames that is free for it flinches (the
+  Startle beat, a gasp) seven times in ten, turned to it, and once it is down looks over at it: a
+  playful one amused (`Amused`, a look and then a little bop, with a Music bubble), anyone else
+  relieved (`Relieved`, paws together and then a long fond look, with a Heart). A friend close enough
+  to run over to a thrown friend (`react_to_tossed_friend`) does that instead, as it always has.
+
+Cheering a climb and watching a fall share one budget (`reaction_gap_secs`): after either, the
+colony goes 45 to 75 minutes of desktop time before the next, so friends react now and then rather
+than to every climb. Over twenty-four hours of desktop time in colonies of four, all fond of one
+another, on a desktop of three windows (`week_of_surroundings`, run by hand), that came to between
+seven and eight an hour per colony: about 2.8 ledge sits, 2.6 peers round an end, 1.3 pointings and
+one cheer or flinch an hour, and a nudge once or twice in a week of ordinary use.
+
+Reduced motion, quiet mode, hiding, pausing, a ritual and a visit home hold all of it back, and
+`clear_runtime_plans` lets a nudge or a watch go — which covers a trip to Formiga Hill or into
+Formiga Battle, since both settle the colony with `prepare_for_trip` before the world is held still.
+A companion going into a house open in Formiga Home lets go of its own beat, nudge or watch at once
+(`let_go_of_surroundings`, from `go_indoors`). Nothing here is saved, counted or written down, and
+every choice comes from a `surroundings` stream of its own, so none of it shifts any other choice
+the colony makes. The tick costs a few countdowns while nothing is due. `formiga-tools magic-sheet`
+draws each of them, with the window it is about, on every sheet body.
+
 ## Colony history and the Today page (save v23)
 
 The notebook opens on Today, `clubhouse/today.rs`, page one of nine, written as the researcher's
@@ -4209,6 +4479,14 @@ and moving in all stay with Home until Desktop applies them.
 | Open | Home has the house. Whoever is indoors stays there and the world leaves them alone; everyone else lives as always. For a Home that says who is indoors, Desktop looks for its latest word at most once a second, from a tick it was taking anyway, and keeps exactly those lent who are named indoors and the rest out on the desktop (`World::settle_house_visit`): residents the owner sends out from Home's cells, and friends until they come over and once they have gone home. Someone in the owner's hand when the word came goes in once put down. The tray offers to bring the household back |
 | Closing | Home has gone, or the owner asked for the household back: Home's last result is kept as `accept_result` allows, the visit's line goes in the journal if Home sent one, the files are closed, and everyone comes back out where they went in (`World::end_house_visit`) |
 
+A household is whoever lives in the house as "Who lives where" arranges it: a companion lodging
+there goes in with it as a resident. A little one living in a house its big version does not goes
+in only beside it, so it stays out on the desktop for that visit, and the snapshot never carries a
+little one alone. The homes Desktop keeps hold one for every household; a household whose house is
+down is not sent to Home, since its keeper keeps no house in the village, and its home is kept aside
+in `home/state.json` as it was, for when the house goes up again (at most `MAX_HOUSEHOLDS` in all).
+No contract format or version changed for any of this.
+
 The states are `house::VisitState`, runtime only, and only one house is ever open. While one is,
 the colony cannot leave for Formiga Hill, and a trip under way keeps every house shut; replacing
 the colony first tells Home the visit is over. A companion away in a house is skipped by both of
@@ -4266,6 +4544,43 @@ With it, a house's pixels are cut only when the village's look changes, and the 
 from the tick that already syncs the creatures'. While a house is open nothing is drawn for those
 inside it, and looking for Home's word on who is indoors is one file's modified time a second,
 read only when it has changed.
+
+## Restyling a companion in the studio
+
+The creature studio (`clubhouse/studio.rs`) restyles a companion who already lives here, in
+`clubhouse/restyle.rs`: its body plan among the five companion plans and its proportions; its ears,
+muzzle, crown, tail, odd tail, limbs, wing-nubs, what grows on its head, what is on its chest and the
+tip of its tail; its coat, accent, candy coat, marking, pattern and the colours of a belly or a tip,
+with the colony's own coats and accents beside every colour; and its face layout and features. These
+are the companion half of what Formiga Farm's inspector offers, on the same `forms::Design`, so they
+reach exactly the recipes Farm's do. Making a creature stays in Farm: the sculpted body plans and
+their parts, coats and markings, the animals to start from, rolling a design and starting over are
+not here. A sculpted form, or a look from before recipes, keeps its body and colours and can change
+only its face. A part a body cannot carry (`Anatomy::fits`) is shown but not offered.
+
+The working copy and a preview of it — standing facing the screen, side-on, turned away, and
+waving — are made only once a companion is chosen, drawn again only when the copy changes, and let
+go of as soon as another page is shown or the notebook lets go of its images. While the section is
+open with a companion chosen, the preview, its name, "Keep this look" and "Put back" are pinned in
+view outside the page's `ScrollArea` (`RestyleState::pinned`, drawn by `draw_settings` before the
+page scrolls), so every change shows on the companion as it is made: in a column beside the choices
+where the page is wide enough (`SIDE_PANE` and `CHOICES_MIN`, scaled with the text), the four views
+two by two; otherwise in a band above them, two by two with the buttons beside it where there is
+room and in a row where there is not. Every picture stays at a whole number of points to the pixel.
+The choices themselves go one to three to a row as the width and the text size allow
+(`restyle::per_row`), each its label over its control, with related choices kept together on a row
+(ears and their size, the tail and the odd tail, the eyes' size, spacing and height); a colour and
+its swatches take a row of their own. `the_restyled_companion_stays_in_view_while_its_choices_scroll`
+scrolls down to the face at 940 and 760 points wide, in both themes and at 100% and 150% text, and
+holds the preview where it was and inside the window at every step. "Keep this look" sends
+`SettingsOutcome::restyle`, and `restyle::keep_look` refuses a design `Design::validate` does not
+pass, and otherwise gives it to the companion with the Farm contract's `apply_design`, which changes
+its look and nothing else, inside `World::edit` as `ColonyEdit::Restyled`. `World::edit` keeps an
+undo point for a change of look as it does for a change of who lives here, and undoing a restyle
+puts back each companion's appearance and recipe exactly and nothing else they have done since. No
+journal line is written: the new-look line belongs to Formiga Farm. While the copy carries anatomy
+the section says that a Formiga Hill or Home from before this release cannot host the companion,
+which is what travel version 7 makes such a Hill or Home say.
 
 ## Sculpted forms (save v29)
 

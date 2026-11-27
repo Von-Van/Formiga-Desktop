@@ -34,6 +34,8 @@ pub(crate) struct ArrangeState {
     pub(crate) arranging: bool,
     pub(crate) picked: Option<Picked>,
     drag: Option<Drag>,
+    /// The house whose taking down has been asked for once and waits to be confirmed.
+    take_down_asked: Option<CreatureId>,
     /// Where everything that can be picked out was drawn last frame, for tests to take hold of.
     #[cfg(test)]
     pub(crate) shown: Vec<(Picked, egui::Rect)>,
@@ -884,15 +886,14 @@ impl HomeState {
                 } else {
                     format!("Cottage {slot} · {}'s", keeper.name)
                 });
-                // Who else lives there: a mini shares its big version's house.
-                let minis: Vec<&str> = save
-                    .creatures
-                    .iter()
-                    .filter(|creature| creature.role.parent_id() == Some(keeper.id))
-                    .map(|creature| creature.name.as_str())
+                // Who else lives there: its minis, and anyone lodging with it.
+                let others: Vec<&str> = formiga_core::house_residents(&save.creatures, keeper.id)
+                    .into_iter()
+                    .skip(1)
+                    .filter_map(|id| name_of(save, id))
                     .collect();
-                if !minis.is_empty() {
-                    ui.small(format!("with {}", minis.join(" and ")));
+                if !others.is_empty() {
+                    ui.small(format!("with {}", others.join(" and ")));
                 }
             });
             ui.horizontal(|ui| {
@@ -923,7 +924,7 @@ impl HomeState {
                         }
                     });
             });
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label("Stands");
                 let chosen = save.home.house_depth(keeper.id);
                 let standing = save.home.house_depth_list(&save.creatures)[slot];
@@ -942,8 +943,19 @@ impl HomeState {
             });
             ui.add_space(6.0);
             ui.small("What it wears, one thing in each place:");
+            // Two places to a row where they fit side by side, and one where they do not: a
+            // narrow window, or large text.
+            let label = DecorationSlot::ALL
+                .into_iter()
+                .map(|place| super::text_width(ui, place.label()))
+                .fold(0.0, f32::max);
+            let pairs_per_row = if ui.available_width() >= 2.0 * (label + 130.0 + 36.0) {
+                2
+            } else {
+                1
+            };
             egui::Grid::new(("house-decorations", keeper.id))
-                .num_columns(4)
+                .num_columns(2 * pairs_per_row)
                 .spacing([10.0, 6.0])
                 .show(ui, |ui| {
                     for (index, place) in DecorationSlot::ALL.into_iter().enumerate() {
@@ -977,7 +989,7 @@ impl HomeState {
                                     }
                                 }
                             });
-                        if index % 2 == 1 {
+                        if index % pairs_per_row == pairs_per_row - 1 {
                             ui.end_row();
                         }
                     }
@@ -989,8 +1001,151 @@ impl HomeState {
                      day or two."
                 ));
             }
+            self.residents_rows(ui, save, keeper, formiga_home, outcome);
             formiga_home_row(ui, keeper, formiga_home, outcome);
         });
+    }
+
+    /// Who lives in the house picked out, each with somewhere else to move to; the household
+    /// swapped with another house's; and the house taken down, asked twice. Nobody leaves the
+    /// colony over any of it, and each change can be undone.
+    fn residents_rows(
+        &mut self,
+        ui: &mut Ui,
+        save: &SaveFile,
+        keeper: &Creature,
+        formiga_home: FormigaHomeView,
+        outcome: &mut SettingsOutcome,
+    ) {
+        let owners = formiga_core::house_owners(&save.creatures, &save.home.cottage_order);
+        let others: Vec<CreatureId> = owners
+            .as_slice()
+            .iter()
+            .copied()
+            .filter(|id| *id != keeper.id)
+            .collect();
+        let residents = formiga_core::house_residents(&save.creatures, keeper.id);
+        // Nobody moves while a house is open in Formiga Home: its household is indoors.
+        let free = formiga_home.open.is_none();
+        let busy = "Not while a house is open in Formiga Home.";
+        let house_of = |id: CreatureId| {
+            name_of(save, id).map_or_else(|| "another house".to_owned(), |n| format!("{n}'s house"))
+        };
+        ui.add_space(6.0);
+        ui.small("Who lives here:");
+        egui::Grid::new(("house-residents", keeper.id))
+            .num_columns(2)
+            .spacing([10.0, 6.0])
+            .show(ui, |ui| {
+                for resident in &residents {
+                    let Some(creature) = save.creatures.iter().find(|c| c.id == *resident) else {
+                        continue;
+                    };
+                    ui.label(&creature.name);
+                    // A lodger who is full-size can have a house of its own again; a keeper's
+                    // move takes its household with it and its house comes down.
+                    let own_house = creature.role.is_adult() && *resident != keeper.id;
+                    ui.add_enabled_ui(free && (!others.is_empty() || own_house), |ui| {
+                        egui::ComboBox::from_id_salt(("move-resident", *resident))
+                            .width(170.0)
+                            .selected_text("Move to…")
+                            .show_ui(ui, |ui| {
+                                for host in &others {
+                                    if ui.selectable_label(false, house_of(*host)).clicked() {
+                                        outcome.move_into_house = Some((*resident, *host));
+                                    }
+                                }
+                                if own_house
+                                    && ui.selectable_label(false, "A house of its own").clicked()
+                                {
+                                    outcome.move_into_house = Some((*resident, *resident));
+                                }
+                            })
+                            .response
+                            .on_hover_text(if *resident == keeper.id {
+                                "Moves in with another household, bringing everyone who lives \
+                                 here; this house comes down."
+                            } else {
+                                "Moves in with another household."
+                            })
+                    })
+                    .response
+                    .on_disabled_hover_text(if free {
+                        "There is no other house to move to."
+                    } else {
+                        busy
+                    });
+                    ui.end_row();
+                }
+            });
+        if others.is_empty() {
+            ui.small("This is the village's only house, so everyone lives here.");
+            self.arrange.take_down_asked = None;
+            return;
+        }
+        ui.add_space(4.0);
+        ui.small("Swap households with another house:");
+        ui.horizontal(|ui| {
+            ui.add_enabled_ui(free, |ui| {
+                egui::ComboBox::from_id_salt(("swap-household", keeper.id))
+                    .width(170.0)
+                    .selected_text("Swap with…")
+                    .show_ui(ui, |ui| {
+                        for host in &others {
+                            if ui.selectable_label(false, house_of(*host)).clicked() {
+                                outcome.swap_households = Some((keeper.id, *host));
+                            }
+                        }
+                    })
+                    .response
+                    .on_hover_text(
+                        "The houses stay where and as they are; only who lives in them changes.",
+                    )
+            })
+            .response
+            .on_disabled_hover_text(busy);
+        });
+        if self.arrange.take_down_asked == Some(keeper.id) && free {
+            let destination = formiga_core::rehoming_host(
+                &save.creatures,
+                &save.home.cottage_order,
+                keeper.id,
+                residents.len(),
+            )
+            .map_or_else(|| "another house".to_owned(), house_of);
+            let names: Vec<&str> = residents
+                .iter()
+                .filter_map(|id| name_of(save, *id))
+                .collect();
+            let moving = match names.as_slice() {
+                [] => String::new(),
+                [one] => (*one).to_owned(),
+                [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+            };
+            ui.label(format!(
+                "Take down {}'s house? {moving} will move into {destination}. Nobody leaves, \
+                 and you can undo it.",
+                keeper.name,
+            ));
+            ui.horizontal(|ui| {
+                if ui.button("Take down house").clicked() {
+                    outcome.take_down_house = Some(keeper.id);
+                    self.arrange.take_down_asked = None;
+                }
+                if ui.button("Keep it").clicked() {
+                    self.arrange.take_down_asked = None;
+                }
+            });
+        } else {
+            self.arrange.take_down_asked = None;
+            if ui
+                .add_enabled(free, egui::Button::new("Take down this house…"))
+                .on_disabled_hover_text(busy)
+                .clicked()
+            {
+                self.arrange.take_down_asked = Some(keeper.id);
+            }
+        }
     }
 
     /// Everything that can go on the village ground, as three shelves of what the village has
@@ -1166,4 +1321,12 @@ fn formiga_home_row(
             outcome.open_house = Some(keeper.id);
         }
     });
+}
+
+/// A companion's name, if it lives here.
+fn name_of(save: &SaveFile, id: CreatureId) -> Option<&str> {
+    save.creatures
+        .iter()
+        .find(|creature| creature.id == id)
+        .map(|creature| creature.name.as_str())
 }

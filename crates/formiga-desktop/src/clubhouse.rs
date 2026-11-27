@@ -18,6 +18,7 @@ pub(crate) mod journal;
 pub(crate) mod journal_page;
 pub(crate) mod paper;
 pub(crate) mod recovery;
+pub(crate) mod restyle;
 pub(crate) mod sections;
 pub(crate) mod shell;
 pub(crate) mod story;

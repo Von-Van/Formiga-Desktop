@@ -49,6 +49,13 @@ pub struct SettingsOutcome {
     pub set_hangout: Option<(formiga_core::HangoutKind, Option<f32>)>,
     /// The cottages in a new order, as the companions who keep them.
     pub cottage_order: Option<Vec<CreatureId>>,
+    /// Take down the house this companion keeps; its household moves in elsewhere.
+    pub take_down_house: Option<CreatureId>,
+    /// Move a companion into the house another keeps, or with the same companion twice, give it
+    /// a house of its own again.
+    pub move_into_house: Option<(CreatureId, CreatureId)>,
+    /// Swap the households of the houses these two keep.
+    pub swap_households: Option<(CreatureId, CreatureId)>,
     /// Open the house this companion keeps in Formiga Home.
     pub open_house: Option<CreatureId>,
     /// Bring the household of the house open in Formiga Home back out.
@@ -120,6 +127,8 @@ pub struct SettingsOutcome {
     /// Four more takes on the picture the ones on show came from.
     pub request_reference_retry: bool,
     pub accept_creature_preview: Option<PreviewAcceptance>,
+    /// A companion given a new look in the creature studio.
+    pub restyle: Option<(CreatureId, formiga_core::forms::Design)>,
     /// A friend's code, asked over for a day.
     pub invite_visitor: Option<SharedCreatureSeed>,
     /// Whoever is visiting right now, asked to stay for good.
@@ -1170,11 +1179,31 @@ fn draw_settings(
         // Each page, and each section of one, keeps how far down it was scrolled.
         let section = clubhouse.shell.sections.open(*tab).unwrap_or("");
         let pitch = clubhouse::journal::rule_pitch(text_scale);
-        let scrolled = egui::ScrollArea::vertical().id_salt(format!("page-{tab:?}-{section}")).auto_shrink([false, false]).show(ui, |ui| {
+        // A companion being restyled in the studio is pinned in view outside the page's scrolling,
+        // beside the choices where the page is wide enough and above them where it is not, so
+        // every change shows on it as it is made.
+        let mut page_rect = ui.available_rect_before_wrap();
+        if *tab == SettingsTab::Studio && clubhouse.studio.restyle.is_pinned() {
+            let side = clubhouse::restyle::SIDE_PANE * text_scale;
+            let beside = page_rect.width() >= side + clubhouse::restyle::CHOICES_MIN * text_scale;
+            if beside {
+                let pane = egui::Rect::from_min_max(egui::pos2(page_rect.right() - side, page_rect.top()), page_rect.max);
+                ui.scope_builder(egui::UiBuilder::new().max_rect(pane), |ui| clubhouse.studio.restyle.pinned(ui, save, outcome, true));
+                page_rect.max.x = pane.left() - 16.0;
+            } else {
+                let band = ui.scope_builder(egui::UiBuilder::new().max_rect(page_rect), |ui| clubhouse.studio.restyle.pinned(ui, save, outcome, false)).response.rect;
+                page_rect.min.y = band.bottom() + 10.0;
+            }
+        }
+        let scrolled = ui.scope_builder(egui::UiBuilder::new().max_rect(page_rect), |ui| egui::ScrollArea::vertical().id_salt(format!("page-{tab:?}-{section}")).auto_shrink([false, false]).show(ui, |ui| {
             // The page's lines start from the top of its writing, wherever the scroll has put it,
             // and whatever is written on the page finds them through the grid.
             clubhouse::journal::RuleGrid { top: ui.max_rect().top(), pitch }.keep(ui.ctx());
             clubhouse.recovery.cards(ui, save_location, outcome);
+            // The restyling studio holds its working copy only while the studio is on show.
+            if *tab != SettingsTab::Studio {
+                clubhouse.studio.restyle.release();
+            }
             match tab {
                 SettingsTab::Today => clubhouse.today.show(ui, &mut clubhouse.shell, save, monitors, tab, clubhouse.reading.as_ref()),
                 SettingsTab::Colony => {
@@ -1214,7 +1243,7 @@ fn draw_settings(
                 *selected_creature = Some(id);
                 ui.ctx().request_repaint();
             }
-        });
+        })).inner;
         // The ruling is drawn where the writing is, so the lines scroll with it; they run on down
         // under the page's bottom margin to the footer, as they did before the page scrolled.
         clubhouse::journal::RuleGrid::forget(ui.ctx());
@@ -1229,12 +1258,12 @@ fn draw_settings(
             (scrolled.inner_rect.top(), footer.top()),
         );
         // While one of the page's sections is open, its corner turns up at its foot as the way
-        // back to the rest of it.
+        // back to the rest of it, its writing level with the page number across the foot.
         clubhouse::sections::back_corner(
             ui,
             &mut clubhouse.shell,
             *tab,
-            egui::pos2(page.left() + spread.margin + 12.0, footer.top() - 8.0),
+            egui::pos2(page.left() + spread.margin + 12.0, footer.top() - 4.0),
             text_scale,
         );
                 });

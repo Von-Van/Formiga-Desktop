@@ -254,6 +254,13 @@ impl World {
         }
         let cues = std::mem::take(&mut self.antics.cues);
         for (cue, waited) in cues {
+            // Up on a window: a fond friend below may cheer it (`world/surroundings.rs`), once,
+            // the tick the climb is first heard of.
+            if waited == 0.0
+                && let Cue::Climbed(id) = cue
+            {
+                self.cheer_a_climb(id);
+            }
             if !self.answer(cue) && waited + dt < CUE_PATIENCE_SECS {
                 self.antics.cues.push((cue, waited + dt));
             }

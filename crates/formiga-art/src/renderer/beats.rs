@@ -55,6 +55,27 @@ pub(super) fn beat_pose(beat: Beat) -> Option<(BodyClip, f32)> {
         BeatKind::Pounce if p < 0.55 => Gesture::Crouch,
         BeatKind::Pounce => return gesture(Gesture::Cheer, at(0.55)),
         BeatKind::Startle => Gesture::Gasp,
+        BeatKind::Delight => Gesture::Cheer,
+        // A paw out toward the window, then a long look at it.
+        BeatKind::PointAt if p < 0.4 => Gesture::Reach,
+        BeatKind::PointAt => return gesture(Gesture::Watch, at(0.4)),
+        // Down low first, then leaning out to look round the end of the ledge.
+        BeatKind::PeekRound if p < 0.25 => Gesture::Crouch,
+        BeatKind::PeekRound => return gesture(Gesture::Watch, at(0.25)),
+        // Sat as on any window, its legs hanging over the front (`CreatureState::drawn_lift`).
+        BeatKind::LedgeSit => {
+            return Some((BodyClip::Action(ActionKind::Perch), beat.elapsed));
+        }
+        // Winding up, a paw out to push, and a bounce of glee.
+        BeatKind::Nudge if p < 0.25 => Gesture::Crouch,
+        BeatKind::Nudge if p < 0.6 => return gesture(Gesture::Reach, at(0.25)),
+        BeatKind::Nudge => return gesture(Gesture::Cheer, at(0.6)),
+        // Paws together for a moment, then a long look over: it is all right.
+        BeatKind::Relieved if p < 0.35 => Gesture::Worry,
+        BeatKind::Relieved => return gesture(Gesture::Watch, at(0.35)),
+        // A look over, and a little bounce at the funny side of it.
+        BeatKind::Amused if p < 0.4 => Gesture::Watch,
+        BeatKind::Amused => return gesture(Gesture::Bop, at(0.4)),
     };
     gesture(pose, beat.elapsed)
 }
@@ -90,6 +111,14 @@ pub(super) fn beat_expression(beat: Beat) -> ExpressionKind {
         BeatKind::Pounce if p < 0.55 => ExpressionKind::Focused,
         BeatKind::Pounce => ExpressionKind::Joy,
         BeatKind::Startle => ExpressionKind::Startled,
+        BeatKind::Delight => ExpressionKind::Joy,
+        BeatKind::PointAt | BeatKind::PeekRound => ExpressionKind::Curious,
+        BeatKind::Nudge if p < 0.6 => ExpressionKind::Smug,
+        BeatKind::Nudge => ExpressionKind::Joy,
+        BeatKind::Relieved if p < 0.35 => ExpressionKind::Worried,
+        BeatKind::Relieved => ExpressionKind::Affectionate,
+        BeatKind::Amused if p < 0.4 => ExpressionKind::Curious,
+        BeatKind::Amused => ExpressionKind::Joy,
         _ => ExpressionKind::Content,
     }
 }
@@ -131,6 +160,8 @@ pub(super) fn beat_gaze(creature: &Creature, beat: Beat) -> Option<GazeDirection
         BeatKind::LeafOnFace if beat.progress() < 0.3 => {
             return Some(GazeDirection::new(0, -1));
         }
+        // Sat on a window's top, looking down at the desk below its feet.
+        BeatKind::LedgeSit => return Some(GazeDirection::new(0, 1)),
         // Nose in the air, looking away from whatever it is put out about.
         BeatKind::Huff => {
             return Some(GazeDirection::new(

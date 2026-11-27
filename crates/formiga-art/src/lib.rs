@@ -46,7 +46,7 @@ pub use renderer::{
     TOY_COLOURWAYS, TOY_KINDS, TURNED_STRIDE_FRAMES, View, can_turn, footfall_frame, held_now,
     held_tether, held_up_at, meal_eyelids, meal_face, meal_held, meal_offset, meal_pose, play_face,
     play_held, play_offset, play_pose, prop_in_motion, prop_variants, render_held_sheet,
-    shown_set_back, shows_held_by_default, village_held,
+    shown_set_back, shows_held_by_default, village_held, walks_turned,
 };
 pub use shelter::{
     PENNANT_PATCH, ResidentMark, SHELTER_SIZE, ShelterRenderer, VILLAGE_ATLAS_COLUMNS,
@@ -76,11 +76,11 @@ pub use trinkets::{
     TRINKET_RESTING_HEIGHT, TrinketAtlasRenderer, TrinketInk, draw_trinket,
 };
 pub use ui_atlas::{
-    BUBBLE_ANCHOR, BUBBLE_CELL, ContactShadow, LABEL_ROW_GAP, LABEL_TAB_GAP, LABEL_TAB_HEIGHT,
-    MENU_BODY_HEIGHT, MENU_CELL, MENU_MAX_ITEMS, MENU_MIN_ITEMS, MENU_NOTCH_HEIGHT,
-    MENU_STRIP_HEIGHT, MENU_UNAVAILABLE_TEXT, MenuIcon, MenuLayout, MenuRect, SHADOW_FADE_HEIGHT,
-    SHADOW_MAX_WIDTH, SHADOW_SHEET_HEIGHT, SHADOW_SHEET_WIDTH, ShadowGround, SpriteRect,
-    UI_ATLAS_HEIGHT, UI_ATLAS_WIDTH, UiAtlasRenderer, menu_label_text,
+    BUBBLE_ANCHOR, BUBBLE_CELL, ContactShadow, GLINT_CELL, LABEL_ROW_GAP, LABEL_TAB_GAP,
+    LABEL_TAB_HEIGHT, MENU_BODY_HEIGHT, MENU_CELL, MENU_MAX_ITEMS, MENU_MIN_ITEMS,
+    MENU_NOTCH_HEIGHT, MENU_STRIP_HEIGHT, MENU_UNAVAILABLE_TEXT, MenuIcon, MenuLayout, MenuRect,
+    SHADOW_FADE_HEIGHT, SHADOW_MAX_WIDTH, SHADOW_SHEET_HEIGHT, SHADOW_SHEET_WIDTH, ShadowGround,
+    SpriteRect, UI_ATLAS_HEIGHT, UI_ATLAS_WIDTH, UiAtlasRenderer, glint_cell, menu_label_text,
 };
 pub use vignette::{
     VIGNETTE_HEIGHT, VIGNETTE_WIDTH, Vignette, render_vignette, render_vignette_figures,

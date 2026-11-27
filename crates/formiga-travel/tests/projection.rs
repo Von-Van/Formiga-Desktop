@@ -414,10 +414,104 @@ fn a_snapshot_asks_for_the_oldest_reader_that_can_draw_everyone() {
             reader_for_colony(&save),
             "colony {seed}"
         );
-        // Every edition drawn so far is drawn by the first travel version, so an older Hill can
-        // still host any colony this build sends.
-        assert_eq!(snapshot.min_reader_version, 1);
+        // Every edition before anatomy is drawn by the first travel version, so an older Hill can
+        // still host any colony without it; a companion with anatomy needs version 7.
+        let anatomy = save.creatures.iter().any(|creature| {
+            creature
+                .appearance
+                .design
+                .is_some_and(|design| design.edition() == Edition::Anatomy)
+        });
+        assert_eq!(snapshot.min_reader_version, if anatomy { 7 } else { 1 });
     }
+}
+
+/// What a Formiga Hill built on Desktop 0.69.0 (travel version 6) can read. Its own rules were:
+/// a document whose `min_reader_version` is at most 6 is read whatever its `version` says, and a
+/// recipe's details are read only if every part is within what 0.69.0 drew (wings 2, horns 2,
+/// belly 1, tip 2), the way its `DetailParts::from_bytes` and `bounded` refused anything else.
+fn a_0_69_0_hill_reads(snapshot: &TravelSnapshot) -> bool {
+    const TRAVEL_6: u32 = 6;
+    snapshot.min_reader_version <= TRAVEL_6
+        && snapshot.travelers.iter().all(|traveler| {
+            traveler
+                .appearance
+                .design
+                .as_ref()
+                .and_then(|recipe| recipe.details.as_deref())
+                .is_none_or(|hex| {
+                    let byte =
+                        |at: usize| u8::from_str_radix(&hex[at * 2..at * 2 + 2], 16).unwrap();
+                    let (parts, more) = (byte(0), byte(1));
+                    (parts & 0x0f) <= 2
+                        && (parts >> 4) <= 2
+                        && (more & 0x0f) <= 1
+                        && (more >> 4) <= 2
+                })
+        })
+}
+
+/// Every colony without a companion carrying anatomy — every colony that exists today — is
+/// written as travel version 7 but still asks for reader 1, and a Hill built on 0.69.0 reads it
+/// as it always has; one with anatomy asks for 7 and that Hill turns it away as too new.
+#[test]
+fn a_colony_without_anatomy_still_travels_to_a_0_69_0_hill() {
+    for seed in [3, 41, 200] {
+        let save = colony(seed);
+        assert!(save.creatures.iter().all(|creature| {
+            creature
+                .appearance
+                .design
+                .is_none_or(|design| design.edition() != Edition::Anatomy)
+        }));
+        let snapshot = snapshot_of(&save);
+        assert_eq!(
+            snapshot.version, 7,
+            "written as this build's travel version"
+        );
+        assert_eq!(snapshot.min_reader_version, 1, "read by every Hill");
+        assert!(a_0_69_0_hill_reads(&snapshot), "colony {seed}");
+    }
+    // Colonies made today, each a few companions from the generator new companions come from.
+    for seed in 0..40_u8 {
+        let desktop = formiga_core::DesktopSnapshot::default();
+        let save = formiga_core::World::new([seed; 32], MADE, &desktop).save;
+        let anatomy = save.creatures.iter().any(|creature| {
+            creature
+                .appearance
+                .design
+                .is_some_and(|design| design.edition() == Edition::Anatomy)
+        });
+        let snapshot = snapshot_of(&save);
+        assert_eq!(a_0_69_0_hill_reads(&snapshot), !anatomy, "colony {seed}");
+        assert_eq!(snapshot.min_reader_version, if anatomy { 7 } else { 1 });
+    }
+}
+
+#[test]
+fn a_companion_with_anatomy_asks_for_travel_version_7() {
+    let mut save = colony(3);
+    let design = save
+        .creatures
+        .iter()
+        .find_map(|creature| creature.appearance.design.filter(|d| d.archetype > 0))
+        .expect("an archetype recipe");
+    let mut worn = formiga_core::Anatomy::Ruff.put_on(design, [240, 230, 210]);
+    if !worn.details.has_anatomy() {
+        worn = formiga_core::Anatomy::Brush.put_on(design, [240, 230, 210]);
+    }
+    assert_eq!(worn.edition(), Edition::Anatomy);
+    for creature in &mut save.creatures {
+        if creature.appearance.design == Some(design) {
+            formiga_core::apply_creature_design(creature, Some(worn));
+        }
+    }
+    assert_eq!(reader_for_colony(&save), 7);
+    let snapshot = snapshot_of(&save);
+    assert_eq!(snapshot.min_reader_version, 7);
+    let bytes = encode(&snapshot).unwrap();
+    let read: TravelSnapshot = decode(&bytes).unwrap();
+    assert_eq!(read, snapshot);
 }
 
 #[test]

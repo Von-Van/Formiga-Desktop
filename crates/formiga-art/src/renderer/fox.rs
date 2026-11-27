@@ -335,6 +335,300 @@ pub(super) fn draw(c: &mut Canvas, pose: Pose, clip: BodyClip, frame: u8) -> Fig
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Turned: the same fox side-on, walking and running along, and from behind, walking away.
+// ---------------------------------------------------------------------------------------------
+
+/// The fox's head side-on, facing right: the far ear behind the near one, its muzzle pointed and
+/// white under the eye, outlined all round so it sits over the body as the head of the sketch
+/// does. The eye is drawn on it.
+const SIDE_HEAD: [&str; 14] = [
+    "...........K......K...........",
+    "...........KK....KWK..........",
+    "..........KDDK..KWWDK.........",
+    "..........KDDKKKWWDDK.........",
+    "..........KOOOOOOOOOKK........",
+    ".........KOOOOOOOOOOOOK.......",
+    "........KOOOOOOOOOOOOOOK......",
+    ".......KOOOOOOOOOOOOOOOOK.....",
+    ".......KOOOOOOOOOOOOOOOOOKK...",
+    ".......KOOOOOOOOOOOOOWWWWWKK..",
+    ".......KOOOOOOOOOOWWWWWWWKK...",
+    "........KOOOOOOOWWWWWWWKK.....",
+    ".........KKKOOOWWWWWWKK.......",
+    "............KKKKKKKK..........",
+];
+
+/// The last row of its ears.
+const SIDE_EAR_ROWS: usize = 4;
+
+/// The head's first row is drawn a row above the sketch's, its ears standing that much taller.
+const SIDE_HEAD_TOP: i32 = -1;
+
+/// Where the eye is on the head side-on: the top of a short upright dash.
+const SIDE_EYE: (i32, i32) = (20, 6);
+
+/// The fox's ears from behind: pointed, as they are seen from the front, their backs dark.
+const BACK_EARS: [&str; 5] = [
+    ".........K.............K",
+    "........KDK...........KDK",
+    "........KDDK.........KDDK",
+    "........KDDDK.......KDDDK",
+    "........KDDDKKKKKKKKKDDDK",
+];
+
+/// The fox's body side-on under the head, from row 10, with the white bib down its chest.
+const SIDE_BODY: [&str; 11] = [
+    "........KOOOOOOOOOOOK.........",
+    ".......KOOOOOOOOOOOWWK........",
+    ".....KKOOOOOOOOOOOWWWK........",
+    "....KOOOOOOOOOOOOOWWWWK.......",
+    "....KOOOOOOOOOOOOOWWWWK.......",
+    "....KOOOOOOOOOOOOOOWWWK.......",
+    "....KOOOOOOOOOOOOOOOOOK.......",
+    "....KOOOOOOOOOOOOOOOOOK.......",
+    ".....KOOOOOOOOOOOOOOOK........",
+    "......KOOOOOOOOOOOOOK.........",
+    ".......KKKKKKKKKKKKK..........",
+];
+const SIDE_BODY_ROW: i32 = 10;
+
+/// The brush side-on, out behind and curling up to its white tip, from row 4.
+const SIDE_TAIL: [&str; 12] = [
+    "..KK....", ".KWWK...", "KWWWWK..", "KWWWOK..", "KOWOOK..", "KOOOOK..", "KOOOOOK.", ".KOOOOK.",
+    ".KOOOOOK", "..KOOOOK", "...KOOOO", "....KOOO",
+];
+const SIDE_TAIL_ROW: i32 = 4;
+
+/// A foot side-on, toes forward: the near one at column 13, the far one at column 9.
+const SIDE_FOOT: [&str; 3] = ["KOOOK.", "KDDDDK", ".KKKK."];
+const SIDE_FOOT_ROW: i32 = 20;
+
+/// The folded forepaw on the chest side-on, each pixel in its place.
+const SIDE_PAW: [(i32, i32, Rgba); 6] = [
+    (18, 15, OUTLINE),
+    (19, 15, SOOT),
+    (20, 15, SOOT),
+    (21, 15, OUTLINE),
+    (19, 16, OUTLINE),
+    (20, 16, OUTLINE),
+];
+
+/// Where the side-on sketch's top-left corner sits in a frame: its feet on row 41.
+const SIDE_ORIGIN: (i32, i32) = (9, 19);
+
+/// The brush from behind: standing up the middle of the back toward whoever is looking, its
+/// white tip on top.
+const BACK_TAIL: [&str; 12] = [
+    "...KKK...",
+    "..KWWWK..",
+    ".KWWWWWK.",
+    ".KWWWWWK.",
+    "KOWWWWWOK",
+    "KOOOWOOOK",
+    "KOOOOOOOK",
+    "KOOOOOOOK",
+    ".KOOOOOK.",
+    ".KOOOOOK.",
+    "..KOOOK..",
+    "...KOK...",
+];
+const BACK_TAIL_ROW: i32 = 9;
+
+/// A heel from behind, and the sole of a foot that is up.
+const HEEL: [&str; 2] = ["KOOOK", ".KKK."];
+const SOLE: [&str; 2] = ["KDDDK", ".KKK."];
+
+/// One frame of a turned walk or run, as `modular::turned` works it out for every body: how far
+/// each foot is from where it stands and how high off the ground, and what the body does over
+/// them.
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct Step {
+    pub(super) near_x: i32,
+    pub(super) near_lift: i32,
+    pub(super) far_x: i32,
+    pub(super) far_lift: i32,
+    pub(super) bob: i32,
+    pub(super) lean: i32,
+    pub(super) tail: i32,
+    pub(super) ears_back: i32,
+    pub(super) sway: i32,
+}
+
+/// Paints a part drawn on the far side of the body, a third of the way to the outline.
+fn far_row(c: &mut Canvas, x: i32, y: i32, pixels: &str) {
+    let mix = |a: u8, b: u8| ((u16::from(a) * 2 + u16::from(b)) / 3) as u8;
+    for (dx, key) in pixels.bytes().enumerate() {
+        if let Some(color) = color(key) {
+            let color = if color == OUTLINE {
+                color
+            } else {
+                Rgba::new(
+                    mix(color.r, OUTLINE.r),
+                    mix(color.g, OUTLINE.g),
+                    mix(color.b, OUTLINE.b),
+                    255,
+                )
+            };
+            c.set(x + dx as i32, y, color);
+        }
+    }
+}
+
+/// The fox turned to `view` for one frame of a walk, a run or standing still, facing right, and
+/// where anything it wears goes. Side-on its face is drawn in: the one eye showing, shut when it
+/// blinks. From behind it shows no face at all.
+pub(super) fn draw_turned(
+    c: &mut Canvas,
+    view: modular::View,
+    step: Step,
+    face: FaceRenderState,
+) -> Figure {
+    match view {
+        modular::View::Back => fox_from_behind(c, step),
+        _ => fox_side_on(c, step, face),
+    }
+}
+
+fn fox_side_on(c: &mut Canvas, step: Step, face: FaceRenderState) -> Figure {
+    let (ox, oy) = SIDE_ORIGIN;
+    // The body sinks onto a planted foot; the head goes ahead of it in a run.
+    let sink = step.bob.clamp(-1, 1);
+    let lean = (step.lean / 2).clamp(0, 1);
+    let ears_down = step.ears_back.clamp(0, 1);
+    let tail = step.tail.clamp(-1, 2);
+    // The brush first, behind everything, lifting a frame after the body.
+    for (dy, pixels) in SIDE_TAIL.iter().enumerate() {
+        row(c, ox, oy + sink + SIDE_TAIL_ROW - tail + dy as i32, pixels);
+    }
+    // The far foot, in shade behind the body.
+    let foot = |column: i32, along: i32, lift: i32| PixelPoint {
+        x: ox + column + along.clamp(-5, 5),
+        y: oy + SIDE_FOOT_ROW - lift.clamp(0, 3),
+    };
+    let far = foot(9, step.far_x, step.far_lift);
+    for (dy, pixels) in SIDE_FOOT.iter().enumerate() {
+        far_row(c, far.x, far.y + dy as i32, pixels);
+    }
+    for (dy, pixels) in SIDE_BODY.iter().enumerate() {
+        row(c, ox, oy + sink + SIDE_BODY_ROW + dy as i32, pixels);
+    }
+    // The head over the top of the body, its ears laid back into it in a run.
+    if ears_down > 0 {
+        for (y, pixels) in SIDE_HEAD.iter().enumerate().take(SIDE_EAR_ROWS) {
+            row(
+                c,
+                ox + lean,
+                oy + sink + SIDE_HEAD_TOP + y as i32 + ears_down,
+                pixels,
+            );
+        }
+    }
+    let first = if ears_down > 0 { SIDE_EAR_ROWS } else { 0 };
+    for (y, pixels) in SIDE_HEAD.iter().enumerate().skip(first) {
+        row(c, ox + lean, oy + sink + SIDE_HEAD_TOP + y as i32, pixels);
+    }
+    // The eye: a short dash, lying down when it is shut, and a blush under it.
+    let eye = PixelPoint {
+        x: ox + lean + SIDE_EYE.0,
+        y: oy + sink + SIDE_EYE.1,
+    };
+    let shut = face.eyelids == EyelidPose::Closed
+        || matches!(
+            face.expression,
+            ExpressionKind::Sleepy | ExpressionKind::Yawning
+        );
+    if shut {
+        c.set(eye.x - 1, eye.y + 1, OUTLINE);
+        c.set(eye.x, eye.y + 1, OUTLINE);
+    } else {
+        c.set(eye.x, eye.y, OUTLINE);
+        c.set(eye.x, eye.y + 1, OUTLINE);
+    }
+    c.set(eye.x - 2, eye.y + 2, BLUSH);
+    c.set(eye.x - 3, eye.y + 2, BLUSH);
+    // The near foot, over the body, and the forepaw folded on the chest, swung a pixel against it.
+    let near = foot(13, step.near_x, step.near_lift);
+    for (dy, pixels) in SIDE_FOOT.iter().enumerate() {
+        row(c, near.x, near.y + dy as i32, pixels);
+    }
+    let swing = -step.near_x.signum();
+    for (x, y, color) in SIDE_PAW {
+        c.set(ox + x + swing, oy + sink + y, color);
+    }
+    let at = |x: i32, y: i32| PixelPoint {
+        x: ox + x,
+        y: oy + sink + y,
+    };
+    Figure {
+        face: PixelPoint {
+            x: ox + lean + 19,
+            y: oy + sink + 7,
+        },
+        crown: PixelPoint {
+            x: ox + lean + 16,
+            y: oy + sink + 3,
+        },
+        head_half: 8,
+        neck: at(15, 11),
+        neck_half: 5,
+        chest: at(19, 13),
+        hip: at(7, 16),
+        back: at(10, 12),
+        floor: oy + SIDE_FOOT_ROW + 2,
+        hand: Some(at(19 + swing, 15)),
+    }
+}
+
+fn fox_from_behind(c: &mut Canvas, step: Step) -> Figure {
+    let at = |x: i32, y: i32| PixelPoint {
+        x: ORIGIN_X + step.sway.clamp(-1, 1) + x,
+        y: ORIGIN_Y + step.bob.clamp(-1, 1) + y,
+    };
+    // The heels, and the sole of a foot that is up, under the body.
+    for (column, lift) in [(9, step.far_lift), (19, step.near_lift)] {
+        let lift = lift.clamp(0, 3);
+        let foot = if lift > 0 { SOLE } else { HEEL };
+        for (dy, pixels) in foot.iter().enumerate() {
+            row(
+                c,
+                ORIGIN_X + column,
+                ORIGIN_Y + FOOT_ROW + 1 - lift + dy as i32,
+                pixels,
+            );
+        }
+    }
+    // The back of it: the body and head in its coat, the ears showing their dark backs.
+    let ears_down = step.ears_back.clamp(0, 1);
+    for (y, pixels) in BACK_EARS.iter().enumerate() {
+        let p = at(0, y as i32 - 1 + ears_down);
+        row(c, p.x, p.y, pixels);
+    }
+    for (y, pixels) in BODY.iter().enumerate().skip(EAR_ROWS + 1) {
+        let back = pixels.replace('W', "O");
+        let p = at(0, y as i32);
+        row(c, p.x, p.y, &back);
+    }
+    // The brush up the middle of the back, swinging across behind it.
+    // Out past its side and curling up, as it is side-on, its white tip uppermost.
+    let tail = at(21 + step.tail.clamp(-1, 1), BACK_TAIL_ROW);
+    for (dy, pixels) in BACK_TAIL.iter().enumerate() {
+        row(c, tail.x, tail.y + dy as i32, pixels);
+    }
+    Figure {
+        face: at(FACE.0, FACE.1),
+        crown: at(FACE.0, EAR_ROWS as i32 + 1),
+        head_half: 9,
+        neck: at(FACE.0, NECK_ROW as i32),
+        neck_half: 6,
+        chest: at(FACE.0, 13),
+        hip: at(9, 18),
+        back: at(FACE.0, 15),
+        floor: ORIGIN_Y + FOOT_ROW + 2,
+        hand: None,
+    }
+}
+
 /// How far a forepaw reaches from its shoulder, in art pixels.
 const REACH: f32 = 6.0;
 

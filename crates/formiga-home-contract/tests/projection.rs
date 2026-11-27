@@ -353,3 +353,109 @@ fn a_snapshot_offers_only_what_desktop_takes_back() {
     );
     assert_eq!(offered(&HomeCapability::ALL), HomeCapability::ALL);
 }
+
+/// A companion lodging in another's house goes in with that household, and the contract holds
+/// the snapshot as ever; a little one living away from its big version stays out on the desktop
+/// rather than going in without it, so the snapshot never carries a little one alone.
+#[test]
+fn lodgers_go_in_with_the_household_they_live_with() {
+    let mut save = sample::colony();
+    let owners = house_owners(&save.creatures, &save.home.cottage_order);
+    let (founder, other) = (owners.as_slice()[0], owners.as_slice()[1]);
+    let mini = save
+        .creatures
+        .iter()
+        .find(|creature| creature.role == CreatureRole::Mini { parent_id: founder })
+        .map(|creature| creature.id)
+        .expect("the founder's little one");
+    for creature in &mut save.creatures {
+        // The other keeper lodges with the founder, and the founder's little one in the house
+        // that is left.
+        if creature.id == other {
+            creature.lodges_with = Some(founder);
+        }
+    }
+    let third = house_owners(&save.creatures, &save.home.cottage_order)
+        .as_slice()
+        .get(1)
+        .copied();
+    let snapshot = project_household(
+        &save,
+        founder,
+        &[],
+        &HomeCapability::ALL,
+        session(),
+        sample::MADE + Duration::days(2),
+        "test",
+    )
+    .unwrap();
+    let ids: BTreeSet<_> = snapshot.residents.iter().map(|r| r.id.0).collect();
+    assert!(ids.contains(&other), "the lodger goes in");
+    assert!(ids.contains(&mini));
+    if let Some(third) = third {
+        for creature in &mut save.creatures {
+            if creature.id == mini {
+                creature.lodges_with = Some(third);
+            }
+        }
+        let snapshot = project_household(
+            &save,
+            third,
+            &[],
+            &HomeCapability::ALL,
+            session(),
+            sample::MADE + Duration::days(2),
+            "test",
+        )
+        .unwrap();
+        assert!(
+            snapshot.residents.iter().all(|r| r.id.0 != mini),
+            "a little one does not go in without its big version"
+        );
+    }
+}
+
+/// Every house of a colony without a companion carrying anatomy is written as household version
+/// 13, its residents in travel version 7, and still asks for household reader 12 or older and
+/// travel reader 1: a Formiga Home built on Desktop 0.69.0 (household 12, travel 6) opens it as it
+/// always has. A house with anatomy among its residents asks for travel reader 7, which that Home
+/// says it cannot draw rather than calling it damaged.
+#[test]
+fn a_house_without_anatomy_still_opens_in_a_0_69_0_home() {
+    let snapshot = sample::snapshot();
+    assert_eq!(snapshot.version, 13);
+    assert!(snapshot.min_reader_version <= 12);
+    assert_eq!(snapshot.travel_version, 7);
+    assert_eq!(snapshot.travel_min_reader_version, 1);
+    // What 0.69.0's `residents_readable` asked: at most its own travel version, 6.
+    assert!(snapshot.travel_min_reader_version <= 6);
+
+    let mut save = sample::colony();
+    let keeper = house_owners(&save.creatures, &save.home.cottage_order).as_slice()[0];
+    let index = save.creatures.iter().position(|c| c.id == keeper).unwrap();
+    let design = save.creatures[index].appearance.design.expect("a recipe");
+    let worn = formiga_core::Anatomy::Ruff.put_on(
+        formiga_core::CreatureDesign {
+            archetype: design.archetype.max(1),
+            face_template: design.face_template.max(1),
+            body: formiga_core::BodyPlan::Round,
+            ..design
+        }
+        .bounded(),
+        [240, 228, 206],
+    );
+    assert!(worn.details.has_anatomy());
+    formiga_core::apply_creature_design(&mut save.creatures[index], Some(worn));
+    let snapshot = project_household(
+        &save,
+        keeper,
+        &[],
+        &HomeCapability::ALL,
+        session(),
+        sample::MADE + Duration::days(2),
+        "test",
+    )
+    .expect("a house opens");
+    assert_eq!(snapshot.travel_min_reader_version, 7);
+    assert!(snapshot.residents_readable(), "this build draws it");
+}

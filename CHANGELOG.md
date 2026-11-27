@@ -2,6 +2,94 @@
 
 All notable changes are documented here.
 
+## [0.69.1] - 2026-11-27
+
+Save version 35 (who lives where, and the visitors the colony knows). Trips are written as travel
+version 7 and houses as household version 13, neither adding a field: a colony with no companion
+carrying the new anatomy still asks for travel reader 1 and household reader 1, so Formiga Hill
+and Home 0.69.0 host every colony that exists today exactly as before. A companion given anatomy,
+generated or restyled, asks for travel reader 7: an older Hill or Home says it is too new rather
+than reading it wrongly. Share codes are version 6 only for a companion with anatomy; every other
+companion is still written as version 5, 4, 3 or 2, which older builds import. The Battle
+contract is unchanged.
+
+Measured on an Apple M5 against 0.69.0, on copies of one six-companion colony (a minute to settle,
+two minutes sampled, the builds alternated): the application is 21.41 MB against 21.08 MB; process
+CPU read 1.91% and 1.60% against 2.81% and 2.03%, which is the spread between runs of one build
+rather than a difference between the two; resident memory 76 MiB against 80.5 MiB. `tick-bench`
+is unchanged: a full colony on a busy desktop ticks in 8.75 µs against 8.95 µs. Existing
+companions' atlases are byte for byte the size they were, and an Echo Fox's grows by one row,
+1.90 MB to 1.99 MB.
+
+### Added
+
+- Five new parts a companion can be generated or restyled with: antlers, ear tufts, a ruff, a
+  brushy tail tip and a plume of a tail, each only on the bodies it fits and drawn facing the
+  screen, side-on and from behind. New companions draw them from a stream of their own
+  (`Edition::Anatomy`), so every existing seed, recipe and code resolves as before; a recipe
+  carrying them shares as a version 6 code.
+- Restyle a companion in the Creature studio: body, proportions, parts, colours, markings and face,
+  the companion half of what Formiga Farm offers, kept as one change the footer can undo. Making a
+  creature stays in Farm.
+- The Echo Fox walks and runs side-on and walks away turned, in its own picture.
+- `turn-sheet --anatomy`, `--wearables` and `--fox`, and turned clips and the fox on
+  `accessory-sheet`.
+- Who lives where is yours to arrange. A house picked out on the Home page lists who lives in it,
+  each with a Move to… choice of the other houses (and, for a full-size companion living with
+  somebody, a house of its own again); Swap households with… exchanges the people of two houses
+  while the houses stay exactly where and as they are; and Take down this house… asks once,
+  saying who will move where, before the house comes down. Any house can come down but the last
+  one; when the colony house does, the next house along becomes the colony house. A household
+  whose house comes down moves in together with the house that has room for all of them, the
+  emptiest and nearest first, or else shares the emptiest. Nobody leaves the colony or forgets
+  anything — memories, bonds, belongings, what it wears and what it has done all stay — and a
+  house put up again comes back where it stood, built and decorated as it was. Every change can
+  be undone, and none is offered, or taken back, while a house is open in Formiga Home.
+- Visitors come back. The colony remembers up to twelve visitors it has met as themselves — the
+  name, the origin that recreates them exactly, how often and when they came, and up to three
+  residents they got on with — and now and then a wanderer it has met turns up again instead of
+  somebody new, looking, sized and behaving exactly as it did, under the name it went by. A friend
+  from last time is greeted with a heart and a bounce, gone over to first on the walk round and
+  stayed with a little longer, and everyone who met a guest waves it off as it leaves. Visitors
+  already in a colony's guest book are remembered from it.
+- Magic fruit. Once every few days of a colony being out on the desktop, what a companion sits
+  down to eat turns out to be a glowing star fruit, and once it has eaten it something odd happens
+  to it for a minute or two: it floats a hand's breadth off the ground, every step is a bounce, it
+  can hardly walk for running, or little lights twinkle all round it — whichever its temperament
+  leans to — and then it wears off. Being picked up, a climb, a scene, falling asleep, going home,
+  a trip or a visit, hiding or pausing put it straight back on its feet; nothing about it is
+  saved, counted or shown anywhere but on the companion. With reduced motion it is a few lights
+  that stay where they are. `formiga-tools magic-sheet` shows each one.
+- Companions notice the desktop around them. Now and then one points at a window beside it and
+  has a good look, peers round the end of the ledge it is on, or sits on a window's top with its
+  legs over the front; a playful one gives a friend standing at the end of a low ledge a little
+  push off it, once or twice a week, and the friend lands, has its say and is laughed with; a
+  friend below cheers somebody up onto a window; and a friend nearby flinches as somebody falls and
+  looks over once it is down, relieved or amused. They use poses companions already had, come a
+  handful of times an hour between the whole colony and never the same twice running, wait for
+  anything bigger to finish, and stay away with reduced motion.
+- Guests join in with the village. Residents come over to a guest standing about, the way they call
+  on one another, and it stops, turns to them and keeps them company while they stay; a guest
+  looks on while somebody works in a garden or on a house; and a returning guest heads for a
+  friend's doorstep first. Neither is ever done in somebody's face.
+- `formiga-tools village-watch` counts face-cover episodes, and `--visitor` watches a village with a
+  friend staying, reporting where the guest spends its visit.
+
+### Changed
+
+- What a companion wears follows it turned: side-on, pieces at the front of the neck hang off the
+  front of the chest and earmuffs show one puff; from behind, what is on the front of the head or
+  chest is hidden, a bow and a snail pack are seen square on, and a kerchief shows its knot.
+- A test pins every existing companion, mini, sculpted form and the fox to the pixels 0.69.0 drew.
+- A companion lodging in another's house goes into Formiga Home with that household. A little one
+  living away from its big version stays out on the desktop during a visit, and the home of a
+  household whose house is down is kept aside, as it was, for when the house goes up again.
+- The way back from an open section of a notebook page, "‹ Your colony" in the turned-up corner
+  at the page's foot, sits four points lower, its writing level with the page number across from
+  it rather than crowding the last line of the section, at every size of text.
+- The Conditions note under the notebook's tabs no longer ends with "Entirely on this computer."
+  It keeps the rest of what it jots down, and is that line shorter.
+
 ## [0.69.0] - 2026-11-27
 
 The animation pass, a lived-in village and a notebook that reads as a notebook, released together

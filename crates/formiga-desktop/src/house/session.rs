@@ -262,7 +262,24 @@ impl HouseFiles {
             return Err("the visit's files are not the ones Desktop wrote".to_owned());
         }
         let accepted = accept_result(&visit.seal, &snapshot, &sent, result);
-        self.keep(&accepted.state)
+        let mut state = accepted.state;
+        // A household whose house is down just now was not sent, since its keeper keeps no house
+        // in the village; its home is kept aside as it was, for whenever the house goes up again.
+        let earlier = self.kept(&snapshot.colony_key);
+        for home in earlier.households {
+            if state.households.len() >= formiga_home_contract::limits::MAX_HOUSEHOLDS {
+                break;
+            }
+            if snapshot.neighbour(home.keeper).is_none()
+                && !state
+                    .households
+                    .iter()
+                    .any(|kept| kept.keeper == home.keeper)
+            {
+                state.households.push(home);
+            }
+        }
+        self.keep(&state)
             .map_err(|error| format!("the homes could not be kept: {error}"))?;
         Ok(accepted.set_aside)
     }

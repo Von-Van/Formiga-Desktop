@@ -56,6 +56,7 @@
 //! | 4 | Desktop 0.67.0 | No new fields: `accepts_souvenirs` also lists the Fairground's four souvenirs |
 //! | 5 | Desktop 0.67.6 | `echo_fox` on a traveler's look: drawn as the Echo Fox while Echo Fox Mode is on |
 //! | 6 | Desktop 0.68.0 | `sculpt` on a traveler's look: a form sculpted in Formiga Farm, drawn as itself. The companion recipe nearest it still travels beside it, for any reader before |
+//! | 7 | Desktop 0.69.1 | No new fields: a recipe may carry the anatomy of `formiga_core::Anatomy` among its details. A snapshot with such a companion needs version 7 to read; every other still needs what it did |
 //!
 //! The golden fixtures under `tests/fixtures` are every version as it shipped, and must keep
 //! reading.
@@ -97,7 +98,7 @@ pub use snapshot::{
 };
 
 /// The version of every travel document this build writes, and the newest it reads.
-pub const TRAVEL_FORMAT_VERSION: u32 = 6;
+pub const TRAVEL_FORMAT_VERSION: u32 = 7;
 
 /// The `format` of each document.
 pub const SNAPSHOT_FORMAT: &str = "formiga.travel.snapshot";

@@ -309,15 +309,64 @@ impl ColonyHome {
     /// Stand the cottages in a new order, given as the companions who keep them. The founder's
     /// colony house stays first whatever the order says, a cottage left out keeps its place after
     /// the ones given, and an order that is just the order everyone arrived in is not written
-    /// down at all.
+    /// down at all. A full-size companion whose house is down keeps its place in the row too,
+    /// after whichever house it stood behind, so a house put up again stands where it stood.
     pub fn arrange_cottages(&mut self, order: Vec<CreatureId>, creatures: &[Creature]) {
-        self.cottage_order = order;
+        let dormant = |id: &CreatureId| {
+            creatures.iter().any(|creature| {
+                creature.id == *id
+                    && creature.role.is_adult()
+                    && !crate::keeps_house(creature, creatures)
+            })
+        };
+        // Everyone full-size in the order they arrived: what the row is when nothing is written.
+        let mut arrivals: Vec<&Creature> = creatures
+            .iter()
+            .filter(|creature| creature.role.is_adult())
+            .collect();
+        arrivals.sort_by_key(|creature| (creature.colony_order, creature.id));
+        let arrivals: Vec<CreatureId> = arrivals.into_iter().map(|creature| creature.id).collect();
+        let arranged = crate::house_owners(creatures, &order);
+        let Some(colony_house) = arranged.as_slice().first().copied() else {
+            self.cottage_order.clear();
+            return;
+        };
+        // The row as it was written, the colony house first as it always stands.
+        let before = if self.cottage_order.is_empty() {
+            arrivals.clone()
+        } else {
+            let mut before = vec![colony_house];
+            before.extend(self.cottage_order.iter().filter(|id| **id != colony_house));
+            before
+        };
+        // The row in full: the houses as they are now to stand, and each house that is down
+        // after the house it stood behind.
+        let mut row = arranged.as_slice().to_vec();
+        for (at, id) in before.iter().enumerate() {
+            if !dormant(id) || row.contains(id) {
+                continue;
+            }
+            let place = before[..at]
+                .iter()
+                .rev()
+                .find_map(|earlier| row.iter().position(|listed| listed == earlier))
+                .map_or(1, |found| found + 1);
+            row.insert(place, *id);
+        }
+        row.remove(0);
+        self.cottage_order = row;
         self.normalize_village();
-        let arranged = crate::house_owners(creatures, &self.cottage_order);
-        self.cottage_order = if arranged == crate::house_owners(creatures, &[]) {
+        let row = self.cottage_order.clone();
+        let unwritten: Vec<CreatureId> = arrivals
+            .iter()
+            .copied()
+            .filter(|id| *id != colony_house && row.contains(id))
+            .collect();
+        self.cottage_order = if row == unwritten && arranged == crate::house_owners(creatures, &[])
+        {
             Vec::new()
         } else {
-            arranged.as_slice()[1..].to_vec()
+            row
         };
     }
 
