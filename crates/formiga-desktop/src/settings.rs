@@ -1172,7 +1172,23 @@ fn draw_settings(
         // Each page, and each section of one, keeps how far down it was scrolled.
         let section = clubhouse.shell.sections.open(*tab).unwrap_or("");
         let pitch = clubhouse::journal::rule_pitch(text_scale);
-        let scrolled = egui::ScrollArea::vertical().id_salt(format!("page-{tab:?}-{section}")).auto_shrink([false, false]).show(ui, |ui| {
+        // A companion being restyled in the studio is pinned in view outside the page's scrolling,
+        // beside the choices where the page is wide enough and above them where it is not, so
+        // every change shows on it as it is made.
+        let mut page_rect = ui.available_rect_before_wrap();
+        if *tab == SettingsTab::Studio && clubhouse.studio.restyle.is_pinned() {
+            let side = clubhouse::restyle::SIDE_PANE * text_scale;
+            let beside = page_rect.width() >= side + clubhouse::restyle::CHOICES_MIN * text_scale;
+            if beside {
+                let pane = egui::Rect::from_min_max(egui::pos2(page_rect.right() - side, page_rect.top()), page_rect.max);
+                ui.scope_builder(egui::UiBuilder::new().max_rect(pane), |ui| clubhouse.studio.restyle.pinned(ui, save, outcome, true));
+                page_rect.max.x = pane.left() - 16.0;
+            } else {
+                let band = ui.scope_builder(egui::UiBuilder::new().max_rect(page_rect), |ui| clubhouse.studio.restyle.pinned(ui, save, outcome, false)).response.rect;
+                page_rect.min.y = band.bottom() + 10.0;
+            }
+        }
+        let scrolled = ui.scope_builder(egui::UiBuilder::new().max_rect(page_rect), |ui| egui::ScrollArea::vertical().id_salt(format!("page-{tab:?}-{section}")).auto_shrink([false, false]).show(ui, |ui| {
             // The page's lines start from the top of its writing, wherever the scroll has put it,
             // and whatever is written on the page finds them through the grid.
             clubhouse::journal::RuleGrid { top: ui.max_rect().top(), pitch }.keep(ui.ctx());
@@ -1220,7 +1236,7 @@ fn draw_settings(
                 *selected_creature = Some(id);
                 ui.ctx().request_repaint();
             }
-        });
+        })).inner;
         // The ruling is drawn where the writing is, so the lines scroll with it; they run on down
         // under the page's bottom margin to the footer, as they did before the page scrolled.
         clubhouse::journal::RuleGrid::forget(ui.ctx());

@@ -241,7 +241,7 @@ impl StudioState {
                     }
                 }
             });
-        self.restyle.show(ui, save, outcome);
+        self.restyle.show(ui, save);
         if self.candidates.is_empty() {
             ui.add_space(20.0);
             ui.label("A few new faces are waiting to be discovered.");

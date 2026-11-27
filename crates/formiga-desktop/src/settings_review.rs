@@ -660,6 +660,85 @@ fn collect_labels(shape: &egui::Shape, labels: &mut Vec<(String, egui::Rect)>) {
 
 /// Restyling a companion in the studio: its look is loaded only once it is chosen, offered back
 /// only once it changes, and let go of as soon as another page is shown.
+/// The companion being restyled stays in view the whole time its choices are scrolled through:
+/// beside them on a wide page, above them on a narrow one or with large text, at every scroll
+/// offset down to the face, never moving and never outside the window. The review pictures show
+/// each arrangement at the top of the choices and scrolled down to the face.
+#[test]
+fn the_restyled_companion_stays_in_view_while_its_choices_scroll() {
+    let review = std::env::var_os("FORMIGA_UI_REVIEW_DIR").map(std::path::PathBuf::from);
+    for width in [940.0, 760.0] {
+        for theme in [ThemeChoice::Light, ThemeChoice::Dark] {
+            for text_scale in [100, 150] {
+                let mut h = Harness::new(SettingsTab::Studio);
+                h.screen = egui::vec2(width, 720.0);
+                configure_style(
+                    &h.context,
+                    AppearancePreferences {
+                        theme,
+                        text_scale,
+                        ..AppearancePreferences::default()
+                    },
+                );
+                h.scroll_page(200.0);
+                h.click("Restyle a companion");
+                // The choice of companion is under the fold of a short window.
+                h.scroll_page(260.0);
+                h.click("Choose a companion");
+                let name = h.save.creatures[0].name.clone();
+                h.click(&name);
+                h.frame(Vec::new());
+                let pinned = h
+                    .clubhouse
+                    .studio
+                    .restyle
+                    .preview_rect
+                    .expect("the companion is pictured");
+                let window = egui::Rect::from_min_size(egui::Pos2::ZERO, h.screen);
+                assert!(
+                    window.contains_rect(pinned),
+                    "{width} {text_scale}: {pinned:?}"
+                );
+                let label = format!("{width}-{text_scale}");
+                let shade = if theme == ThemeChoice::Dark {
+                    "charcoal"
+                } else {
+                    "cream"
+                };
+                if let Some(path) = &review {
+                    std::fs::create_dir_all(path).unwrap();
+                    h.picture()
+                        .save(path.join(format!("Studio-{width}-{shade}-{text_scale}-restyle.png")))
+                        .unwrap();
+                }
+                // Down through every choice to the face, a little at a time.
+                for step in 0..48 {
+                    h.scroll_page(90.0);
+                    let now = h.clubhouse.studio.restyle.preview_rect.unwrap();
+                    assert_eq!(now, pinned, "{label}: moved at step {step}");
+                    assert!(
+                        h.labels.iter().any(|(text, _)| text == "Keep this look"),
+                        "{label}: its buttons went with the scroll at step {step}"
+                    );
+                }
+                assert!(
+                    h.labels
+                        .iter()
+                        .any(|(text, _)| text == "Cheeks" || text == "Mouth"),
+                    "{label}: the face was reached"
+                );
+                if let Some(path) = &review {
+                    h.picture()
+                        .save(path.join(format!(
+                            "Studio-{width}-{shade}-{text_scale}-restyle-face.png"
+                        )))
+                        .unwrap();
+                }
+            }
+        }
+    }
+}
+
 #[test]
 fn studio_restyles_a_companion_and_lets_go_of_it_off_the_page() {
     let mut h = Harness::new(SettingsTab::Studio);
@@ -683,37 +762,6 @@ fn studio_restyles_a_companion_and_lets_go_of_it_off_the_page() {
         h.click("Keep this look").restyle.is_none(),
         "nothing has changed yet"
     );
-    if let Some(path) = std::env::var_os("FORMIGA_UI_REVIEW_DIR").map(std::path::PathBuf::from) {
-        std::fs::create_dir_all(&path).unwrap();
-        for width in [940.0, 760.0] {
-            for theme in [ThemeChoice::Light, ThemeChoice::Dark] {
-                for text_scale in [100, 150] {
-                    let mut r = Harness::new(SettingsTab::Studio);
-                    r.screen = egui::vec2(width, 2600.0);
-                    configure_style(
-                        &r.context,
-                        AppearancePreferences {
-                            theme,
-                            text_scale,
-                            ..AppearancePreferences::default()
-                        },
-                    );
-                    r.click("Restyle a companion");
-                    r.click("Choose a companion");
-                    r.click(&name);
-                    r.frame(Vec::new());
-                    let shade = if theme == ThemeChoice::Dark {
-                        "charcoal"
-                    } else {
-                        "cream"
-                    };
-                    r.picture()
-                        .save(path.join(format!("Studio-{width}-{shade}-{text_scale}-restyle.png")))
-                        .unwrap();
-                }
-            }
-        }
-    }
     h.tab = SettingsTab::Colony;
     h.frame(Vec::new());
     assert_eq!(
