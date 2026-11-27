@@ -1597,18 +1597,28 @@ fn the_ruling_is_where_the_writing_is_however_far_the_page_is_scrolled() {
                 .save(path.join(format!("{tab:?}-940-cream-100-scrolled.png")))
                 .unwrap();
         }
-        // A section open, as it reads on its own.
-        for (tab, section) in [
-            (SettingsTab::Colony, "care"),
-            (SettingsTab::General, "desktop"),
+        // A section open, as it reads on its own, with its way back at the foot of the page at
+        // the default and the largest size of text.
+        for (tab, section, text_scale) in [
+            (SettingsTab::Colony, "care", 100),
+            (SettingsTab::General, "desktop", 100),
+            (SettingsTab::Colony, "care", 150),
         ] {
             let mut h = Harness::new(tab);
             h.screen = egui::vec2(940.0, 720.0);
+            configure_style(
+                &h.context,
+                AppearancePreferences {
+                    text_scale,
+                    ..Default::default()
+                },
+            );
             h.clubhouse.shell.sections.open_section(tab, section);
             h.frame(Vec::new());
             h.picture()
-                .save(path.join(format!("{tab:?}-940-cream-100-{section}.png")))
+                .save(path.join(format!("{tab:?}-940-cream-{text_scale}-{section}.png")))
                 .unwrap();
+            configure_style(&h.context, AppearancePreferences::default());
         }
         // The wardrobe and the Collection with everything found, so every choice has its picture
         // and every keepsake its colours; the wardrobe trying something on.

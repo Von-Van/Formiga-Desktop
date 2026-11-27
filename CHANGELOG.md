@@ -2,6 +2,16 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Changed
+
+- The way back from an open section of a notebook page, "‹ Your colony" in the turned-up corner
+  at the page's foot, sits four points lower, its writing level with the page number across from
+  it rather than crowding the last line of the section, at every size of text.
+- The Conditions note under the notebook's tabs no longer ends with "Entirely on this computer."
+  It keeps the rest of what it jots down, and is that line shorter.
+
 ## [0.69.0] - 2026-11-27
 
 The animation pass, a lived-in village and a notebook that reads as a notebook, released together

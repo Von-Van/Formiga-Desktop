@@ -1229,12 +1229,12 @@ fn draw_settings(
             (scrolled.inner_rect.top(), footer.top()),
         );
         // While one of the page's sections is open, its corner turns up at its foot as the way
-        // back to the rest of it.
+        // back to the rest of it, its writing level with the page number across the foot.
         clubhouse::sections::back_corner(
             ui,
             &mut clubhouse.shell,
             *tab,
-            egui::pos2(page.left() + spread.margin + 12.0, footer.top() - 8.0),
+            egui::pos2(page.left() + spread.margin + 12.0, footer.top() - 4.0),
             text_scale,
         );
                 });
